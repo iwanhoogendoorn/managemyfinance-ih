@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS, FinanceSettings, FinanceStore } from "./store";
 import { detectRecurring } from "./subscriptionDetect";
 import type { Portfolio } from "./types";
 import { FinanceView } from "./views/FinanceView";
+import { restartSetup } from "./views/SetupView";
 import { openImportWizard } from "./wizards/ImportWizard";
 import { openSubscriptionWizard } from "./wizards/SubscriptionWizard";
 
@@ -110,6 +111,11 @@ export default class FinancePlugin extends Plugin {
 			id: "detect-subscriptions",
 			name: "Detect subscriptions in my transactions",
 			callback: () => void this.showDetectedSubscriptions(),
+		});
+		this.addCommand({
+			id: "restart-setup",
+			name: "Restart first-run setup",
+			callback: () => void restartSetup(this),
 		});
 	}
 

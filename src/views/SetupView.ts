@@ -64,7 +64,24 @@ function stateFor(host: HTMLElement): SetupState {
 	return state;
 }
 
+/**
+ * Set by the "restart setup" command and consumed by the next render. A module flag because the
+ * command has no body element to key per-leaf state on — and unlike first run, a restart must also
+ * show setup when accounts already exist, which `shouldShowSetup`'s normal gate would refuse.
+ */
+let pendingRestart = false;
+
+/** Re-enters first-run setup on demand — Skip is no longer a one-way door. */
+export async function restartSetup(plugin: FinancePlugin): Promise<void> {
+	pendingRestart = true;
+	plugin.settings.onboardingCompleted = false;
+	await plugin.saveSettings();
+	await plugin.activateView();
+	plugin.refreshViews();
+}
+
 export function shouldShowSetup(plugin: FinancePlugin, host: HTMLElement): boolean {
+	if (pendingRestart) return true;
 	if (plugin.settings.onboardingCompleted) return false;
 	return plugin.store.accounts.length === 0 || stateFor(host).inProgress;
 }
@@ -84,6 +101,15 @@ export function leaveSetup(host: HTMLElement): void {
 export function renderSetupView(container: HTMLElement, plugin: FinancePlugin, onDone: () => void): void {
 	container.empty();
 	const state = stateFor(container);
+	// A restart lands here with possibly-stale per-leaf state from an earlier run — reset to the
+	// welcome step and hold the body (inProgress) so existing accounts don't evict the user.
+	if (pendingRestart) {
+		pendingRestart = false;
+		state.step = "welcome";
+		state.inProgress = true;
+		state.created = [];
+		state.imported = undefined;
+	}
 	const root = container.createDiv({ cls: "fp-setup" });
 
 	const rerender = (): void => renderSetupView(container, plugin, onDone);
