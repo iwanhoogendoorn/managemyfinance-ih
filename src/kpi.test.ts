@@ -17,6 +17,12 @@ import {
 	balanceSeries,
 	windowSummary,
 	burnRate,
+	quarterOf,
+	shiftQuarter,
+	quarterRange,
+	isoWeekOf,
+	shiftIsoWeek,
+	isoWeekRange,
 	type KpiStore,
 } from "./kpi";
 import type { Account, Category, Transaction } from "./types";
@@ -1020,5 +1026,69 @@ describe("fiProjection", () => {
 	it("returns a positive number of years when contributions alone can reach the target", () => {
 		const years = fiProjection(0, 1000, 0, 12_000);
 		expect(years).toBeCloseTo(1, 1);
+	});
+});
+
+describe("quarterOf / shiftQuarter / quarterRange", () => {
+	it("reads the calendar quarter of a date", () => {
+		expect(quarterOf("2025-01-15")).toBe("2025-Q1");
+		expect(quarterOf("2025-03-31")).toBe("2025-Q1");
+		expect(quarterOf("2025-04-01")).toBe("2025-Q2");
+		expect(quarterOf("2025-07-01")).toBe("2025-Q3");
+		expect(quarterOf("2025-12-31")).toBe("2025-Q4");
+	});
+
+	it("shifts across quarter and year boundaries in both directions", () => {
+		expect(shiftQuarter("2025-Q1", 1)).toBe("2025-Q2");
+		expect(shiftQuarter("2025-Q4", 1)).toBe("2026-Q1");
+		expect(shiftQuarter("2025-Q1", -1)).toBe("2024-Q4");
+		expect(shiftQuarter("2025-Q3", -6)).toBe("2024-Q1");
+		expect(shiftQuarter("2025-Q1", 0)).toBe("2025-Q1");
+	});
+
+	it("gives the inclusive first/last day of a quarter, respecting leap-year February", () => {
+		expect(quarterRange("2025-Q1")).toEqual({ from: "2025-01-01", to: "2025-03-31" });
+		expect(quarterRange("2024-Q1")).toEqual({ from: "2024-01-01", to: "2024-03-31" }); // leap year, Q1 unaffected by day count directly but exercises the boundary
+		expect(quarterRange("2025-Q2")).toEqual({ from: "2025-04-01", to: "2025-06-30" });
+		expect(quarterRange("2025-Q4")).toEqual({ from: "2025-10-01", to: "2025-12-31" });
+	});
+});
+
+describe("isoWeekOf / shiftIsoWeek / isoWeekRange", () => {
+	// Ground truth: Python's stdlib `datetime.date.fromisoformat(d).isocalendar()`, which correctly
+	// implements ISO-8601 week numbering — cross-checked here rather than trusted blindly, since week
+	// numbering has exactly the kind of year-boundary edge cases that silently ship wrong.
+	it("matches ISO-8601 week numbers at known year-boundary edge cases", () => {
+		expect(isoWeekOf("2025-01-01")).toBe("2025-W01"); // Wed — week 1 despite being Jan 1
+		expect(isoWeekOf("2024-12-30")).toBe("2025-W01"); // Mon in Dec, but ISO week already 2025
+		expect(isoWeekOf("2021-01-01")).toBe("2020-W53"); // Fri — still last week of 2020
+		expect(isoWeekOf("2020-12-31")).toBe("2020-W53"); // 2020 is a 53-ISO-week year
+		expect(isoWeekOf("2026-08-11")).toBe("2026-W33");
+		expect(isoWeekOf("2025-12-29")).toBe("2026-W01"); // Mon in Dec, already next ISO year
+		expect(isoWeekOf("2016-01-01")).toBe("2015-W53");
+		expect(isoWeekOf("2017-01-01")).toBe("2016-W52");
+	});
+
+	it("shifts a week forward and backward across year boundaries", () => {
+		expect(shiftIsoWeek("2025-W33", 1)).toBe("2025-W34");
+		expect(shiftIsoWeek("2025-W33", -1)).toBe("2025-W32");
+		// Crossing the 2024/2025 boundary: W1 2025 back one week must land on the last week of 2020's
+		// analogue for 2024 — 2024-12-30 is in 2025-W01, so one week earlier is 2024-W52.
+		expect(shiftIsoWeek("2025-W01", -1)).toBe("2024-W52");
+		expect(shiftIsoWeek("2020-W53", 1)).toBe("2021-W01");
+	});
+
+	it("gives the inclusive Monday-Sunday bounds of an ISO week", () => {
+		expect(isoWeekRange("2025-W01")).toEqual({ from: "2024-12-30", to: "2025-01-05" });
+		expect(isoWeekRange("2026-W33")).toEqual({ from: "2026-08-10", to: "2026-08-16" });
+		expect(isoWeekRange("2020-W53")).toEqual({ from: "2020-12-28", to: "2021-01-03" });
+	});
+
+	it("round-trips: every day of a week's range reports back that same ISO week", () => {
+		for (const week of ["2025-W01", "2025-W33", "2020-W53", "2024-W52"]) {
+			const { from, to } = isoWeekRange(week);
+			expect(isoWeekOf(from)).toBe(week);
+			expect(isoWeekOf(to)).toBe(week);
+		}
 	});
 });

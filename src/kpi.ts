@@ -75,6 +75,73 @@ export function firstDayOf(month: string): string {
 	return `${month}-01`;
 }
 
+/** "YYYY-Q#" (1-indexed) of a "YYYY-MM-DD" date. */
+export function quarterOf(date: string): string {
+	const y = date.slice(0, 4);
+	const m = Number(date.slice(5, 7));
+	return `${y}-Q${Math.ceil(m / 3)}`;
+}
+
+/** "YYYY-Q#" shifted by whole quarters; handles year rollover in both directions. */
+export function shiftQuarter(quarter: string, delta: number): string {
+	const y = Number(quarter.slice(0, 4));
+	const q = Number(quarter.slice(6, 7));
+	const totalMonths = (y * 4 + (q - 1) + delta) * 3;
+	const ny = Math.floor(totalMonths / 12);
+	const nq = Math.floor((totalMonths % 12) / 3) + 1;
+	return `${ny}-Q${nq}`;
+}
+
+/** Inclusive [from, to] "YYYY-MM-DD" bounds of "YYYY-Q#". */
+export function quarterRange(quarter: string): { from: string; to: string } {
+	const y = quarter.slice(0, 4);
+	const q = Number(quarter.slice(6, 7));
+	const startMonth = `${y}-${pad2((q - 1) * 3 + 1)}`;
+	const endMonth = `${y}-${pad2(q * 3)}`;
+	return { from: firstDayOf(startMonth), to: lastDayOf(endMonth) };
+}
+
+/**
+ * ISO-8601 week ("YYYY-Www", matching `<input type="week">`'s value format) of a "YYYY-MM-DD" date.
+ * Week 1 is the week containing the year's first Thursday; weeks run Monday-Sunday. Computed via UTC
+ * throughout so no local timezone can shift which day a date falls on.
+ */
+export function isoWeekOf(date: string): string {
+	const y = Number(date.slice(0, 4));
+	const m = Number(date.slice(5, 7));
+	const d = Number(date.slice(8, 10));
+	const utc = new Date(Date.UTC(y, m - 1, d));
+	// Shift to the Thursday of this date's own Mon-Sun week (ISO weekday: Mon=1..Sun=7).
+	const isoWeekday = utc.getUTCDay() || 7;
+	utc.setUTCDate(utc.getUTCDate() + 4 - isoWeekday);
+	const isoYear = utc.getUTCFullYear();
+	const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+	const weekNo = Math.ceil(((utc.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+	return `${isoYear}-W${pad2(weekNo)}`;
+}
+
+/** "YYYY-Www" shifted by whole weeks — trivial in day-terms since every ISO week is exactly 7 days. */
+export function shiftIsoWeek(week: string, delta: number): string {
+	const { from } = isoWeekRange(week);
+	const [y, m, d] = from.split("-").map(Number);
+	const shifted = new Date(Date.UTC(y, m - 1, d + delta * 7));
+	return isoWeekOf(`${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}`);
+}
+
+/** Inclusive [Monday, Sunday] "YYYY-MM-DD" bounds of "YYYY-Www". */
+export function isoWeekRange(week: string): { from: string; to: string } {
+	const y = Number(week.slice(0, 4));
+	const w = Number(week.slice(6, 8));
+	// The Thursday of ISO week 1 always falls in January; walk to that week's Monday, then add weeks.
+	const jan4 = new Date(Date.UTC(y, 0, 4));
+	const jan4Weekday = jan4.getUTCDay() || 7;
+	const week1Monday = new Date(Date.UTC(y, 0, 4 - jan4Weekday + 1));
+	const monday = new Date(week1Monday.getTime() + (w - 1) * 7 * 86400000);
+	const sunday = new Date(monday.getTime() + 6 * 86400000);
+	const fmt = (dt: Date) => `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+	return { from: fmt(monday), to: fmt(sunday) };
+}
+
 /** Days since the epoch for a "YYYY-MM-DD" string, via UTC so DST never shifts a day boundary. */
 function dayNumber(date: string | undefined): number | undefined {
 	if (!date || date.length < 10) return undefined;

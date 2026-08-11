@@ -1,4 +1,16 @@
-import { firstDayOf, lastDayOf, monthOf, shiftMonth, todayIso } from "../../kpi";
+import {
+	firstDayOf,
+	isoWeekOf,
+	isoWeekRange,
+	lastDayOf,
+	monthOf,
+	quarterOf,
+	quarterRange,
+	shiftIsoWeek,
+	shiftMonth,
+	shiftQuarter,
+	todayIso,
+} from "../../kpi";
 import type FinancePlugin from "../../main";
 import { AddTransactionModal } from "../../modals/AddTransactionModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
@@ -13,8 +25,21 @@ type LedgerSortDirection = "asc" | "desc";
 /** The sentinel the category `<select>` uses for "has no category at all". */
 export const UNCATEGORIZED = "__uncategorized";
 
-export type LedgerDatePreset = "all" | "this-month" | "last-3-months" | "this-year" | "last-12-months" | "custom";
+export type LedgerDatePreset =
+	| "all"
+	| "this-month"
+	| "last-3-months"
+	| "this-year"
+	| "last-12-months"
+	| "year"
+	| "quarter"
+	| "month"
+	| "week"
+	| "custom";
 
+/** The specific instance for a "pick a period" preset — format depends on which one:
+ *  "year" → "YYYY" · "quarter" → "YYYY-Q#" · "month" → "YYYY-MM" · "week" → "YYYY-Www" (ISO-8601,
+ *  matching `<input type="week">`'s own value format). Unused by the relative presets and "custom". */
 export interface LedgerFilterState {
 	search: string;
 	accountId: string;
@@ -22,6 +47,7 @@ export interface LedgerFilterState {
 	dateFrom: string;
 	dateTo: string;
 	preset: LedgerDatePreset;
+	periodValue: string;
 }
 
 export type LedgerFilterPatch = Partial<LedgerFilterState>;
@@ -39,6 +65,7 @@ const filterState: LedgerFilterState = {
 	dateFrom: "",
 	dateTo: "",
 	preset: "all",
+	periodValue: "",
 };
 
 const sortState: LedgerSortState = {
@@ -69,11 +96,36 @@ const PRESET_LABEL: Record<LedgerDatePreset, string> = {
 	"last-3-months": "Last 3 months",
 	"this-year": "This year",
 	"last-12-months": "Last 12 months",
-	custom: "Custom…",
+	year: "Pick a year…",
+	quarter: "Pick a quarter…",
+	month: "Pick a month…",
+	week: "Pick a week…",
+	custom: "Custom range…",
 };
 
+/** The four "pick a specific one" presets, as opposed to the relative ones ("this month") and "custom". */
+const PERIOD_PRESETS: LedgerDatePreset[] = ["year", "quarter", "month", "week"];
+
+/** A sensible starting instance when the user first switches into a period preset — "now", in that
+ *  preset's own value format, so the picker doesn't open on a blank/undefined period. */
+function defaultPeriodValue(preset: LedgerDatePreset, today: Date = new Date()): string {
+	const now = todayIso(today);
+	switch (preset) {
+		case "year":
+			return now.slice(0, 4);
+		case "quarter":
+			return quarterOf(now);
+		case "month":
+			return monthOf(now);
+		case "week":
+			return isoWeekOf(now);
+		default:
+			return "";
+	}
+}
+
 /** A preset's own window. `all` and `custom` don't own one — custom keeps whatever the user typed. */
-function presetRange(preset: LedgerDatePreset, today: Date = new Date()): { from: string; to: string } | undefined {
+function presetRange(preset: LedgerDatePreset, periodValue: string, today: Date = new Date()): { from: string; to: string } | undefined {
 	const now = todayIso(today);
 	const month = monthOf(now);
 	switch (preset) {
@@ -85,8 +137,37 @@ function presetRange(preset: LedgerDatePreset, today: Date = new Date()): { from
 			return { from: `${now.slice(0, 4)}-01-01`, to: `${now.slice(0, 4)}-12-31` };
 		case "last-12-months":
 			return { from: firstDayOf(shiftMonth(month, -11)), to: lastDayOf(month) };
+		case "year":
+			return periodValue ? { from: `${periodValue}-01-01`, to: `${periodValue}-12-31` } : undefined;
+		case "quarter":
+			return periodValue ? quarterRange(periodValue) : undefined;
+		case "month":
+			return periodValue ? { from: firstDayOf(periodValue), to: lastDayOf(periodValue) } : undefined;
+		case "week":
+			return periodValue ? isoWeekRange(periodValue) : undefined;
 		default:
 			return undefined;
+	}
+}
+
+/** The label a period preset's chip/dropdown-adjacent text should show — "2025", "Q3 2025",
+ *  "July 2025", "Week 33, 2025" — since the raw value formats aren't human-readable as-is. */
+function periodLabel(preset: LedgerDatePreset, periodValue: string): string {
+	if (!periodValue) return PRESET_LABEL[preset];
+	switch (preset) {
+		case "year":
+			return periodValue;
+		case "quarter":
+			return `Q${periodValue.slice(6, 7)} ${periodValue.slice(0, 4)}`;
+		case "month": {
+			const [y, m] = periodValue.split("-");
+			const monthName = new Date(Date.UTC(Number(y), Number(m) - 1, 1)).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
+			return `${monthName} ${y}`;
+		}
+		case "week":
+			return `Week ${periodValue.slice(6, 8)}, ${periodValue.slice(0, 4)}`;
+		default:
+			return PRESET_LABEL[preset];
 	}
 }
 
@@ -108,7 +189,7 @@ export function getLedgerFilter(): Readonly<LedgerFilterState> {
 }
 
 export function clearLedgerFilter(): void {
-	setLedgerFilter({ search: "", accountId: "", categoryId: "", dateFrom: "", dateTo: "", preset: "all" });
+	setLedgerFilter({ search: "", accountId: "", categoryId: "", dateFrom: "", dateTo: "", preset: "all", periodValue: "" });
 }
 
 /**
@@ -209,6 +290,19 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 	customWrap.createSpan({ cls: "fp-filter-date-sep", text: "→" });
 	const dateTo = customWrap.createEl("input", { type: "date", cls: "fp-input", attr: { "aria-label": "To date" } });
 	dateTo.value = filterState.dateTo;
+
+	// Period picker: shown only for the four "pick a specific one" presets. Year/quarter get prev/next
+	// arrows around a computed label (there's no native input for either); month/week use the browser's
+	// own <input type="month"|"week"> — Obsidian runs on Chromium, which supports both natively — plus
+	// the same prev/next arrows for quick browsing, matching the ◀ month ▶ pattern used elsewhere in the app.
+	const periodWrap = bar.createDiv({ cls: "fp-period-picker" });
+	const periodPrev = periodWrap.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": "Previous period" } });
+	icon(periodPrev, "chevron-left");
+	const periodLabelEl = periodWrap.createSpan({ cls: "fp-period-picker-label" });
+	const periodMonthInput = periodWrap.createEl("input", { type: "month", cls: "fp-input fp-period-picker-input", attr: { "aria-label": "Pick a month" } });
+	const periodWeekInput = periodWrap.createEl("input", { type: "week", cls: "fp-input fp-period-picker-input", attr: { "aria-label": "Pick a week" } });
+	const periodNext = periodWrap.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": "Next period" } });
+	icon(periodNext, "chevron-right");
 
 	const stats = bar.createDiv({ cls: "fp-filterbar-stats" });
 
@@ -365,9 +459,15 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 		}
 		if (filterState.dateFrom || filterState.dateTo) {
 			any = true;
-			const label = filterState.preset !== "custom" ? PRESET_LABEL[filterState.preset] : `${filterState.dateFrom || "…"} → ${filterState.dateTo || "…"}`;
+			const label =
+				filterState.preset === "custom"
+					? `${filterState.dateFrom || "…"} → ${filterState.dateTo || "…"}`
+					: PERIOD_PRESETS.includes(filterState.preset)
+					? periodLabel(filterState.preset, filterState.periodValue)
+					: PRESET_LABEL[filterState.preset];
 			addChip(label, () => {
 				presetSelect.value = "all";
+				filterState.periodValue = "";
 				dateFrom.value = "";
 				dateTo.value = "";
 				draw();
@@ -380,6 +480,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 			if (accountSelect) accountSelect.value = "";
 			categorySelect.value = "";
 			presetSelect.value = "all";
+			filterState.periodValue = "";
 			dateFrom.value = "";
 			dateTo.value = "";
 			draw();
@@ -393,7 +494,12 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 		footer.empty();
 
 		const preset = presetSelect.value as LedgerDatePreset;
-		const range = presetRange(preset);
+		const isPeriodPreset = PERIOD_PRESETS.includes(preset);
+
+		if (isPeriodPreset && !filterState.periodValue) {
+			filterState.periodValue = defaultPeriodValue(preset);
+		}
+		const range = presetRange(preset, filterState.periodValue);
 		if (range) {
 			dateFrom.value = range.from;
 			dateTo.value = range.to;
@@ -402,6 +508,15 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 			dateTo.value = "";
 		}
 		customWrap.toggleClass("is-hidden", preset !== "custom");
+		periodWrap.toggleClass("is-hidden", !isPeriodPreset);
+		periodMonthInput.toggleClass("is-hidden", preset !== "month");
+		periodWeekInput.toggleClass("is-hidden", preset !== "week");
+		periodLabelEl.toggleClass("is-hidden", preset === "month" || preset === "week");
+		if (isPeriodPreset) {
+			periodLabelEl.setText(periodLabel(preset, filterState.periodValue));
+			if (preset === "month") periodMonthInput.value = filterState.periodValue;
+			if (preset === "week") periodWeekInput.value = filterState.periodValue;
+		}
 
 		filterState.search = search.value;
 		filterState.accountId = accountSelect ? accountSelect.value : "";
@@ -462,6 +577,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 					if (accountSelect) accountSelect.value = "";
 					categorySelect.value = "";
 					presetSelect.value = "all";
+					filterState.periodValue = "";
 					dateFrom.value = "";
 					dateTo.value = "";
 					draw();
@@ -498,13 +614,44 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 	};
 	accountSelect?.addEventListener("change", resetAndDraw);
 	categorySelect.addEventListener("change", resetAndDraw);
-	presetSelect.addEventListener("change", resetAndDraw);
+	presetSelect.addEventListener("change", () => {
+		// A stale periodValue from a different preset kind ("2025-07" left over from Month while
+		// switching to Year) would format-mismatch — clearing it lets draw() compute a fresh default.
+		filterState.periodValue = "";
+		resetAndDraw();
+	});
 	dateFrom.addEventListener("change", () => {
 		presetSelect.value = "custom";
 		resetAndDraw();
 	});
 	dateTo.addEventListener("change", () => {
 		presetSelect.value = "custom";
+		resetAndDraw();
+	});
+
+	function shiftPeriod(delta: number): void {
+		const preset = presetSelect.value as LedgerDatePreset;
+		const v = filterState.periodValue;
+		filterState.periodValue =
+			preset === "year"
+				? String(Number(v) + delta)
+				: preset === "quarter"
+				? shiftQuarter(v, delta)
+				: preset === "month"
+				? shiftMonth(v, delta)
+				: preset === "week"
+				? shiftIsoWeek(v, delta)
+				: v;
+		resetAndDraw();
+	}
+	periodPrev.addEventListener("click", () => shiftPeriod(-1));
+	periodNext.addEventListener("click", () => shiftPeriod(1));
+	periodMonthInput.addEventListener("change", () => {
+		if (periodMonthInput.value) filterState.periodValue = periodMonthInput.value;
+		resetAndDraw();
+	});
+	periodWeekInput.addEventListener("change", () => {
+		if (periodWeekInput.value) filterState.periodValue = periodWeekInput.value;
 		resetAndDraw();
 	});
 }

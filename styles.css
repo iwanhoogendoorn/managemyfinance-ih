@@ -3956,6 +3956,31 @@
 	color: var(--fp-ink-muted);
 	font-size: var(--fp-fs-xs);
 }
+.fp-period-picker {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-1);
+}
+.fp-period-picker.is-hidden {
+	display: none;
+}
+.fp-period-picker-label {
+	min-width: 6.5em;
+	text-align: center;
+	font-size: var(--fp-fs-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink);
+	white-space: nowrap;
+}
+.fp-period-picker-label.is-hidden {
+	display: none;
+}
+.fp-period-picker-input {
+	width: auto;
+}
+.fp-period-picker-input.is-hidden {
+	display: none;
+}
 .fp-ledger-footer {
 	display: flex;
 	align-items: center;
