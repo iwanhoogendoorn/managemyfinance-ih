@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { suggestedBudget, budgetStatuses, currentMonth } from "./budgets";
+import { suggestedBudget, budgetStatuses, budgetSummary, currentMonth, elapsedFraction } from "./budgets";
 import type { KpiStore } from "./kpi";
 import type { Transaction } from "./types";
 
@@ -86,5 +86,108 @@ describe("budgetStatuses", () => {
 		const s = store([tx("2024-05-05", -999), tx("2024-06-05", -10)]);
 		const [status] = budgetStatuses(s, [{ id: CAT_FOOD, budget: 100 }], "2024-06");
 		expect(status.spent).toBe(10);
+	});
+});
+
+describe("elapsedFraction", () => {
+	it("reports a completed month as fully elapsed", () => {
+		expect(elapsedFraction("2024-05", new Date(2024, 5, 10))).toBe(1);
+	});
+
+	it("reports a future month as not started", () => {
+		expect(elapsedFraction("2024-07", new Date(2024, 5, 10))).toBe(0);
+	});
+
+	it("reports day-of-month over days-in-month for the live month", () => {
+		expect(elapsedFraction("2024-06", new Date(2024, 5, 15))).toBeCloseTo(15 / 30, 10);
+		expect(elapsedFraction("2024-02", new Date(2024, 1, 10))).toBeCloseTo(10 / 29, 10); // leap year
+	});
+
+	it("is never zero on the 1st, so a pace ratio stays finite", () => {
+		expect(elapsedFraction("2024-06", new Date(2024, 5, 1))).toBeCloseTo(1 / 30, 10);
+	});
+});
+
+describe("budgetStatuses pacing", () => {
+	it("warns on the 3rd about a budget spent at double the sustainable rate (regression: no pacing)", () => {
+		// €20 of a €100 budget on the 3rd of a 30-day month scored "good" before pacing — but that pace
+		// finishes the month at €200.
+		const s = store([tx("2024-06-01", -20)]);
+		const [status] = budgetStatuses(s, [{ id: CAT_FOOD, budget: 100 }], "2024-06", new Date(2024, 5, 3));
+		expect(status.pct).toBeCloseTo(0.2, 10);
+		expect(status.pace).toBeCloseTo(2, 10);
+		expect(status.projected).toBeCloseTo(200, 10);
+		expect(status.tone).toBe("warn");
+	});
+
+	it("leaves a genuinely on-track category alone", () => {
+		const s = store([tx("2024-06-01", -10)]);
+		const [status] = budgetStatuses(s, [{ id: CAT_FOOD, budget: 100 }], "2024-06", new Date(2024, 5, 15));
+		expect(status.pace).toBeCloseTo(0.2, 10);
+		expect(status.tone).toBe("good");
+	});
+
+	it("reserves 'bad' for actually being over, not merely projected over", () => {
+		const projected = store([tx("2024-06-01", -90)]);
+		expect(budgetStatuses(projected, [{ id: CAT_FOOD, budget: 100 }], "2024-06", new Date(2024, 5, 15))[0].tone).toBe("warn");
+
+		const over = store([tx("2024-06-01", -120)]);
+		expect(budgetStatuses(over, [{ id: CAT_FOOD, budget: 100 }], "2024-06", new Date(2024, 5, 15))[0].tone).toBe("bad");
+	});
+
+	it("collapses to the original absolute thresholds for a completed month", () => {
+		const s = store([tx("2024-06-05", -85)]);
+		const [status] = budgetStatuses(s, [{ id: CAT_FOOD, budget: 100 }], "2024-06", new Date(2024, 6, 20));
+		expect(status.elapsed).toBe(1);
+		expect(status.pace).toBe(status.pct);
+		expect(status.tone).toBe("warn");
+	});
+});
+
+describe("budgetSummary", () => {
+	const CAT_FUN = "cat-fun";
+
+	function multiStore(transactions: ReturnType<typeof tx>[]) {
+		const s = store(transactions);
+		s.categories = [
+			{ id: CAT_FOOD, name: "Food", color: "#000", icon: "utensils", aliases: [] },
+			{ id: CAT_FUN, name: "Fun", color: "#000", icon: "party", aliases: [] },
+		];
+		return s;
+	}
+
+	it("scores the month on overall pace, not raw spend", () => {
+		// Half of a €600 total spent halfway through a 30-day month is exactly on pace — even though a
+		// raw "50% of budget used" reading says nothing about whether that's early or late.
+		const s = multiStore([tx("2024-06-05", -150), tx("2024-06-06", -150, CAT_FUN)]);
+		const summary = budgetSummary(s, [{ id: CAT_FOOD, budget: 300 }, { id: CAT_FUN, budget: 300 }], "2024-06", new Date(2024, 5, 15));
+		expect(summary.totalBudget).toBe(600);
+		expect(summary.totalSpent).toBe(300);
+		expect(summary.pace).toBeCloseTo(1, 10);
+
+		// Same spend a fortnight later is only half the pace.
+		const later = budgetSummary(s, [{ id: CAT_FOOD, budget: 300 }, { id: CAT_FUN, budget: 300 }], "2024-06", new Date(2024, 5, 30));
+		expect(later.pace).toBeCloseTo(0.5, 10);
+	});
+
+	it("separates categories already over from those merely on pace to go over", () => {
+		const s = multiStore([tx("2024-06-05", -400), tx("2024-06-06", -200, CAT_FUN)]);
+		const summary = budgetSummary(s, [{ id: CAT_FOOD, budget: 300 }, { id: CAT_FUN, budget: 300 }], "2024-06", new Date(2024, 5, 15));
+		expect(summary.overCount).toBe(1); // Food, at 400/300
+		expect(summary.projectedOverCount).toBe(1); // Fun, at 200/300 halfway through
+	});
+
+	it("surfaces spend leaving through categories with no limit set", () => {
+		const s = multiStore([tx("2024-06-05", -100), tx("2024-06-06", -250, CAT_FUN)]);
+		const summary = budgetSummary(s, [{ id: CAT_FOOD, budget: 300 }], "2024-06", new Date(2024, 5, 15));
+		expect(summary.totalSpent).toBe(100);
+		expect(summary.unbudgetedSpend).toBe(250);
+	});
+
+	it("stays at zero pace when nothing is budgeted at all", () => {
+		const s = multiStore([tx("2024-06-05", -100)]);
+		const summary = budgetSummary(s, [], "2024-06", new Date(2024, 5, 15));
+		expect(summary.pace).toBe(0);
+		expect(summary.unbudgetedSpend).toBe(100);
 	});
 });

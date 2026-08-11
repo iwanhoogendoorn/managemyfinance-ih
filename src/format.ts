@@ -1,0 +1,93 @@
+/**
+ * The one place money, percentages and compact figures are turned into strings.
+ *
+ * Before this module there were four `formatEUR` implementations with two different rounding rules, so
+ * €1,234.56 rendered as both "€1,235" and "€1,234.56" on the same screen. Views still carry their local
+ * copies until each is migrated here deliberately — centralizing changes displayed values in the metrics
+ * tables, which is a visual change, not a refactor.
+ *
+ * The currency argument is honoured rather than hardcoded to EUR. That is the honest minimum for a data
+ * model that already carries `Account.currency` / `Transaction.currency`: it does NOT make aggregation
+ * multi-currency-safe (summing a USD row into a EUR total is still 1:1 everywhere), it only stops us
+ * *labelling* a dollar amount with a euro sign.
+ */
+
+/** Matches the locale the plugin already used everywhere (`en-IE`): "€1,234.56", symbol first, comma groups. */
+const DEFAULT_LOCALE = "en-IE";
+
+/** What every formatter returns for NaN/Infinity — an em dash reads as "no value", "€NaN" reads as a bug. */
+const NO_VALUE = "—";
+
+export interface MoneyFormatOptions {
+	/** Decimal places. Defaults to 2 — full precision is the honest default for a ledger figure. */
+	decimals?: number;
+	/** Force a leading "+" on positive amounts. For deltas, where direction is the point. */
+	signed?: boolean;
+	locale?: string;
+}
+
+/**
+ * Intl throws a RangeError on an unrecognized currency code, and currency codes here come from imported
+ * CSVs — one malformed row must not take down a whole dashboard render, so an unusable code degrades to
+ * a plain number with the raw code in front of it.
+ */
+function currencyFormat(
+	locale: string,
+	currency: string,
+	options: Intl.NumberFormatOptions
+): { format: (n: number) => string } {
+	try {
+		return new Intl.NumberFormat(locale, { style: "currency", currency, ...options });
+	} catch {
+		const plain = new Intl.NumberFormat(locale, options);
+		return { format: (n: number) => `${currency} ${plain.format(n)}` };
+	}
+}
+
+export function formatMoney(n: number, currency = "EUR", opts: MoneyFormatOptions = {}): string {
+	if (!Number.isFinite(n)) return NO_VALUE;
+	const decimals = opts.decimals ?? 2;
+	// -0 formats as "-€0.00", which reads as a tiny loss rather than nothing at all.
+	const value = n === 0 ? 0 : n;
+	return currencyFormat(opts.locale ?? DEFAULT_LOCALE, currency, {
+		minimumFractionDigits: decimals,
+		maximumFractionDigits: decimals,
+		signDisplay: opts.signed ? "exceptZero" : "auto",
+	}).format(value);
+}
+
+/**
+ * A ratio as a percentage: 0.42 → "42%". Takes the raw ratio, not an already-multiplied number, because
+ * every ratio in `kpi.ts` (savings rate, budget pace, utilization) is produced in [0,1] terms.
+ */
+export function formatPct(n: number, digits = 0): string {
+	if (!Number.isFinite(n)) return NO_VALUE;
+	return new Intl.NumberFormat(DEFAULT_LOCALE, {
+		style: "percent",
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits,
+	}).format(n === 0 ? 0 : n);
+}
+
+/** Same as `formatPct` but always carries its sign — for deltas, where "+3%" and "3%" mean different things. */
+export function formatSignedPct(n: number, digits = 0): string {
+	if (!Number.isFinite(n)) return NO_VALUE;
+	return new Intl.NumberFormat(DEFAULT_LOCALE, {
+		style: "percent",
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits,
+		signDisplay: "exceptZero",
+	}).format(n === 0 ? 0 : n);
+}
+
+/**
+ * Abbreviated money for tight spaces — "€1.2M", "€48K". Chart axes and sparkline end-labels have a fixed
+ * pixel budget, so a six-figure net worth spelled out in full either clips or shrinks the whole axis.
+ */
+export function formatCompact(n: number, currency = "EUR", opts: { locale?: string } = {}): string {
+	if (!Number.isFinite(n)) return NO_VALUE;
+	return currencyFormat(opts.locale ?? DEFAULT_LOCALE, currency, {
+		notation: "compact",
+		maximumFractionDigits: 1,
+	}).format(n === 0 ? 0 : n);
+}

@@ -5,11 +5,18 @@ import {
 	yearSummaryFor,
 	netWorth,
 	categoryTotals,
+	categorySpend,
 	accountStats,
 	averageMonthlyExpenses,
 	investingHoldings,
 	investingActivityByYear,
+	realizedPLByYear,
 	fiProjection,
+	detectTransferPairs,
+	monthKeys,
+	balanceSeries,
+	windowSummary,
+	burnRate,
 	type KpiStore,
 } from "./kpi";
 import type { Account, Category, Transaction } from "./types";
@@ -17,6 +24,7 @@ import type { Account, Category, Transaction } from "./types";
 // ---------- fixtures ----------
 
 const checking: Account = { id: "acc-checking", name: "Checking", type: "debit", currency: "EUR", openingBalance: 0 };
+const checking2: Account = { id: "acc-checking-2", name: "Joint", type: "debit", currency: "EUR", openingBalance: 0 };
 const savings: Account = { id: "acc-savings", name: "Savings", type: "saving", currency: "EUR", openingBalance: 0 };
 const investing: Account = { id: "acc-investing", name: "Investing", type: "investing", currency: "EUR", openingBalance: 0 };
 
@@ -259,6 +267,29 @@ describe("netWorth", () => {
 		expect(netWorth(s, checking.id)).toBe(300);
 		expect(netWorth(s, savings.id)).toBe(50);
 	});
+
+	it("excludes future-dated transactions from the balance you have today (regression: B2)", () => {
+		const s = store({
+			accounts: [{ ...checking, openingBalance: 100 }],
+			transactions: [
+				tx({ date: "2024-01-01", accountId: checking.id, amount: 200 }),
+				tx({ date: "2099-01-01", accountId: checking.id, amount: 5000 }),
+			],
+		});
+		expect(netWorth(s)).toBe(300);
+	});
+
+	it("honours an explicit asOf cutoff, inclusive of that day", () => {
+		const s = store({
+			accounts: [{ ...checking, openingBalance: 0 }],
+			transactions: [
+				tx({ date: "2024-06-29", accountId: checking.id, amount: 10 }),
+				tx({ date: "2024-06-30", accountId: checking.id, amount: 20 }),
+				tx({ date: "2024-07-01", accountId: checking.id, amount: 40 }),
+			],
+		});
+		expect(netWorth(s, undefined, "2024-06-30")).toBe(30);
+	});
 });
 
 // ---------- categoryTotals ----------
@@ -373,6 +404,66 @@ describe("investingHoldings", () => {
 		});
 		expect(investingHoldings(s, investing.id)).toHaveLength(0);
 	});
+
+	it("keeps the basis of the shares still held after a profitable partial sale (regression: B3)", () => {
+		// Buy 10 @ €100, sell 5 @ €200. The old code subtracted the €1,000 of proceeds straight off the
+		// €1,000 basis, leaving €0 of cost — and an avgCost of €0 — against five shares that cost €500.
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: -1000, action: "buy", ticker: "VWCE", shares: 10 }),
+				tx({ date: "2024-06-01", accountId: investing.id, amount: 1000, action: "sell", ticker: "VWCE", shares: 5 }),
+			],
+		});
+		const [holding] = investingHoldings(s, investing.id);
+		expect(holding.shares).toBe(5);
+		expect(holding.netInvested).toBeCloseTo(500, 6);
+		expect(holding.avgCost).toBeCloseTo(100, 6);
+		expect(holding.realizedPL).toBeCloseTo(500, 6);
+	});
+
+	it("never drives the cost basis negative on a large gain (regression: B3)", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: -1000, action: "buy", ticker: "MOON", shares: 10 }),
+				tx({ date: "2024-06-01", accountId: investing.id, amount: 9000, action: "sell", ticker: "MOON", shares: 1 }),
+			],
+		});
+		const [holding] = investingHoldings(s, investing.id);
+		expect(holding.netInvested).toBeCloseTo(900, 6);
+		expect(holding.avgCost).toBeCloseTo(100, 6);
+		expect(holding.realizedPL).toBeCloseTo(8900, 6);
+	});
+
+	it("uses the average cost at the moment of the sale, not the final average", () => {
+		// Deliberately out of date order in the array: the walk must sort before it accumulates, or the
+		// March buy would cheapen the shares sold in February.
+		const s = store({
+			transactions: [
+				tx({ date: "2024-03-01", accountId: investing.id, amount: -2000, action: "buy", ticker: "VWCE", shares: 10 }),
+				tx({ date: "2024-01-01", accountId: investing.id, amount: -1000, action: "buy", ticker: "VWCE", shares: 10 }),
+				tx({ date: "2024-02-01", accountId: investing.id, amount: 750, action: "sell", ticker: "VWCE", shares: 5 }),
+			],
+		});
+		const [holding] = investingHoldings(s, investing.id);
+		expect(holding.shares).toBe(15);
+		expect(holding.netInvested).toBeCloseTo(2500, 6); // 1000 - 500 released by the sale + 2000
+		expect(holding.realizedPL).toBeCloseTo(250, 6); // 750 proceeds - 5 shares at the €100 average then
+	});
+
+	it("books no phantom profit when a sell row carries no share count", () => {
+		// Hand-entered and generic-CSV sells can lack `shares`, so the basis can only be released up to
+		// the proceeds — conservative, rather than treating the whole sale as gain.
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: -1000, action: "buy", ticker: "VWCE", shares: 10 }),
+				tx({ date: "2024-06-01", accountId: investing.id, amount: 400, action: "sell", ticker: "VWCE" }),
+			],
+		});
+		const [holding] = investingHoldings(s, investing.id);
+		expect(holding.shares).toBe(10);
+		expect(holding.netInvested).toBeCloseTo(600, 6);
+		expect(holding.realizedPL).toBe(0);
+	});
 });
 
 // ---------- investingActivityByYear ----------
@@ -392,6 +483,397 @@ describe("investingActivityByYear", () => {
 });
 
 // ---------- fiProjection ----------
+
+// ---------- detectTransferPairs (B1 / P5) ----------
+
+describe("detectTransferPairs", () => {
+	/** Two everyday accounts, so neither the transfer category nor the saving/investing markers apply. */
+	function twoAccountStore(transactions: Transaction[]): KpiStore {
+		return store({ accounts: [checking, checking2], transactions });
+	}
+
+	it("matches an opposite-sign pair in different accounts within €0.01 and ±3 days", () => {
+		const s = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -5000 }),
+			tx({ date: "2024-01-12", accountId: checking2.id, amount: 5000 }),
+		]);
+		const pairs = detectTransferPairs(s);
+		expect(pairs).toHaveLength(1);
+		expect(pairs[0]).toMatchObject({ amount: 5000, daysApart: 2 });
+	});
+
+	it("stops a debit↔debit transfer being counted as both income and expense (regression: B1)", () => {
+		// Before the pair heuristic this recorded €5,000 of income AND €5,000 of expenses, inflating both
+		// and pushing the savings rate to nonsense.
+		const s = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -5000 }),
+			tx({ date: "2024-01-12", accountId: checking2.id, amount: 5000 }),
+			tx({ date: "2024-01-15", accountId: checking.id, amount: 3000, categoryId: catIncome.id }),
+			tx({ date: "2024-01-20", accountId: checking.id, amount: -900, categoryId: catFood.id }),
+		]);
+		const [year] = summarizeByYear(s);
+		expect(year.income).toBe(3000);
+		expect(year.expenses).toBe(900);
+		expect(year.savingsRate).toBeCloseTo(0.7, 6);
+	});
+
+	it("does not pair two rows in the same account", () => {
+		const s = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -200 }),
+			tx({ date: "2024-01-11", accountId: checking.id, amount: 200 }),
+		]);
+		expect(detectTransferPairs(s)).toHaveLength(0);
+	});
+
+	it("does not pair rows more than 3 days apart", () => {
+		const s = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -200 }),
+			tx({ date: "2024-01-14", accountId: checking2.id, amount: 200 }),
+		]);
+		expect(detectTransferPairs(s)).toHaveLength(0);
+	});
+
+	it("tolerates a cent of drift but no more", () => {
+		const near = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -100.0 }),
+			tx({ date: "2024-01-10", accountId: checking2.id, amount: 100.01 }),
+		]);
+		expect(detectTransferPairs(near)).toHaveLength(1);
+
+		const far = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -100.0 }),
+			tx({ date: "2024-01-10", accountId: checking2.id, amount: 100.05 }),
+		]);
+		expect(detectTransferPairs(far)).toHaveLength(0);
+	});
+
+	it("does not pair two rows of the same sign", () => {
+		const s = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -200 }),
+			tx({ date: "2024-01-10", accountId: checking2.id, amount: -200 }),
+		]);
+		expect(detectTransferPairs(s)).toHaveLength(0);
+	});
+
+	it("never matches one row twice — a lone outflow can only claim one of two candidate inflows", () => {
+		const s = store({
+			accounts: [checking, checking2, savings],
+			transactions: [
+				tx({ date: "2024-01-10", accountId: checking.id, amount: -100 }),
+				tx({ date: "2024-01-10", accountId: checking2.id, amount: 100, categoryId: catIncome.id }),
+				tx({ date: "2024-01-10", accountId: savings.id, amount: 100, categoryId: catIncome.id }),
+			],
+		});
+		expect(detectTransferPairs(s)).toHaveLength(1);
+		// The unmatched inflow stays real income; the matched pair vanishes from both sides.
+		const [year] = summarizeByYear(s);
+		expect(year.income).toBe(100);
+		expect(year.expenses).toBe(0);
+	});
+
+	it("prefers the closest date when two candidates are otherwise identical", () => {
+		const s = twoAccountStore([
+			tx({ date: "2024-01-05", accountId: checking.id, amount: -100 }),
+			tx({ date: "2024-01-04", accountId: checking2.id, amount: 100, categoryId: catIncome.id }),
+			tx({ date: "2024-01-08", accountId: checking2.id, amount: 100, categoryId: catIncome.id }),
+		]);
+		const pairs = detectTransferPairs(s);
+		expect(pairs).toHaveLength(1);
+		expect(pairs[0].daysApart).toBe(1);
+	});
+
+	it("matches the largest amounts first so a big move claims its true counterpart", () => {
+		const s = twoAccountStore([
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -50 }),
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -4000 }),
+			tx({ date: "2024-01-10", accountId: checking2.id, amount: 4000 }),
+			tx({ date: "2024-01-10", accountId: checking2.id, amount: 50 }),
+		]);
+		const pairs = detectTransferPairs(s);
+		expect(pairs.map((p) => p.amount)).toEqual([4000, 50]);
+	});
+
+	it("ignores rows with no date or a zero amount", () => {
+		const s = twoAccountStore([
+			tx({ date: "", accountId: checking.id, amount: -100 }),
+			tx({ date: "2024-01-10", accountId: checking2.id, amount: 100 }),
+			tx({ date: "2024-01-10", accountId: checking.id, amount: 0 }),
+			tx({ date: "2024-01-10", accountId: checking2.id, amount: 0 }),
+		]);
+		expect(detectTransferPairs(s)).toHaveLength(0);
+	});
+});
+
+// ---------- windowSummary (P3) ----------
+
+describe("windowSummary", () => {
+	it("sums income and expenses over an inclusive date range", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-03-01", accountId: checking.id, amount: 1000, categoryId: catIncome.id }),
+				tx({ date: "2024-03-31", accountId: checking.id, amount: -200, categoryId: catFood.id }),
+				tx({ date: "2024-04-01", accountId: checking.id, amount: -999, categoryId: catFood.id }),
+				tx({ date: "2024-02-29", accountId: checking.id, amount: -999, categoryId: catFood.id }),
+			],
+		});
+		expect(windowSummary(s, "2024-03-01", "2024-03-31")).toMatchObject({
+			income: 1000,
+			expenses: 200,
+			net: 800,
+			txCount: 2,
+		});
+	});
+
+	it("excludes transfers and counts only the rows behind the figures", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-03-01", accountId: checking.id, amount: 500, categoryId: catIncome.id }),
+				tx({ date: "2024-03-02", accountId: checking.id, amount: -300, categoryId: catTransfers.id }),
+			],
+		});
+		expect(windowSummary(s, "2024-03-01", "2024-03-31")).toMatchObject({ income: 500, expenses: 0, txCount: 1 });
+	});
+
+	it("tracks passive income and clamps savings rate like the year/month summaries", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-03-01", accountId: checking.id, amount: 20, type: "Interest" }),
+				tx({ date: "2024-03-02", accountId: checking.id, amount: -500, categoryId: catFood.id }),
+			],
+		});
+		const summary = windowSummary(s, "2024-03-01", "2024-03-31");
+		expect(summary.passiveIncome).toBe(20);
+		expect(summary.savingsRate).toBe(-1);
+	});
+
+	it("scopes to the given accounts", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-03-01", accountId: checking.id, amount: -100, categoryId: catFood.id }),
+				tx({ date: "2024-03-01", accountId: savings.id, amount: -400, categoryId: catFood.id }),
+			],
+		});
+		expect(windowSummary(s, "2024-03-01", "2024-03-31", [checking.id]).expenses).toBe(100);
+	});
+});
+
+// ---------- monthKeys (P1) ----------
+
+describe("monthKeys", () => {
+	it("runs from the first transaction month through the current month with no gaps", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-20", accountId: checking.id, amount: -10 }),
+				tx({ date: "2024-04-02", accountId: checking.id, amount: -10 }),
+			],
+		});
+		expect(monthKeys(s, undefined, new Date(2024, 4, 10))).toEqual(["2024-01", "2024-02", "2024-03", "2024-04", "2024-05"]);
+	});
+
+	it("returns nothing when there are no dated transactions", () => {
+		expect(monthKeys(store(), undefined, new Date(2024, 4, 10))).toEqual([]);
+	});
+
+	it("scopes the start month to the given accounts", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2020-01-01", accountId: savings.id, amount: -10 }),
+				tx({ date: "2024-03-01", accountId: checking.id, amount: -10 }),
+			],
+		});
+		expect(monthKeys(s, [checking.id], new Date(2024, 3, 5))).toEqual(["2024-03", "2024-04"]);
+	});
+});
+
+// ---------- balanceSeries (P2) ----------
+
+describe("balanceSeries", () => {
+	it("reports the closing balance of every month, carrying quiet months forward", () => {
+		const s = store({
+			accounts: [{ ...checking, openingBalance: 100 }],
+			transactions: [
+				tx({ date: "2024-01-15", accountId: checking.id, amount: 50 }),
+				tx({ date: "2024-03-10", accountId: checking.id, amount: -20 }),
+			],
+		});
+		expect(balanceSeries(s, undefined, "month", new Date(2024, 2, 20))).toEqual([
+			{ key: "2024-01", balance: 150 },
+			{ key: "2024-02", balance: 150 },
+			{ key: "2024-03", balance: 130 },
+		]);
+	});
+
+	it("produces a daily series for the overdraft/low-balance read", () => {
+		const s = store({
+			accounts: [{ ...checking, openingBalance: 0 }],
+			transactions: [
+				tx({ date: "2024-01-01", accountId: checking.id, amount: 100 }),
+				tx({ date: "2024-01-03", accountId: checking.id, amount: -130 }),
+			],
+		});
+		const series = balanceSeries(s, undefined, "day", new Date(2024, 0, 4));
+		expect(series.map((p) => p.key)).toEqual(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"]);
+		expect(series.map((p) => p.balance)).toEqual([100, 100, -30, -30]);
+	});
+
+	it("scopes both the opening balance and the transactions to the given accounts", () => {
+		const s = store({
+			accounts: [
+				{ ...checking, openingBalance: 100 },
+				{ ...savings, openingBalance: 9999 },
+			],
+			transactions: [
+				tx({ date: "2024-01-15", accountId: checking.id, amount: 50 }),
+				tx({ date: "2024-01-16", accountId: savings.id, amount: 5000 }),
+			],
+		});
+		expect(balanceSeries(s, [checking.id], "month", new Date(2024, 0, 20))).toEqual([{ key: "2024-01", balance: 150 }]);
+	});
+
+	it("returns nothing when there are no transactions to anchor the range", () => {
+		expect(balanceSeries(store(), undefined, "month", new Date(2024, 0, 20))).toEqual([]);
+	});
+});
+
+// ---------- burnRate (P4) ----------
+
+describe("burnRate", () => {
+	it("averages over complete months only — the partial current month never dilutes it", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-05", accountId: checking.id, amount: -600, categoryId: catFood.id }),
+				tx({ date: "2024-07-02", accountId: checking.id, amount: -999, categoryId: catFood.id }),
+			],
+		});
+		// Jan–Jun is six complete months holding €600 of spend; July is still running and is excluded.
+		expect(burnRate(s, undefined, 6, new Date(2024, 6, 10))).toBe(100);
+	});
+
+	it("counts zero-spend months in the denominator (unlike averageMonthlyExpenses)", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-05", accountId: checking.id, amount: -300, categoryId: catFood.id }),
+				tx({ date: "2024-02-05", accountId: checking.id, amount: -300, categoryId: catFood.id }),
+			],
+		});
+		// Jan and Feb hold €600; Mar–Jun are silent but real. 600/6 = 100, where the old helper said 300.
+		expect(burnRate(s, undefined, 6, new Date(2024, 6, 10))).toBe(100);
+		expect(averageMonthlyExpenses(s)).toBe(300);
+	});
+
+	it("clamps the window to the complete months actually available", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-05-05", accountId: checking.id, amount: -100, categoryId: catFood.id }),
+				tx({ date: "2024-06-05", accountId: checking.id, amount: -300, categoryId: catFood.id }),
+			],
+		});
+		expect(burnRate(s, undefined, 6, new Date(2024, 6, 10))).toBe(200);
+	});
+
+	it("returns 0 when no complete month has happened yet", () => {
+		const s = store({ transactions: [tx({ date: "2024-07-05", accountId: checking.id, amount: -100 })] });
+		expect(burnRate(s, undefined, 6, new Date(2024, 6, 10))).toBe(0);
+	});
+
+	it("returns 0 for an empty store", () => {
+		expect(burnRate(store(), undefined, 6, new Date(2024, 6, 10))).toBe(0);
+	});
+
+	it("scopes to the given accounts", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-06-05", accountId: checking.id, amount: -600, categoryId: catFood.id }),
+				tx({ date: "2024-06-05", accountId: savings.id, amount: -6000, categoryId: catFood.id }),
+			],
+		});
+		// June is the only complete month either way, so the window is 1 month: €600 scoped vs €6,600 not.
+		expect(burnRate(s, [checking.id], 6, new Date(2024, 6, 10))).toBe(600);
+		expect(burnRate(s, undefined, 6, new Date(2024, 6, 10))).toBe(6600);
+	});
+});
+
+// ---------- categorySpend (P7) ----------
+
+describe("categorySpend", () => {
+	it("accepts an explicit date range as well as a prefix", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-03-31", accountId: checking.id, amount: -10, categoryId: catFood.id }),
+				tx({ date: "2024-04-01", accountId: checking.id, amount: -20, categoryId: catFood.id }),
+				tx({ date: "2024-04-30", accountId: checking.id, amount: -30, categoryId: catFood.id }),
+				tx({ date: "2024-05-01", accountId: checking.id, amount: -40, categoryId: catFood.id }),
+			],
+		});
+		expect(categorySpend(s, { from: "2024-04-01", to: "2024-04-30" }).get(catFood.id)).toBe(50);
+		expect(categorySpend(s, "2024-04").get(catFood.id)).toBe(50);
+		expect(categorySpend(s, "2024").get(catFood.id)).toBe(100);
+	});
+
+	it("scopes to several accounts at once, which categoryTotals cannot", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-04-01", accountId: checking.id, amount: -10, categoryId: catFood.id }),
+				tx({ date: "2024-04-01", accountId: savings.id, amount: -20, categoryId: catFood.id }),
+				tx({ date: "2024-04-01", accountId: investing.id, amount: -40, categoryId: catFood.id }),
+			],
+		});
+		expect(categorySpend(s, "2024-04", [checking.id, savings.id]).get(catFood.id)).toBe(30);
+	});
+
+	it("still excludes income and transfers and buckets uncategorized spend", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-04-01", accountId: checking.id, amount: 500, categoryId: catIncome.id }),
+				tx({ date: "2024-04-02", accountId: checking.id, amount: -100, categoryId: catTransfers.id }),
+				tx({ date: "2024-04-03", accountId: checking.id, amount: -15 }),
+			],
+		});
+		const totals = categorySpend(s, "2024-04");
+		expect(totals.get(catIncome.id)).toBeUndefined();
+		expect(totals.get(catTransfers.id)).toBeUndefined();
+		expect(totals.get("uncategorized")).toBe(15);
+	});
+
+	it("categoryTotals stays a working alias for the single-account, prefix case", () => {
+		const s = store({ transactions: [tx({ date: "2024-04-01", accountId: checking.id, amount: -25, categoryId: catFood.id })] });
+		expect(categoryTotals(s, "2024-04", checking.id).get(catFood.id)).toBe(25);
+	});
+});
+
+// ---------- realized P/L (B3) ----------
+
+describe("realizedPLByYear", () => {
+	it("books proceeds minus the basis the sold shares carried", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: -1000, action: "buy", ticker: "VWCE", shares: 10 }),
+				tx({ date: "2024-06-01", accountId: investing.id, amount: 1000, action: "sell", ticker: "VWCE", shares: 5 }),
+			],
+		});
+		expect(realizedPLByYear(s, investing.id)).toEqual([
+			{ year: "2024", proceeds: 1000, costBasisSold: 500, realized: 500 },
+		]);
+	});
+
+	it("includes positions that were closed entirely, which investingHoldings drops", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2023-01-01", accountId: investing.id, amount: -100, action: "buy", ticker: "AAPL", shares: 1 }),
+				tx({ date: "2024-02-01", accountId: investing.id, amount: 120, action: "sell", ticker: "AAPL", shares: 1 }),
+			],
+		});
+		expect(investingHoldings(s, investing.id)).toHaveLength(0);
+		expect(realizedPLByYear(s, investing.id)).toEqual([{ year: "2024", proceeds: 120, costBasisSold: 100, realized: 20 }]);
+	});
+
+	it("returns nothing when nothing was ever sold", () => {
+		const s = store({
+			transactions: [tx({ date: "2024-01-01", accountId: investing.id, amount: -100, action: "buy", ticker: "AAPL", shares: 1 })],
+		});
+		expect(realizedPLByYear(s, investing.id)).toEqual([]);
+	});
+});
 
 describe("fiProjection", () => {
 	it("returns 0 when already at or past the target", () => {

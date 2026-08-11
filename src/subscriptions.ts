@@ -150,14 +150,26 @@ export function totalsByPaidVia(subs: Subscription[], today: Date = new Date()):
 	];
 }
 
+export interface UpcomingPayment {
+	sub: Subscription;
+	date: string;
+	daysUntil: number;
+	/**
+	 * What actually hits the account on `date` — `sub.cost`, the real charge, not `monthlyCost`.
+	 * A €120/year subscription due next week is €120 leaving your balance that day; calling it €10
+	 * (its normalized monthly share) understates an imminent payment by an order of magnitude.
+	 */
+	amount: number;
+}
+
 /** Every active subscription's next payment, soonest first — the feed behind "Upcoming payments". */
-export function upcomingPayments(subs: Subscription[], today: Date = new Date()): { sub: Subscription; date: string; daysUntil: number }[] {
+export function upcomingPayments(subs: Subscription[], today: Date = new Date()): UpcomingPayment[] {
 	return subs
 		.filter((s) => isActive(s, today))
 		.map((sub) => {
 			const date = nextOccurrence(sub, today);
-			return date ? { sub, date, daysUntil: daysUntil(date, today) } : undefined;
+			return date ? { sub, date, daysUntil: daysUntil(date, today), amount: sub.cost } : undefined;
 		})
-		.filter((x): x is { sub: Subscription; date: string; daysUntil: number } => x !== undefined)
+		.filter((x): x is UpcomingPayment => x !== undefined)
 		.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }

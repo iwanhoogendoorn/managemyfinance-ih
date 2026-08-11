@@ -18,6 +18,19 @@ export interface Account {
 	openingDate?: string;
 	/** IBAN (or other bank account identifier), used to auto-attribute rows from combined multi-account exports. */
 	iban?: string;
+	/** Manually-entered current market value for investing/crypto accounts — the honest alternative to a live
+	 *  price feed. Falls back to cost basis everywhere when unset; every derived figure shows marketValueAsOf. */
+	marketValue?: number;
+	/** ISO date the marketValue was last updated — surfaced next to derived figures, nagged past 90 days. */
+	marketValueAsOf?: string;
+	/** Credit accounts: the card's limit — drives the utilization meter. Tile hidden entirely when unset. */
+	creditLimit?: number;
+	/** Savings accounts: target amount for goal-progress display. */
+	goalAmount?: number;
+	/** Savings accounts: optional target date for the goal. */
+	goalDate?: string;
+	/** Credit accounts: day of month (1–28) the statement cycle starts; calendar month when unset. */
+	statementDay?: number;
 }
 
 export interface Category {
@@ -58,6 +71,9 @@ export interface Subscription {
 	cancelUrl?: string;
 	notes?: string;
 	archived?: boolean;
+	/** Normalized ledger merchant key this subscription was detected from (see subscriptionDetect.ts) —
+	 *  links a tracked subscription back to its recurring charges so detection can dedupe against it. */
+	merchantKey?: string;
 }
 
 export type CardType = "debit" | "credit" | "prepaid" | "secured" | "charge";
