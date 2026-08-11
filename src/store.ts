@@ -11,7 +11,7 @@ export interface FinanceSettings {
 	/** Scopes the whole workspace to one account's transactions; undefined means "All Accounts". */
 	activeAccountId?: string;
 	/** Selects a workspace page that isn't account-scoped, e.g. the subscriptions tracker. */
-	activeView?: "budgets" | "subscriptions" | "cards";
+	activeView?: "budgets" | "subscriptions" | "cards" | "categories";
 	/** Blurs every displayed amount (hover to reveal) — for demoing the plugin without exposing real numbers. */
 	privacyMode?: boolean;
 	/** Every portfolio the vault knows about — each is a fully separate set of accounts/transactions/subscriptions. */

@@ -13,6 +13,7 @@ import { leaveSetup, renderSetupView, shouldShowSetup } from "./SetupView";
 import { renderAccountPage } from "./sections/AccountPage";
 import { renderBudgetsSection } from "./sections/BudgetsSection";
 import { renderCardsSection } from "./sections/CardsSection";
+import { renderCategoriesSection } from "./sections/CategoriesSection";
 import { renderSubscriptionsSection } from "./sections/SubscriptionsSection";
 
 /** Checking-like accounts first, then savings, then investing/crypto, then everything else (e.g. cash). */
@@ -26,7 +27,7 @@ interface NavTabDef {
 	onClick: () => void;
 }
 
-const DEFAULT_NAV_ORDER = ["all-accounts", "budgets", "subscriptions", "cards"];
+const DEFAULT_NAV_ORDER = ["all-accounts", "categories", "budgets", "subscriptions", "cards"];
 
 /** Classes the section renderers put on the shared body element — stripped before every dispatch so
  *  they never outlive the page that added them. */
@@ -181,7 +182,7 @@ export class FinanceView extends ItemView {
 		this.renderBody();
 	}
 
-	private async selectView(view: "budgets" | "subscriptions" | "cards"): Promise<void> {
+	private async selectView(view: "budgets" | "subscriptions" | "cards" | "categories"): Promise<void> {
 		leaveSetup(this.bodyEl);
 		this.plugin.settings.activeView = view;
 		await this.plugin.saveSettings();
@@ -332,6 +333,13 @@ export class FinanceView extends ItemView {
 				isActive: activeView === "subscriptions",
 				onClick: () => void this.selectView("subscriptions"),
 			},
+			categories: {
+				id: "categories",
+				label: "Categories",
+				icon: "tags",
+				isActive: activeView === "categories",
+				onClick: () => void this.selectView("categories"),
+			},
 			cards: {
 				id: "cards",
 				label: "Cards",
@@ -464,6 +472,8 @@ export class FinanceView extends ItemView {
 			renderBudgetsSection(this.bodyEl, this.plugin);
 		} else if (this.plugin.settings.activeView === "subscriptions") {
 			renderSubscriptionsSection(this.bodyEl, this.plugin);
+		} else if (this.plugin.settings.activeView === "categories") {
+			renderCategoriesSection(this.bodyEl, this.plugin);
 		} else if (this.plugin.settings.activeView === "cards") {
 			renderCardsSection(this.bodyEl, this.plugin);
 		} else {

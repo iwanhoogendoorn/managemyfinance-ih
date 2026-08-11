@@ -5145,3 +5145,107 @@
 .fp-filterbar-add {
 	white-space: nowrap;
 }
+
+/* ==========================================================================
+   Categories review — the category workbench
+   ========================================================================== */
+.fp-cat-review {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-card);
+	overflow: hidden;
+}
+.fp-cat-review-row {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-2) var(--fp-space-3);
+	min-height: 48px;
+	transition: background-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-cat-review-row + .fp-cat-review-row,
+.fp-cat-review-detail + .fp-cat-review-row {
+	box-shadow: inset 0 1px 0 var(--fp-line-hairline);
+}
+.fp-cat-review-row:hover {
+	background: var(--fp-bg-card-hover);
+}
+/* Rows nested under an expanded merchant — indented and quieter, so the group stays the unit of
+   attention and its members read as detail rather than as peers. */
+.fp-cat-review-row--compact {
+	padding-left: var(--fp-space-6);
+	min-height: 38px;
+	background: var(--fp-bg-inset);
+}
+.fp-cat-review-main {
+	flex: 1;
+	min-width: 0;
+}
+.fp-cat-review-name {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fp-cat-review-row--compact .fp-cat-review-name {
+	font-weight: var(--fp-fw-regular);
+	font-size: var(--fp-fs-sm);
+}
+.fp-cat-review-meta {
+	margin-top: 1px;
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+}
+.fp-cat-review-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	flex-shrink: 0;
+}
+.fp-cat-review-picker {
+	min-width: 11rem;
+}
+.fp-cat-review-detail {
+	display: flex;
+	flex-direction: column;
+}
+.fp-cat-review-detail.is-hidden {
+	display: none;
+}
+.fp-cat-review-divider {
+	padding: var(--fp-space-2) var(--fp-space-3);
+	background: var(--fp-bg-inset);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	box-shadow: inset 0 1px 0 var(--fp-line);
+}
+.fp-cat-review-uncat {
+	color: var(--fp-warn-ink);
+	font-weight: var(--fp-fw-medium);
+}
+/* A saved "always categorize this merchant" rule — the button stays put and just goes quiet-green,
+   so the row doesn't reflow under the cursor mid-review. */
+.fp-cat-review-actions .fp-btn--icon.is-active {
+	color: var(--fp-pos-ink);
+}
+@container fp-shell (max-width: 700px) {
+	.fp-cat-review-row {
+		flex-wrap: wrap;
+	}
+	.fp-cat-review-actions {
+		width: 100%;
+		justify-content: flex-end;
+	}
+	.fp-cat-review-picker {
+		flex: 1;
+		min-width: 0;
+	}
+}
