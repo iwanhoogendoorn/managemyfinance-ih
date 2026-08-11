@@ -1,5 +1,6 @@
 import { firstDayOf, lastDayOf, monthOf, shiftMonth, todayIso } from "../../kpi";
 import type FinancePlugin from "../../main";
+import { openCategoryManager } from "../../modals/CategoryManagerModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import { buildUserRule, deriveRulePattern, groupByMerchant, ruleReach, type MerchantGroup } from "../../reviewQueue";
 import type { Transaction } from "../../types";
@@ -59,6 +60,15 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 	const headMain = header.createDiv({ cls: "fp-page-head-main" });
 	headMain.createEl("h2", { cls: "fp-page-title", text: "Categories" });
 	headMain.createDiv({ cls: "fp-page-sub", text: "Every transaction, grouped by who you paid. Change a category here and it applies to the whole group." });
+	const manageBtn = header.createEl("button", {
+		cls: "fp-btn fp-btn--secondary",
+		attr: { type: "button", title: "Add, rename, recolour or retire the categories themselves" },
+	});
+	icon(manageBtn, "settings");
+	manageBtn.createSpan({ text: "Manage categories" });
+	// No callback needed: the manager persists via `refreshViews()`, which rebuilds this whole
+	// section from the store — including when the ledger is empty and the code below never ran.
+	manageBtn.addEventListener("click", () => openCategoryManager(plugin));
 
 	if (store.transactions.length === 0) {
 		emptyState(root, {

@@ -5249,3 +5249,85 @@
 		min-width: 0;
 	}
 }
+
+/* ==========================================================================
+   Category manager modal
+   ========================================================================== */
+.fp-category-manager .fp-category-list {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-md);
+	overflow: hidden;
+	margin-bottom: var(--fp-space-4);
+	max-height: 46vh;
+	overflow-y: auto;
+}
+.fp-category-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-2) var(--fp-space-3);
+	min-height: 42px;
+}
+.fp-category-row + .fp-category-row {
+	box-shadow: inset 0 1px 0 var(--fp-line-hairline);
+}
+.fp-category-row:hover {
+	background: var(--fp-bg-card-hover);
+}
+.fp-category-row-main {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-3);
+	min-width: 0;
+}
+.fp-category-row-meta {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.fp-category-row-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex-shrink: 0;
+}
+.fp-category-archived-head {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	margin-bottom: var(--fp-space-2);
+}
+/* Live preview of the chip being built — the only honest way to pick a colour and an icon name, since
+   a wrong Lucide name renders nothing at all rather than erroring. */
+.fp-category-preview {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-3);
+	margin-top: var(--fp-space-3);
+	background: var(--fp-bg-inset);
+	border-radius: var(--fp-radius-sm);
+}
+.fp-category-preview-label {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	text-transform: uppercase;
+	letter-spacing: var(--fp-ls-overline);
+}
+.fp-category-color {
+	width: 44px;
+	height: 30px;
+	padding: 2px;
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-sm);
+	background: var(--fp-bg-card);
+	cursor: pointer;
+}
+.fp-form-hint {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	margin-top: var(--fp-space-1);
+}

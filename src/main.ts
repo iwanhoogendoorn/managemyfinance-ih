@@ -4,6 +4,7 @@ import { autoCategorize, buildDefaultRules } from "./import/autoCategorize";
 import { closeAllPluginModals } from "./modalRegistry";
 import { AddTransactionModal } from "./modals/AddTransactionModal";
 import { openBudgetSetup } from "./modals/BudgetSetupModal";
+import { openCategoryManager } from "./modals/CategoryManagerModal";
 import { CreateAccountModal } from "./modals/CreateAccountModal";
 import { openMonthInReview } from "./modals/MonthDrilldownModal";
 import { openReviewQueue } from "./modals/ReviewQueueModal";
@@ -117,6 +118,11 @@ export default class FinancePlugin extends Plugin {
 			id: "restart-setup",
 			name: "Restart first-run setup",
 			callback: () => void restartSetup(this),
+		});
+		this.addCommand({
+			id: "manage-categories",
+			name: "Manage categories",
+			callback: () => openCategoryManager(this),
 		});
 		this.addCommand({
 			id: "add-transaction",
