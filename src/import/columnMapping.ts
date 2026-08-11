@@ -18,6 +18,7 @@ export interface ColumnMapping {
 	type: string;
 	notes: string;
 	code: string;
+	fee: string;
 }
 
 export const COLUMN_MAPPING_FIELDS: ColumnMappingField[] = [
@@ -30,6 +31,9 @@ export const COLUMN_MAPPING_FIELDS: ColumnMappingField[] = [
 	{ key: "type", label: "Transaction type (optional)", guesses: ["transaction type", "mutatiesoort", "category"] },
 	{ key: "notes", label: "Notes (optional)", guesses: ["notif", "mededelingen", "note", "memo"] },
 	{ key: "code", label: "Code (optional)", guesses: ["code"] },
+	// Some exports (Revolut's own CSV) list a per-row Fee SEPARATELY from Amount, not already folded
+	// into it — mapping it here subtracts it from the balance-affecting amount (ingParser.ts).
+	{ key: "fee", label: "Fee (optional) — subtracted from Amount", guesses: ["fee", "kosten"] },
 ];
 
 export function emptyColumnMapping(): ColumnMapping {
@@ -37,7 +41,7 @@ export function emptyColumnMapping(): ColumnMapping {
 	// actually types a value, so a debitCredit column that gets auto-guessed on a recognized (e.g. ING)
 	// import — where the underlying parser already has its own correct multi-locale default ("debit"/"af")
 	// — doesn't get silently overridden to a single locale's value the user never chose.
-	return { date: "", description: "", counterparty: "", amount: "", debitCredit: "", debitValue: "", currency: "", type: "", notes: "", code: "" };
+	return { date: "", description: "", counterparty: "", amount: "", debitCredit: "", debitValue: "", currency: "", type: "", notes: "", code: "", fee: "" };
 }
 
 /** Best-effort defaults so most CSVs need little more than a glance and Next. */
@@ -71,5 +75,6 @@ export function applyColumnMapping(headers: string[], mapping: ColumnMapping): s
 	if (mapping.type) canonical[mapping.type] = "transaction type";
 	if (mapping.notes) canonical[mapping.notes] = "notifications";
 	if (mapping.code) canonical[mapping.code] = "code";
+	if (mapping.fee) canonical[mapping.fee] = "fee";
 	return headers.map((h) => canonical[h] ?? h);
 }

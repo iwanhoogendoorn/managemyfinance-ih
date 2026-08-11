@@ -63,6 +63,7 @@ export function parseIngRows(headers: string[], rows: string[][], opts: ParseIng
 	const iNotif = col(headers, "notifications", "mededelingen");
 	const iSubCat = col(headers, "sub cat.", "sub cat", "category");
 	const iMainCat = col(headers, "main cat.", "main cat");
+	const iFee = col(headers, "fee", "kosten");
 
 	const out: Transaction[] = [];
 	for (const r of rows) {
@@ -89,6 +90,14 @@ export function parseIngRows(headers: string[], rows: string[][], opts: ParseIng
 			amount = credit - debit;
 		}
 
+		// A mapped "Fee" column (e.g. Revolut's own export) is a cost the export lists SEPARATELY from
+		// Amount, not already folded into it — verified against a real account by reconciling every row
+		// against the export's own running balance: without subtracting fee, the computed balance drifts
+		// further from the bank's own number on every fee-bearing row. Always a cost regardless of the
+		// transaction's own sign, so it subtracts from the balance-effect either way.
+		const fee = iFee !== -1 ? parseAmount(r[iFee] ?? "") : 0;
+		if (fee) amount -= fee;
+
 		const raw = iNotif !== -1 ? (r[iNotif] ?? "").trim() : "";
 		const type = iType !== -1 ? (r[iType] ?? "").trim() : "";
 		const currency = (iCurrency !== -1 ? (r[iCurrency] ?? "").trim() : "") || "EUR";
@@ -113,6 +122,7 @@ export function parseIngRows(headers: string[], rows: string[][], opts: ParseIng
 			categoryId,
 			source: opts.source ?? "ing",
 			raw: raw || undefined,
+			fee: fee || undefined,
 		});
 	}
 	return out;
