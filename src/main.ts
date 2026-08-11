@@ -2,6 +2,7 @@ import { FuzzySuggestModal, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { defaultCategories, VIEW_TYPE_FINANCE } from "./constants";
 import { autoCategorize, buildDefaultRules } from "./import/autoCategorize";
 import { closeAllPluginModals } from "./modalRegistry";
+import { AddTransactionModal } from "./modals/AddTransactionModal";
 import { openBudgetSetup } from "./modals/BudgetSetupModal";
 import { CreateAccountModal } from "./modals/CreateAccountModal";
 import { openMonthInReview } from "./modals/MonthDrilldownModal";
@@ -116,6 +117,11 @@ export default class FinancePlugin extends Plugin {
 			id: "restart-setup",
 			name: "Restart first-run setup",
 			callback: () => void restartSetup(this),
+		});
+		this.addCommand({
+			id: "add-transaction",
+			name: "Add transaction manually",
+			callback: () => new AddTransactionModal(this.app, this).open(),
 		});
 	}
 

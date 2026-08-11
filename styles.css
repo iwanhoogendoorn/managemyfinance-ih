@@ -5042,3 +5042,41 @@
 		gap: var(--fp-space-4);
 	}
 }
+
+/* ===== Manual transaction entry (AddTransactionModal) ===== */
+.fp-manual-amount {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+}
+.fp-manual-amount input {
+	flex: 1;
+	min-width: 0;
+}
+.fp-manual-direction {
+	display: inline-flex;
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-sm);
+	overflow: hidden;
+}
+.fp-manual-direction button {
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink-secondary);
+	padding: var(--fp-space-1) var(--fp-space-3);
+	cursor: pointer;
+	transition: background-color var(--fp-dur-1) var(--fp-ease), color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-manual-direction button + button {
+	border-left: 1px solid var(--fp-line);
+}
+.fp-manual-direction button.is-active {
+	background: var(--fp-accent-wash);
+	color: var(--fp-ink);
+	font-weight: var(--fp-fw-semibold);
+}
+.fp-filterbar-add {
+	white-space: nowrap;
+}

@@ -1,5 +1,6 @@
 import { firstDayOf, lastDayOf, monthOf, shiftMonth, todayIso } from "../../kpi";
 import type FinancePlugin from "../../main";
+import { AddTransactionModal } from "../../modals/AddTransactionModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import type { Transaction } from "../../types";
 import { badge, categoryChip, emptyState, icon } from "../../ui/dom";
@@ -150,13 +151,19 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 
 	const scopedTransactions = activeAccountId ? store.transactions.filter((t) => t.accountId === activeAccountId) : store.transactions;
 	if (scopedTransactions.length === 0) {
-		emptyState(container, {
+		const empty = emptyState(container, {
 			iconName: "inbox",
 			title: activeAccount ? `No transactions yet for ${activeAccount.name}` : "No transactions yet",
 			description: "Import a bank or broker CSV/Excel export to populate the ledger.",
 			actionLabel: "Import transactions",
 			onAction: () => openImportWizard(plugin),
 		});
+		// A cash account will never have an export — manual entry is its only door in, so it has to
+		// be offered right here, not hidden behind a filter bar that only renders once rows exist.
+		const manual = empty.createEl("button", { cls: "fp-btn fp-btn--ghost", attr: { type: "button" } });
+		icon(manual, "plus");
+		manual.createSpan({ text: "Add one manually" });
+		manual.addEventListener("click", () => new AddTransactionModal(plugin.app, plugin).open());
 		return;
 	}
 
@@ -204,6 +211,19 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 	dateTo.value = filterState.dateTo;
 
 	const stats = bar.createDiv({ cls: "fp-filterbar-stats" });
+
+	// Manual entry lives where the rows live — commanding "add-transaction" from the palette works
+	// too, but the ledger is where you notice something is missing.
+	const addBtn = bar.createEl("button", {
+		cls: "fp-btn fp-btn--secondary fp-filterbar-add",
+		attr: { type: "button", "aria-label": "Add transaction manually" },
+	});
+	icon(addBtn, "plus");
+	addBtn.createSpan({ text: "Add" });
+	addBtn.addEventListener("click", () => {
+		new AddTransactionModal(plugin.app, plugin).open();
+	});
+
 	const chips = bar.createDiv({ cls: "fp-filterbar-chips" });
 
 	/* ---------- table ---------- */
