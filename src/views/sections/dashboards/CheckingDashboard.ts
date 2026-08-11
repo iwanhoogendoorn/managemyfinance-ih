@@ -33,6 +33,7 @@ import {
 	pct,
 	projectMonthEnd,
 	relativeDays,
+	renderMonthPickerCard,
 	setStatFoot,
 	shiftDays,
 	signedMoney,
@@ -129,29 +130,44 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 
 	/* ---------- cashflow ---------- */
 
-	const months: string[] = [];
-	for (let i = CASHFLOW_MONTHS - 1; i >= 0; i--) months.push(shiftMonth(month, -i));
-	const monthly = months.map((m) => {
-		const w = monthWindow(m);
-		return windowSummary(store, w.from, w.to, ids);
-	});
+	// Years with any activity on this account — the picker's alternative to the rolling recent window.
+	const years = summarizeByYear(store, account.id);
 
-	if (monthly.some((m) => m.income > 0 || m.expenses > 0)) {
-		const card = container.createDiv({ cls: "fp-card" });
-		cardHead(card, "Cash flow", { sub: "Money in against money out, by month" });
-		groupedColumnChart(
-			card,
-			months.map((m) => formatMonth(m).slice(0, 3)),
-			[
-				{ label: "In", color: "var(--fp-series-income)", values: monthly.map((m) => m.income) },
-				{ label: "Out", color: "var(--fp-series-expenses)", values: monthly.map((m) => m.expenses) },
-			],
-			{
-				formatValue: (n) => money(n, currency),
-				title: "Monthly income and expenses",
-				description: `Income and expenses per month for the last ${CASHFLOW_MONTHS} months.`,
-			}
-		);
+	const recentMonths: string[] = [];
+	for (let i = CASHFLOW_MONTHS - 1; i >= 0; i--) recentMonths.push(shiftMonth(month, -i));
+	const hasAnyCashflow = recentMonths
+		.map((m) => {
+			const w = monthWindow(m);
+			return windowSummary(store, w.from, w.to, ids);
+		})
+		.some((m) => m.income > 0 || m.expenses > 0);
+
+	if (hasAnyCashflow || years.length > 0) {
+		renderMonthPickerCard(container, {
+			title: "Cash flow",
+			sub: "Money in against money out, by month",
+			years: years.map((y) => y.year),
+			recentMonths,
+			renderPeriod: (host, months) => {
+				const monthly = months.map((m) => {
+					const w = monthWindow(m);
+					return windowSummary(store, w.from, w.to, ids);
+				});
+				if (!monthly.some((m) => m.income > 0 || m.expenses > 0)) {
+					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					return;
+				}
+				groupedColumnChart(
+					host,
+					months.map((m) => formatMonth(m).slice(0, 3)),
+					[
+						{ label: "In", color: "var(--fp-series-income)", values: monthly.map((m) => m.income) },
+						{ label: "Out", color: "var(--fp-series-expenses)", values: monthly.map((m) => m.expenses) },
+					],
+					{ formatValue: (n) => money(n, currency), title: "Monthly income and expenses", description: "Income and expenses per month." }
+				);
+			},
+		});
 	}
 
 	/* ---------- spend by category (this month) ---------- */
@@ -164,7 +180,6 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 
 	/* ---------- history ---------- */
 
-	const years = summarizeByYear(store, account.id);
 	if (years.length > 0) {
 		const card = container.createDiv({ cls: "fp-card" });
 		cardHead(card, "Historical performance", { sub: "The current year is still partial" });

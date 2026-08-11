@@ -8,6 +8,12 @@ import { cardHead, money, portfolioCurrency, signedMoney } from "./shared";
 /** The trailing window every "is this normal?" comparison is made against. */
 const COMPARISON_MONTHS = 3;
 
+/** `categorySpend`'s own bucket key for uncategorized transactions (kpi.ts) — deliberately NOT the
+ *  same string as `UNCATEGORIZED` from LedgerSection, which is that module's own filter-dropdown
+ *  sentinel ("__uncategorized"). The two only meet at the goToLedger call below, which translates
+ *  one into the other on purpose. */
+const UNCAT_KEY = "uncategorized";
+
 export interface CategoryFlowOpts {
 	accountIds?: string[];
 	title?: string;
@@ -31,7 +37,6 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 	const elapsed = Math.max(0.01, elapsedFraction(month, today));
 
 	const current = categorySpend(store, month, opts.accountIds);
-	if (current.size === 0) return;
 
 	const priorTotals = new Map<string, number>();
 	for (let i = 1; i <= COMPARISON_MONTHS; i++) {
@@ -40,14 +45,23 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 		);
 	}
 
+	// Every category, not just ones with spend this month — a €0 row is still useful information
+	// ("nothing here yet"), and hiding it made the card look incomplete rather than genuinely quiet.
+	// UNCATEGORIZED is included only when it has ever had spend (current or in the comparison window):
+	// unlike a real category, showing it permanently at €0 would be a standing accusation of nothing.
+	const ids = new Set<string>(store.categories.filter((c) => !c.archived).map((c) => c.id));
+	if (current.has(UNCAT_KEY) || priorTotals.has(UNCAT_KEY)) ids.add(UNCAT_KEY);
+	if (ids.size === 0) return;
+
 	const categoryById = new Map(store.categories.map((c) => [c.id, c]));
-	const rows = Array.from(current.entries())
-		.map(([id, value]) => {
+	const rows = Array.from(ids)
+		.map((id) => {
 			const cat = categoryById.get(id);
+			const value = current.get(id) ?? 0;
 			const mean = (priorTotals.get(id) ?? 0) / COMPARISON_MONTHS;
 			return {
 				id,
-				label: cat?.name ?? (id === "uncategorized" ? "Uncategorized" : id),
+				label: cat?.name ?? (id === UNCAT_KEY ? "Uncategorized" : id),
 				color: cat?.color ?? "var(--fp-ink-muted)",
 				iconName: cat?.icon,
 				value,
@@ -56,8 +70,10 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 				delta: value / elapsed - mean,
 			};
 		})
-		.sort((a, b) => b.value - a.value)
-		.slice(0, opts.limit ?? 8);
+		// Active categories first (highest spend on top), then everything else alphabetically —
+		// otherwise the €0 tail would order itself by category-array position, not anything meaningful.
+		.sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+		.slice(0, opts.limit ?? Infinity);
 
 	const card = container.createDiv({ cls: "fp-card" });
 	cardHead(card, opts.title ?? "Where the money went", {
@@ -103,7 +119,7 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 			void goToLedger(
 				plugin,
 				{
-					categoryId: r.id === "uncategorized" ? UNCATEGORIZED : r.id,
+					categoryId: r.id === UNCAT_KEY ? UNCATEGORIZED : r.id,
 					dateFrom: firstDayOf(month),
 					dateTo: lastDayOf(month),
 					preset: "custom",

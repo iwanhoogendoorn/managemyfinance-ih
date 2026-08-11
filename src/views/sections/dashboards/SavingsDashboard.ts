@@ -1,4 +1,4 @@
-import { balanceSeries, burnRate, fiProjection, netWorth, todayIso } from "../../../kpi";
+import { balanceSeries, burnRate, fiProjection, netWorth, summarizeByYear, todayIso } from "../../../kpi";
 import type FinancePlugin from "../../../main";
 import type { Account } from "../../../types";
 import { groupedColumnChart, lineChart, stackedShareBar } from "../../../ui/charts";
@@ -16,6 +16,7 @@ import {
 	monthWindow,
 	pct,
 	rawAccountFlows,
+	renderMonthPickerCard,
 	setStatFoot,
 	signedMoney,
 	spendingAccountIds,
@@ -131,20 +132,27 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 
 	const trendMonths = balances.slice(-24).map((b) => b.key);
 	if (trendMonths.length > 1) {
-		const values = trendMonths.map((m) => {
-			const f = rawAccountFlows(store, account.id, monthWindow(m));
-			// Interest isn't a contribution — conflating the two is how "net deposits" quietly credits
-			// you with the bank's money.
-			return f.net - f.interest;
+		const years = summarizeByYear(store, account.id).map((y) => y.year);
+		renderMonthPickerCard(container, {
+			title: "Net contributions",
+			sub: "Deposits less withdrawals, interest excluded",
+			years,
+			recentMonths: trendMonths,
+			renderPeriod: (host, months) => {
+				const values = months.map((m) => {
+					const f = rawAccountFlows(store, account.id, monthWindow(m));
+					// Interest isn't a contribution — conflating the two is how "net deposits" quietly
+					// credits you with the bank's money.
+					return f.net - f.interest;
+				});
+				groupedColumnChart(
+					host,
+					months.map((m) => formatMonth(m).slice(0, 3)),
+					[{ label: "Net contribution", color: "var(--fp-series-net)", values }],
+					{ formatValue: (n) => money(n, currency), title: "Net contributions by month", description: "Deposits minus withdrawals, per month." }
+				);
+			},
 		});
-		const card = container.createDiv({ cls: "fp-card" });
-		cardHead(card, "Net contributions", { sub: "Deposits less withdrawals, interest excluded" });
-		groupedColumnChart(
-			card,
-			trendMonths.map((m) => formatMonth(m).slice(0, 3)),
-			[{ label: "Net contribution", color: "var(--fp-series-net)", values }],
-			{ formatValue: (n) => money(n, currency), title: "Net contributions by month", description: "Deposits minus withdrawals, per month." }
-		);
 	}
 
 	/* ---------- balance history ---------- */

@@ -522,6 +522,50 @@ export function sectionCard(parent: HTMLElement, title: string, opts: { label?: 
 	return card;
 }
 
+/**
+ * A card for a per-month chart that defaults to a rolling recent window but lets the user jump to
+ * any specific calendar year's Jan-Dec instead — every "last N months" chart in the dashboards used
+ * to be permanently stuck on that trailing window with no way to look at, say, all of 2023.
+ *
+ * `renderPeriod` draws into a host the caller controls the whole content of (chart, empty state,
+ * whatever) — this helper only owns the card shell, the picker, and re-invoking it on change.
+ */
+export function renderMonthPickerCard(
+	container: HTMLElement,
+	opts: {
+		title: string;
+		sub?: string;
+		years: string[];
+		recentMonths: string[];
+		recentLabel?: string;
+		renderPeriod: (host: HTMLElement, months: string[]) => void;
+	}
+): void {
+	const card = container.createDiv({ cls: "fp-card" });
+	const head = cardHead(card, opts.title, { sub: opts.sub });
+	const chartHost = card.createDiv();
+
+	let mode: "recent" | string = "recent";
+
+	if (opts.years.length > 0) {
+		const picker = head.createEl("select", { cls: "fp-select fp-select--sm", attr: { "aria-label": `${opts.title} period` } });
+		picker.createEl("option", { text: opts.recentLabel ?? `Last ${opts.recentMonths.length} months`, value: "recent" });
+		[...opts.years].reverse().forEach((y) => picker.createEl("option", { text: y, value: y }));
+		picker.value = mode;
+		picker.addEventListener("change", () => {
+			mode = picker.value;
+			render();
+		});
+	}
+
+	function render(): void {
+		chartHost.empty();
+		const months = mode === "recent" ? opts.recentMonths : Array.from({ length: 12 }, (_, i) => `${mode}-${String(i + 1).padStart(2, "0")}`);
+		opts.renderPeriod(chartHost, months);
+	}
+	render();
+}
+
 export interface TriStatItem {
 	label: string;
 	value: string;

@@ -5,6 +5,7 @@ import {
 	netWorth,
 	realizedPLByYear,
 	shiftMonth,
+	summarizeByYear,
 	todayIso,
 	monthOf,
 	type KpiStore,
@@ -24,6 +25,7 @@ import {
 	monthWindow,
 	pct,
 	rawAccountFlows,
+	renderMonthPickerCard,
 	setStatFoot,
 	signedMoney,
 	ttmWindow,
@@ -173,18 +175,30 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 
 	/* ---------- monthly contributions ---------- */
 
-	const months: string[] = [];
-	for (let i = 23; i >= 0; i--) months.push(shiftMonth(monthOf(todayIso(today)), -i));
-	const monthlyFlows = months.map((m) => monthlyContribution(store, account.id, m));
-	if (monthlyFlows.some((v) => v !== 0)) {
-		const card = container.createDiv({ cls: "fp-card" });
-		cardHead(card, "Contributions by month", { sub: "Deposits less withdrawals — everything else was annual-only before" });
-		groupedColumnChart(
-			card,
-			months.map((m) => formatMonth(m).slice(0, 3)),
-			[{ label: "Net contribution", color: "var(--fp-series-net)", values: monthlyFlows }],
-			{ formatValue: (n) => money(n, currency), title: "Net contributions by month", description: "Deposits minus withdrawals per month." }
-		);
+	const recentContribMonths: string[] = [];
+	for (let i = 23; i >= 0; i--) recentContribMonths.push(shiftMonth(monthOf(todayIso(today)), -i));
+	const hasContribActivity = recentContribMonths.some((m) => monthlyContribution(store, account.id, m) !== 0);
+	if (hasContribActivity || activity.length > 0) {
+		renderMonthPickerCard(container, {
+			title: "Contributions by month",
+			sub: "Deposits less withdrawals — everything else was annual-only before",
+			years: activity.map((a) => a.year),
+			recentMonths: recentContribMonths,
+			recentLabel: "Last 24 months",
+			renderPeriod: (host, months) => {
+				const values = months.map((m) => monthlyContribution(store, account.id, m));
+				if (!values.some((v) => v !== 0)) {
+					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					return;
+				}
+				groupedColumnChart(
+					host,
+					months.map((m) => formatMonth(m).slice(0, 3)),
+					[{ label: "Net contribution", color: "var(--fp-series-net)", values }],
+					{ formatValue: (n) => money(n, currency), title: "Net contributions by month", description: "Deposits minus withdrawals per month." }
+				);
+			},
+		});
 	}
 
 	/* ---------- holdings ---------- */
@@ -415,16 +429,27 @@ function renderFlowOnlyVariant(container: HTMLElement, plugin: FinancePlugin, ac
 	}
 
 	if (balances.length > 1) {
-		const months = balances.slice(-24).map((b) => b.key);
-		const values = months.map((m) => rawAccountFlows(store, account.id, monthWindow(m)).net);
-		const card = container.createDiv({ cls: "fp-card" });
-		cardHead(card, "Net flows by month");
-		groupedColumnChart(
-			card,
-			months.map((m) => formatMonth(m).slice(0, 3)),
-			[{ label: "Net flow", color: "var(--fp-series-net)", values }],
-			{ formatValue: (n) => money(n, currency), title: "Net flows by month", description: "Money in minus money out, per month." }
-		);
+		const years = summarizeByYear(store, account.id).map((y) => y.year);
+		const recentFlowMonths = balances.slice(-24).map((b) => b.key);
+		renderMonthPickerCard(container, {
+			title: "Net flows by month",
+			years,
+			recentMonths: recentFlowMonths,
+			recentLabel: "Last 24 months",
+			renderPeriod: (host, months) => {
+				const values = months.map((m) => rawAccountFlows(store, account.id, monthWindow(m)).net);
+				if (!values.some((v) => v !== 0)) {
+					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					return;
+				}
+				groupedColumnChart(
+					host,
+					months.map((m) => formatMonth(m).slice(0, 3)),
+					[{ label: "Net flow", color: "var(--fp-series-net)", values }],
+					{ formatValue: (n) => money(n, currency), title: "Net flows by month", description: "Money in minus money out, per month." }
+				);
+			},
+		});
 
 		const historyCard = container.createDiv({ cls: "fp-card" });
 		cardHead(historyCard, "Contributed over time", { sub: "Cost basis, not market value" });

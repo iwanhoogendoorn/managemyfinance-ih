@@ -555,6 +555,13 @@
 .fp-filter-date:hover {
 	border-color: var(--fp-line-strong);
 }
+/* A select embedded in a card's own header (e.g. a chart's period picker) — the same control,
+   sized to sit comfortably next to a card title instead of a full filter bar. */
+.fp-select--sm {
+	height: 26px;
+	padding: 0 var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+}
 .fp-input:focus-visible,
 .fp-select:focus-visible,
 .fp-search:focus-visible {
@@ -4072,6 +4079,11 @@
 }
 .fp-card-head .fp-inline-edit {
 	margin-top: 0;
+}
+/* .fp-card-head is align-items:baseline (right for a title), which has no meaningful baseline for
+   a <select> — center it against the title instead so it doesn't float or sink oddly. */
+.fp-card-head .fp-select--sm {
+	align-self: center;
 }
 /* A valuation nobody has refreshed in three months still deserves its age shown, not hidden. */
 .fp-stat--stale .fp-stat-foot {

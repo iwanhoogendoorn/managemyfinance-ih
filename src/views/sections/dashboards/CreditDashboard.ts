@@ -4,6 +4,7 @@ import {
 	monthOf,
 	netWorth,
 	shiftMonth,
+	summarizeByYear,
 	todayIso,
 	transferPairIds,
 	windowSummary,
@@ -24,6 +25,7 @@ import {
 	money,
 	monthWindow,
 	pct,
+	renderMonthPickerCard,
 	setStatFoot,
 	ttmWindow,
 } from "../shared";
@@ -213,52 +215,74 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 
 	/* ---------- utilization trend ---------- */
 
+	const years = summarizeByYear(store, account.id).map((y) => y.year);
+
 	if (account.creditLimit && account.creditLimit > 0 && balances.length > 1) {
-		const card = container.createDiv({ cls: "fp-card" });
-		cardHead(card, "Utilization over time", { sub: "The shape a credit file actually responds to" });
-		groupedColumnChart(
-			card,
-			balances.map((b) => formatMonth(b.key).slice(0, 3)),
-			[
-				{
-					label: "Utilization",
-					color: "var(--fp-series-expenses)",
-					values: balances.map((b) => Math.max(0, -b.balance) / account.creditLimit!),
-				},
-			],
-			{
-				formatValue: (n) => pct(n),
-				money: false,
-				title: "Credit utilization by month",
-				description: "Balance owed at month end as a share of the credit limit.",
-			}
-		);
+		const limit = account.creditLimit;
+		renderMonthPickerCard(container, {
+			title: "Utilization over time",
+			sub: "The shape a credit file actually responds to",
+			years,
+			recentMonths: balances.map((b) => b.key),
+			recentLabel: "Last 24 months",
+			renderPeriod: (host, months) => {
+				const values = months.map((m) => {
+					const point = balances.find((b) => b.key === m);
+					return point ? Math.max(0, -point.balance) / limit : 0;
+				});
+				groupedColumnChart(
+					host,
+					months.map((m) => formatMonth(m).slice(0, 3)),
+					[{ label: "Utilization", color: "var(--fp-series-expenses)", values }],
+					{
+						formatValue: (n) => pct(n),
+						money: false,
+						title: "Credit utilization by month",
+						description: "Balance owed at month end as a share of the credit limit.",
+					}
+				);
+			},
+		});
 	}
 
 	/* ---------- monthly spend vs payments ---------- */
 
-	const months: string[] = [];
-	for (let i = 12; i >= 0; i--) months.push(shiftMonth(monthOf(now), -i));
-	const spendSeries = months.map((m) => {
+	const recentSpendMonths: string[] = [];
+	for (let i = 12; i >= 0; i--) recentSpendMonths.push(shiftMonth(monthOf(now), -i));
+	const hasSpendActivity = recentSpendMonths.some((m) => {
 		const w = monthWindow(m);
-		return windowSummary(store, w.from, w.to, ids).expenses;
+		return windowSummary(store, w.from, w.to, ids).expenses > 0 || paymentsIn(store, account.id, w.from, w.to, pairIds) > 0;
 	});
-	const paymentSeries = months.map((m) => {
-		const w = monthWindow(m);
-		return paymentsIn(store, account.id, w.from, w.to, pairIds);
-	});
-	if (spendSeries.some((v) => v > 0) || paymentSeries.some((v) => v > 0)) {
-		const card = container.createDiv({ cls: "fp-card" });
-		cardHead(card, "Spend against payments", { sub: "Paying less than you spend is what turns a card into a loan" });
-		groupedColumnChart(
-			card,
-			months.map((m) => formatMonth(m).slice(0, 3)),
-			[
-				{ label: "Spent", color: "var(--fp-series-expenses)", values: spendSeries },
-				{ label: "Paid off", color: "var(--fp-series-income)", values: paymentSeries },
-			],
-			{ formatValue: (n) => money(n, currency), title: "Monthly spend against payments", description: "Card spend and payments received, per month." }
-		);
+	if (hasSpendActivity || years.length > 0) {
+		renderMonthPickerCard(container, {
+			title: "Spend against payments",
+			sub: "Paying less than you spend is what turns a card into a loan",
+			years,
+			recentMonths: recentSpendMonths,
+			renderPeriod: (host, months) => {
+				const spendSeries = months.map((m) => {
+					const w = monthWindow(m);
+					return windowSummary(store, w.from, w.to, ids).expenses;
+				});
+				const paymentSeries = months.map((m) => {
+					const w = monthWindow(m);
+					return paymentsIn(store, account.id, w.from, w.to, pairIds);
+				});
+				if (!spendSeries.some((v) => v > 0) && !paymentSeries.some((v) => v > 0)) {
+					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					return;
+				}
+				groupedColumnChart(
+					host,
+					months.map((m) => formatMonth(m).slice(0, 3)),
+					[
+						{ label: "Spent", color: "var(--fp-series-expenses)", values: spendSeries },
+						{ label: "Paid off", color: "var(--fp-series-income)", values: paymentSeries },
+					],
+					{ formatValue: (n) => money(n, currency), title: "Monthly spend against payments", description: "Card spend and payments received, per month." }
+				);
+			},
+		});
 	}
 }
 
