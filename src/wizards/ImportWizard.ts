@@ -1,5 +1,6 @@
 import { Notice } from "obsidian";
 import { parseCSV } from "../csv";
+import { formatMoney } from "../format";
 import { applyRules, buildAliasLookup } from "../import/categorize";
 import { applyColumnMapping, COLUMN_MAPPING_FIELDS, emptyColumnMapping, guessColumnMapping } from "../import/columnMapping";
 import { detectFormat } from "../import/detect";
@@ -7,7 +8,12 @@ import { ingAccountIbans, parseIngRows } from "../import/ingParser";
 import { parseTradeRepublicRows } from "../import/tradeRepublicParser";
 import { extractTransactionTables, DetectedTable } from "../import/xlsxWorkbook";
 import type FinancePlugin from "../main";
-import type { Transaction } from "../types";
+import { CreateAccountModal } from "../modals/CreateAccountModal";
+import { openReviewQueue } from "../modals/ReviewQueueModal";
+import { buildUserRule, deriveRulePattern, groupByMerchant, MerchantGroup } from "../reviewQueue";
+import { detectRecurring } from "../subscriptionDetect";
+import type { CategoryRule, Transaction } from "../types";
+import { setLedgerFilter } from "../views/sections/LedgerSection";
 import { badge, icon } from "../ui/dom";
 import { WizardModal, WizardStep } from "./WizardModal";
 
@@ -17,8 +23,26 @@ const FORMAT_LABEL: Record<DetectedTable["format"], string> = {
 	unknown: "Unrecognized",
 };
 
-/** Bank/broker CSV or Excel import: pick file → detect & preview → review categorization → confirm. */
-export function openImportWizard(plugin: FinancePlugin): void {
+/** What one merchant group's row in the categorize step decides. */
+interface GroupDecision {
+	categoryId?: string;
+	/** "Remember this merchant" — creates a CategoryRule at import time, not before. */
+	makeRule: boolean;
+}
+
+export interface ImportOutcome {
+	added: number;
+	skipped: number;
+	rulesCreated: number;
+}
+
+export interface ImportWizardOptions {
+	/** Fired after a successful import, once the user leaves the summary screen. */
+	onDone?: (outcome: ImportOutcome) => void;
+}
+
+/** Bank/broker CSV or Excel import: pick file → detect & preview → review categorization → confirm → summary. */
+export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOptions = {}): void {
 	const store = plugin.store;
 
 	let selectedFile: string | null = null;
@@ -33,6 +57,38 @@ export function openImportWizard(plugin: FinancePlugin): void {
 	let ibanAccountMap = new Map<string, string>();
 	let parsed: Transaction[] = [];
 	let loadError: string | null = null;
+
+	/** Rows that are genuinely new, and rows the ledger already has. Split at parse time (not on the
+	 *  confirm step) so nobody spends a minute categorizing a row that is about to be skipped. */
+	let fresh: Transaction[] = [];
+	let dupes: Transaction[] = [];
+	/** Auto-categorized count, frozen at parse time — the summary's "318 auto-categorized" is about
+	 *  what the app did for you, not what you then did by hand. */
+	let autoCategorized = 0;
+	let reviewGroups: MerchantGroup[] = [];
+	const decisions = new Map<string, GroupDecision>();
+	/**
+	 * Fingerprint of every input the parse depends on. Re-parsing unconditionally (the old `onNext`)
+	 * rebuilt `parsed` from scratch, so Categorize → Back → Next silently threw away every manual
+	 * category the user had just assigned.
+	 */
+	let parsedSignature: string | null = null;
+
+	let importResult: { added: number; skipped: number } | null = null;
+	let importError: string | null = null;
+	let rulesCreated: CategoryRule[] = [];
+
+	function parseSignature(): string {
+		return JSON.stringify({
+			file: selectedFile,
+			tables: tables.map((t) => [t.sheetName, t.format, t.rows.length]),
+			mapping,
+			ingAccountId,
+			tradeRepublicAccountId,
+			genericAccountId,
+			ibans: [...ibanAccountMap.entries()].sort(),
+		});
+	}
 
 	function setTables(name: string, newTables: DetectedTable[]): void {
 		selectedFile = name;
@@ -74,17 +130,114 @@ export function openImportWizard(plugin: FinancePlugin): void {
 		}
 	}
 
+	/** Parses every sheet, applies the rules, then splits new-vs-duplicate and builds the merchant
+	 *  groups the categorize step works through. */
+	function reparse(): void {
+		const categoryLookup = buildAliasLookup(store.categories);
+		parsed = [];
+		for (const t of tables) {
+			if (t.format === "ing") {
+				const mappedHeaders = applyColumnMapping(t.headers, mapping);
+				parsed.push(
+					...parseIngRows(mappedHeaders, t.rows, {
+						defaultAccountId: ingAccountId,
+						accountByIban: ibanAccountMap,
+						categoryLookup,
+						debitValues: mapping.debitCredit && mapping.debitValue ? [mapping.debitValue] : undefined,
+					})
+				);
+			} else if (t.format === "trade-republic") {
+				parsed.push(...parseTradeRepublicRows(t.headers, t.rows, tradeRepublicAccountId));
+			} else if (t.format === "unknown") {
+				const mappedHeaders = applyColumnMapping(t.headers, mapping);
+				parsed.push(
+					...parseIngRows(mappedHeaders, t.rows, {
+						defaultAccountId: genericAccountId,
+						categoryLookup,
+						debitValues: mapping.debitCredit && mapping.debitValue ? [mapping.debitValue] : undefined,
+						source: "generic",
+					})
+				);
+			}
+		}
+		for (const tx of parsed) {
+			if (!tx.categoryId) tx.categoryId = applyRules(tx, store.rules);
+		}
+
+		const existing = store.existingIds();
+		fresh = parsed.filter((t) => !existing.has(t.id));
+		dupes = parsed.filter((t) => existing.has(t.id));
+		autoCategorized = fresh.filter((t) => !!t.categoryId).length;
+		reviewGroups = groupByMerchant(fresh.filter((t) => !t.categoryId));
+		decisions.clear();
+		for (const group of reviewGroups) {
+			// Defaulted on for a repeat merchant: one decision that covers 18 rows is worth remembering,
+			// a one-off almost never is.
+			decisions.set(group.key, { makeRule: group.transactions.length >= 2 && !!deriveRulePattern(group.transactions) });
+		}
+		parsedSignature = parseSignature();
+	}
+
+	/** Applies the categorize step's decisions to the parsed rows — idempotent, so stepping Back and
+	 *  forward through the step re-applies rather than compounds. */
+	function applyDecisions(): void {
+		for (const group of reviewGroups) {
+			const decision = decisions.get(group.key);
+			for (const tx of group.transactions) tx.categoryId = decision?.categoryId || undefined;
+		}
+	}
+
+	function pendingRules(): CategoryRule[] {
+		const rules: CategoryRule[] = [];
+		for (const group of reviewGroups) {
+			const decision = decisions.get(group.key);
+			if (!decision?.categoryId || !decision.makeRule) continue;
+			const pattern = deriveRulePattern(group.transactions);
+			if (!pattern) continue;
+			rules.push(buildUserRule(pattern, decision.categoryId));
+		}
+		return rules;
+	}
+
+	function dateRangeLabel(txs: Transaction[]): string {
+		const dates = txs.map((t) => t.date).filter(Boolean).sort();
+		if (dates.length === 0) return "";
+		return dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} – ${dates[dates.length - 1]}`;
+	}
+
 	const steps: WizardStep[] = [
 		{
 			id: "source",
 			title: "Source",
 			icon: "file-up",
-			render: (c) => {
+			render: (c, api) => {
 				c.createEl("h3", { text: "Pick a file to import" });
 				c.createEl("p", {
 					cls: "fp-step-desc",
 					text: "Drag a CSV or Excel (.xlsx) export here, or click to browse for one.",
 				});
+
+				// B1: a wizard that tells you to close it and go elsewhere is a dead end. Zero accounts
+				// is fixable right here, and the wizard picks the new account up without reopening.
+				if (store.accounts.length === 0) {
+					const notice = c.createDiv({ cls: "fp-import-blocker fp-card fp-card--tight" });
+					notice.createDiv({ cls: "fp-import-blocker-title", text: "You'll need an account first" });
+					notice.createDiv({
+						cls: "fp-step-desc",
+						text: "Transactions live inside an account — create one now and this import continues where it left off.",
+					});
+					const createBtn = notice.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+					icon(createBtn, "plus");
+					createBtn.createSpan({ text: "Create an account" });
+					createBtn.addEventListener("click", () => {
+						new CreateAccountModal(plugin.app, plugin, (account) => {
+							ingAccountId ||= account.id;
+							tradeRepublicAccountId ||= account.id;
+							genericAccountId ||= account.id;
+							api.rerender();
+						}).open();
+					});
+				}
 
 				const dropzone = c.createDiv({ cls: "fp-dropzone" + (selectedFile ? " has-file" : "") });
 				icon(dropzone, selectedFile ? "file-check-2" : "upload", "fp-dropzone-icon");
@@ -99,7 +252,7 @@ export function openImportWizard(plugin: FinancePlugin): void {
 				async function handleFile(file: File): Promise<void> {
 					if (file.name.toLowerCase().endsWith(".xlsx")) await loadXlsx(file.name, await file.arrayBuffer());
 					else loadCsvText(file.name, await file.text());
-					refresh();
+					api.rerender();
 				}
 
 				dropzone.addEventListener("click", () => fileInput.click());
@@ -123,13 +276,8 @@ export function openImportWizard(plugin: FinancePlugin): void {
 					const errorRow = c.createDiv({ cls: "fp-format-row" });
 					badge(errorRow, `Couldn't read "${selectedFile}": ${loadError}`, "bad");
 				}
-
-				function refresh() {
-					c.empty();
-					steps[0].render(c);
-				}
 			},
-			canGoNext: () => !!selectedFile,
+			canGoNext: () => !!selectedFile && store.accounts.length > 0,
 		},
 		{
 			id: "preview",
@@ -216,7 +364,7 @@ export function openImportWizard(plugin: FinancePlugin): void {
 						});
 						c.createEl("p", {
 							cls: "fp-step-desc",
-							text: "Don't see an account? Add it (with its IBAN) in Finance settings, then reopen this wizard.",
+							text: "Don't see an account? Add it (with its IBAN) from the sidebar, then come back to this step.",
 						});
 					} else {
 						const accountRow = c.createDiv({ cls: "fp-setting-row" });
@@ -270,69 +418,79 @@ export function openImportWizard(plugin: FinancePlugin): void {
 				return mappingOk && genericOk && ingOk && trOk;
 			},
 			onNext: () => {
-				const categoryLookup = buildAliasLookup(store.categories);
-				parsed = [];
-				for (const t of tables) {
-					if (t.format === "ing") {
-						const mappedHeaders = applyColumnMapping(t.headers, mapping);
-						parsed.push(
-							...parseIngRows(mappedHeaders, t.rows, {
-								defaultAccountId: ingAccountId,
-								accountByIban: ibanAccountMap,
-								categoryLookup,
-								debitValues: mapping.debitCredit && mapping.debitValue ? [mapping.debitValue] : undefined,
-							})
-						);
-					} else if (t.format === "trade-republic") {
-						parsed.push(...parseTradeRepublicRows(t.headers, t.rows, tradeRepublicAccountId));
-					} else if (t.format === "unknown") {
-						const mappedHeaders = applyColumnMapping(t.headers, mapping);
-						parsed.push(
-							...parseIngRows(mappedHeaders, t.rows, {
-								defaultAccountId: genericAccountId,
-								categoryLookup,
-								debitValues: mapping.debitCredit && mapping.debitValue ? [mapping.debitValue] : undefined,
-								source: "generic",
-							})
-						);
-					}
-				}
-				for (const tx of parsed) {
-					if (!tx.categoryId) tx.categoryId = applyRules(tx, store.rules);
-				}
+				// Only re-parse when something the parse actually depends on changed — otherwise
+				// stepping Back to check a column mapping would wipe the work done on the next step.
+				if (parsedSignature !== parseSignature()) reparse();
 			},
 		},
 		{
 			id: "review",
 			title: "Categorize",
 			icon: "tags",
-			render: (c) => {
-				const uncategorized = parsed.filter((t) => !t.categoryId);
+			render: (c, api) => {
 				c.createEl("h3", { text: "Review categorization" });
+
+				const needCount = reviewGroups.reduce((sum, g) => sum + g.transactions.length, 0);
 				c.createEl("p", {
 					cls: "fp-step-desc",
-					text: `${parsed.length - uncategorized.length} auto-categorized, ${uncategorized.length} need a category.`,
+					text:
+						`${autoCategorized} auto-categorized · ${needCount} need a category, across ${reviewGroups.length} merchant${reviewGroups.length === 1 ? "" : "s"}` +
+						(dupes.length > 0 ? ` · ${dupes.length} duplicate${dupes.length === 1 ? "" : "s"} already excluded` : ""),
 				});
-				const list = c.createDiv({ cls: "fp-review-list" });
-				const shown = uncategorized.slice(0, 25);
-				shown.forEach((tx) => {
-					const row = list.createDiv({ cls: "fp-review-row" });
-					row.createDiv({
-						cls: "fp-review-desc",
-						text: `${tx.date}  ·  ${tx.description}  ·  € ${tx.amount.toFixed(2)}`,
-					});
-					const select = row.createEl("select");
-					select.createEl("option", { text: "Uncategorized", value: "" });
-					store.categories.forEach((cat) => select.createEl("option", { text: cat.name, value: cat.id }));
-					select.addEventListener("change", () => (tx.categoryId = select.value || undefined));
-				});
-				if (uncategorized.length > shown.length) {
+
+				if (reviewGroups.length === 0) {
 					c.createEl("p", {
 						cls: "fp-step-desc",
-						text: `+ ${uncategorized.length - shown.length} more — categorize the rest from the Ledger afterwards.`,
+						text: fresh.length === 0 ? "Nothing new in this file — every row is already in your ledger." : "Everything in this file already has a category. Nothing to do here.",
 					});
+					return;
 				}
+
+				const list = c.createDiv({ cls: "fp-merchant-list" });
+				reviewGroups.forEach((group) => {
+					const decision = decisions.get(group.key)!;
+					const pattern = deriveRulePattern(group.transactions);
+					const card = list.createDiv({ cls: "fp-merchant-card fp-card fp-card--tight" });
+
+					const top = card.createDiv({ cls: "fp-merchant-top" });
+					top.createDiv({ cls: "fp-merchant-name fp-sensitive", text: group.displayName });
+					const stats = top.createDiv({ cls: "fp-merchant-stats" });
+					stats.createSpan({ text: `${group.transactions.length} txn${group.transactions.length === 1 ? "" : "s"} · ` });
+					stats.createSpan({ cls: "fp-money", text: formatMoney(group.total) });
+					card.createDiv({
+						cls: "fp-merchant-range",
+						text: dateRangeLabel(group.transactions),
+					});
+
+					const controls = card.createDiv({ cls: "fp-merchant-controls" });
+					const select = controls.createEl("select", { cls: "fp-select" });
+					select.createEl("option", { text: "Uncategorized", value: "" });
+					store.categories.forEach((cat) => {
+						const opt = select.createEl("option", { text: cat.name, value: cat.id });
+						if (cat.id === decision.categoryId) opt.selected = true;
+					});
+					select.addEventListener("change", () => (decision.categoryId = select.value || undefined));
+
+					const ruleLabel = controls.createEl("label", { cls: "fp-merchant-rule" });
+					const check = ruleLabel.createEl("input", { type: "checkbox" });
+					check.checked = decision.makeRule && !!pattern;
+					check.disabled = !pattern;
+					check.addEventListener("change", () => (decision.makeRule = check.checked));
+					ruleLabel.createSpan({
+						text: pattern ? `Remember "${pattern}"` : "Too varied to remember",
+						attr: {
+							title: pattern
+								? `Future imports matching "${pattern}" get this category automatically.`
+								: "These rows don't share enough text to build a rule that would reliably fire.",
+						},
+					});
+				});
+
+				const skipRow = c.createDiv({ cls: "fp-merchant-skip" });
+				const skipBtn = skipRow.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Skip the rest →", attr: { type: "button" } });
+				skipBtn.addEventListener("click", () => api.next());
 			},
+			onNext: () => applyDecisions(),
 		},
 		{
 			id: "confirm",
@@ -341,17 +499,179 @@ export function openImportWizard(plugin: FinancePlugin): void {
 			render: (c) => {
 				c.createEl("h3", { text: "Ready to import" });
 				const stats = c.createDiv({ cls: "fp-import-stats" });
-				const existing = store.existingIds();
-				const dupes = parsed.filter((t) => existing.has(t.id)).length;
 				stats.createDiv({ cls: "fp-import-stat", text: `${parsed.length} rows parsed` });
-				stats.createDiv({ cls: "fp-import-stat", text: `${parsed.length - dupes} new` });
-				stats.createDiv({ cls: "fp-import-stat", text: `${dupes} duplicate — will be skipped` });
+				stats.createDiv({ cls: "fp-import-stat", text: `${fresh.length} new` });
+				stats.createDiv({ cls: "fp-import-stat", text: `${dupes.length} duplicate — will be skipped` });
+
+				const rules = pendingRules();
+				if (rules.length > 0) {
+					c.createEl("p", {
+						cls: "fp-step-desc",
+						text: `${rules.length} merchant rule${rules.length === 1 ? "" : "s"} will be saved, so these merchants categorize themselves next time.`,
+					});
+				}
+
+				if (dupes.length > 0) {
+					// The id hashes accountId|date|amount|description|counterparty, so two genuinely
+					// identical same-day purchases collapse into one. The user deserves to see which.
+					const details = c.createEl("details", { cls: "fp-dupe-details" });
+					details.createEl("summary", { text: `${dupes.length} duplicate${dupes.length === 1 ? "" : "s"} — show` });
+					details.createEl("p", {
+						cls: "fp-step-desc",
+						text: "Already in your ledger, matched on account, date, amount and description. Two identical same-day purchases look like one row here.",
+					});
+					const wrap = details.createDiv({ cls: "fp-table-scroll" });
+					const table = wrap.createEl("table", { cls: "fp-table fp-table--dense" });
+					const head = table.createEl("thead").createEl("tr");
+					["Date", "Description", "Amount"].forEach((h) => head.createEl("th", { text: h }));
+					const tbody = table.createEl("tbody");
+					dupes.slice(0, 100).forEach((tx) => {
+						const tr = tbody.createEl("tr");
+						tr.createEl("td", { text: tx.date });
+						tr.createEl("td", { cls: "fp-sensitive", text: tx.description });
+						tr.createEl("td", { cls: "fp-table-num" }).createSpan({ cls: "fp-money", text: formatMoney(tx.amount, tx.currency || "EUR") });
+					});
+					if (dupes.length > 100) {
+						details.createEl("p", { cls: "fp-step-desc", text: `+ ${dupes.length - 100} more not listed.` });
+					}
+				}
 			},
 			nextLabel: "Import",
 			onNext: async () => {
-				const result = await store.importTransactions(parsed);
-				new Notice(`Imported ${result.added} new transactions (${result.skipped} duplicates skipped)`);
+				importError = null;
+				rulesCreated = [];
+				try {
+					const rules = pendingRules().filter((rule) => !store.rules.some((r) => r.pattern === rule.pattern && r.categoryId === rule.categoryId));
+					if (rules.length > 0) {
+						store.rules.push(...rules);
+						await store.saveRules();
+						rulesCreated = rules;
+					}
+					importResult = await store.importTransactions(parsed);
+					new Notice(`Imported ${importResult.added} new transactions (${importResult.skipped} duplicates skipped)`);
+				} catch (err) {
+					importError = err instanceof Error ? err.message : String(err);
+				}
 				plugin.refreshViews();
+			},
+		},
+		{
+			id: "done",
+			title: "Done",
+			icon: "party-popper",
+			hidden: true,
+			hideBack: true,
+			hideNext: true,
+			render: (c, api) => {
+				if (importError) {
+					c.createEl("h3", { text: "The import didn't finish" });
+					const errRow = c.createDiv({ cls: "fp-format-row" });
+					badge(errRow, importError, "bad");
+					c.createEl("p", {
+						cls: "fp-step-desc",
+						text: `Nothing was lost — your ledger files live under "${plugin.settings.dataFolder}/data/ledger". Fix whatever the message points at and run the import again.`,
+					});
+					const footer = c.createDiv({ cls: "fp-wizard-footer" });
+					const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
+					const close = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", text: "Close", attr: { type: "button" } });
+					close.addEventListener("click", () => api.close());
+					return;
+				}
+
+				const result = importResult ?? { added: 0, skipped: 0 };
+				// The rows that actually landed: `fresh` minus any id the file itself repeated (the
+				// store keeps the first and counts the rest as skipped).
+				const seenIds = new Set<string>();
+				const imported = fresh.filter((t) => (seenIds.has(t.id) ? false : (seenIds.add(t.id), true)));
+				const accountNames = Array.from(new Set(imported.map((t) => store.accounts.find((a) => a.id === t.accountId)?.name).filter(Boolean)));
+				const needCategory = imported.filter((t) => !t.categoryId).length;
+
+				c.createEl("h3", {
+					text: accountNames.length === 1 ? `Imported into ${accountNames[0]}` : "Import complete",
+				});
+
+				if (result.added === 0 && result.skipped > 0) {
+					c.createEl("p", {
+						cls: "fp-step-desc",
+						text: `Nothing new — all ${result.skipped} row${result.skipped === 1 ? "" : "s"} were already in your ledger.`,
+					});
+				} else if (result.added === 0) {
+					c.createEl("p", { cls: "fp-step-desc", text: "No rows could be read from this file." });
+				}
+
+				const candidates = detectRecurring(store, store.subscriptions, plugin.settings.dismissedSubscriptionKeys ?? []);
+
+				const statRow = c.createDiv({ cls: "fp-done-stats" });
+				const stat = (value: string, label: string, tone?: string): void => {
+					const cell = statRow.createDiv({ cls: "fp-done-stat" + (tone ? ` fp-tone-${tone}` : "") });
+					cell.createDiv({ cls: "fp-done-stat-value", text: value });
+					cell.createDiv({ cls: "fp-done-stat-label", text: label });
+				};
+				stat(String(result.added), "added");
+				stat(String(result.skipped), "duplicates skipped");
+				stat(String(autoCategorized), "auto-categorized");
+				stat(String(needCategory), needCategory === 1 ? "needs a category" : "need a category", needCategory > 0 ? "warn" : undefined);
+				if (candidates.length > 0) stat(String(candidates.length), "possible subscriptions");
+				if (rulesCreated.length > 0) stat(String(rulesCreated.length), rulesCreated.length === 1 ? "rule created" : "rules created", "good");
+
+				const range = dateRangeLabel(imported);
+				if (range) {
+					c.createEl("p", { cls: "fp-step-desc", text: `Covers ${range} · ${reviewGroups.length} merchant${reviewGroups.length === 1 ? "" : "s"} reviewed.` });
+				}
+
+				const footer = c.createDiv({ cls: "fp-wizard-footer" });
+				const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
+				const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
+
+				if (needCategory > 0) {
+					const review = left.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+					icon(review, "tags");
+					review.createSpan({ text: `Review ${needCategory} uncategorized` });
+					review.addEventListener("click", () => {
+						const ids = new Set(imported.filter((t) => !t.categoryId).map((t) => t.id));
+						api.close();
+						opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
+						openReviewQueue(plugin, { transactionIds: ids, title: "Review this import" });
+					});
+				}
+
+				if (candidates.length > 0) {
+					const subs = left.createEl("button", { cls: "fp-btn fp-btn--secondary fp-btn-secondary", attr: { type: "button" } });
+					icon(subs, "repeat");
+					subs.createSpan({ text: `${candidates.length} possible subscriptions` });
+					subs.addEventListener("click", async () => {
+						api.close();
+						opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
+						plugin.settings.activeView = "subscriptions";
+						await plugin.saveSettings();
+						await plugin.activateView();
+						plugin.refreshViews();
+					});
+				}
+
+				const ledger = right.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Go to ledger", attr: { type: "button" } });
+				ledger.addEventListener("click", async () => {
+					const accountId = imported[0]?.accountId;
+					api.close();
+					opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
+					// Scope the ledger to exactly what this import covered, so "go to ledger" lands
+					// on the new rows instead of the full history.
+					const dates = imported.map((t) => t.date).filter(Boolean).sort();
+					if (dates.length > 0) setLedgerFilter({ dateFrom: dates[0], dateTo: dates[dates.length - 1] });
+					if (accountId) {
+						plugin.settings.activeAccountId = accountId;
+						plugin.settings.activeView = undefined;
+						await plugin.saveSettings();
+					}
+					await plugin.activateView();
+					plugin.refreshViews();
+				});
+
+				const done = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", text: "Done", attr: { type: "button" } });
+				done.addEventListener("click", () => {
+					api.close();
+					opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
+				});
 			},
 		},
 	];

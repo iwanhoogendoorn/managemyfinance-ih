@@ -1,5 +1,7 @@
 import { Notice } from "obsidian";
 import type FinancePlugin from "../../main";
+import { recurringSeries } from "../../recurring";
+import { detectRecurring, type RecurringCandidate } from "../../subscriptionDetect";
 import {
 	BILLING_CYCLE_LABEL,
 	SUBSCRIPTION_CATEGORIES,
@@ -12,47 +14,26 @@ import {
 	totalsByCategory,
 	totalsByPaidVia,
 	upcomingPayments,
+	type UpcomingPayment,
 } from "../../subscriptions";
 import type { Subscription } from "../../types";
 import { barChart, stackedShareBar } from "../../ui/charts";
-import { badge, emptyState, icon, initialsAvatar, statTile } from "../../ui/dom";
+import { badge, emptyState, icon, initialsAvatar, renderStat } from "../../ui/dom";
 import { openSubscriptionWizard } from "../../wizards/SubscriptionWizard";
+import { cardHead, catColor, formatDay, money, portfolioCurrency, relativeDays, setStatFoot } from "./shared";
 
-const CAT_COLORS = ["var(--fp-cat-1)", "var(--fp-cat-2)", "var(--fp-cat-3)", "var(--fp-cat-4)", "var(--fp-cat-5)"];
 const DUE_SOON_DAYS = 7;
-
-function formatEUR(n: number): string {
-	return new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(n);
-}
-
-function formatDateLabel(iso: string): string {
-	const d = new Date(`${iso}T00:00:00`);
-	if (isNaN(d.getTime())) return iso;
-	return new Intl.DateTimeFormat("en-IE", { day: "numeric", month: "short", year: "numeric" }).format(d);
-}
-
-function formatRelativeDays(days: number): string {
-	if (days === 0) return "today";
-	if (days < 0) return `${-days}d overdue`;
-	return `in ${days}d`;
-}
+/** Detected candidates shown before the panel folds into "show all". */
+const DETECTION_PREVIEW = 4;
 
 function categoryColor(category: string): string {
 	const idx = SUBSCRIPTION_CATEGORIES.indexOf(category);
-	return CAT_COLORS[(idx < 0 ? 0 : idx) % CAT_COLORS.length];
-}
-
-function cardHeadRow(parent: HTMLElement, title: string, label?: string): HTMLElement {
-	const head = parent.createDiv({ cls: "fp-card-head-row" });
-	head.createEl("h3", { text: title });
-	if (label) head.createDiv({ cls: "fp-card-head-label", text: label });
-	return head;
+	return catColor(idx < 0 ? 0 : idx);
 }
 
 /**
- * A standalone recurring-payments tracker: not tied to any account or ledger — subscriptions are
- * entered by hand and normalised to a monthly figure so wildly different billing cycles compare
- * cleanly. Everything here persists to data/subscriptions.json via the store, same as accounts/categories.
+ * A standalone recurring-payments tracker, now wired to the ledger: what you've told us you pay for,
+ * plus what your transactions say you're paying for and haven't told us about.
  */
 export function renderSubscriptionsSection(container: HTMLElement, plugin: FinancePlugin): void {
 	container.addClass("fp-section");
@@ -62,6 +43,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 		const store = plugin.store;
 		const subs = store.subscriptions;
 		const today = new Date();
+		const currency = portfolioCurrency(store);
 
 		const header = container.createDiv({ cls: "fp-section-header" });
 		const headText = header.createDiv();
@@ -71,30 +53,29 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			text: "Everything you pay for on repeat — cost per cycle, next payment date and when each one ends. Totals are normalised to a monthly figure.",
 		});
 		const headerActions = header.createDiv({ cls: "fp-section-header-actions" });
-		const refreshBtn = headerActions.createEl("button", { cls: "fp-btn fp-btn-secondary" });
-		icon(refreshBtn, "refresh-cw");
-		refreshBtn.createSpan({ text: "Refresh" });
-		refreshBtn.addEventListener("click", () => render());
-
-		const addBtn = headerActions.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const addBtn = headerActions.createEl("button", { cls: "fp-btn fp-btn--primary", attr: { type: "button" } });
 		icon(addBtn, "plus");
 		addBtn.createSpan({ text: "Add subscription" });
 		addBtn.addEventListener("click", () => openSubscriptionWizard(plugin, undefined, () => render()));
 
 		const totals = subscriptionTotals(subs, today, DUE_SOON_DAYS);
 		const kpis = container.createDiv({ cls: "fp-stat-grid" });
-		statTile(kpis, { label: "Per month", value: formatEUR(totals.perMonth), iconName: "calendar" });
-		statTile(kpis, { label: "Per year", value: formatEUR(totals.perYear), iconName: "calendar-days" });
-		statTile(kpis, { label: "Private /mo", value: formatEUR(totals.privatePerMonth), iconName: "user" });
-		statTile(kpis, { label: "Business /mo", value: formatEUR(totals.businessPerMonth), iconName: "briefcase", tone: "warn" });
-		statTile(kpis, { label: "Active", value: String(totals.activeCount), iconName: "check-circle", tone: "good", money: false });
-		statTile(kpis, {
-			label: `Due ≤ ${DUE_SOON_DAYS} days`,
-			value: String(totals.dueSoonCount),
-			iconName: "alarm-clock",
-			tone: totals.dueSoonCount > 0 ? "bad" : "neutral",
+		const perMonth = renderStat(kpis, { label: "Per month", value: money(totals.perMonth, currency, 2), size: "hero", iconName: "calendar" });
+		setStatFoot(perMonth, [{ money: money(totals.perYear, currency) }, " a year at this rate"]);
+		renderStat(kpis, { label: "Private", value: money(totals.privatePerMonth, currency, 2), iconName: "user", sub: "per month" });
+		renderStat(kpis, { label: "Business", value: money(totals.businessPerMonth, currency, 2), iconName: "briefcase", sub: "per month" });
+		renderStat(kpis, {
+			label: "Active",
+			value: String(totals.activeCount),
+			iconName: "check-circle",
 			money: false,
+			sub: totals.dueSoonCount > 0 ? `${totals.dueSoonCount} due within ${DUE_SOON_DAYS} days` : "none due this week",
+			tone: totals.dueSoonCount > 0 ? "warn" : "neutral",
 		});
+
+		// Detection sits above the list: what the ledger knows that the tracker doesn't is the most
+		// actionable thing on this page.
+		renderDetection(container, plugin, today, currency, render);
 
 		if (subs.length === 0) {
 			emptyState(container, {
@@ -104,85 +85,183 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 				actionLabel: "Add subscription",
 				onAction: () => openSubscriptionWizard(plugin, undefined, () => render()),
 			});
-		} else {
-			const breakdown = container.createDiv({ cls: "fp-sub-breakdown-grid" });
-			renderShareCard(breakdown, "By category", totalsByCategory(subs, today), categoryColor);
-			renderShareCard(breakdown, "By billing cycle", totalsByBillingCycle(subs, today));
-			renderShareCard(breakdown, "Private vs business", totalsByPaidVia(subs, today));
-
-			const topRows = subs
-				.filter((s) => isActive(s, today))
-				.map((s) => ({ label: s.name, value: monthlyCost(s), color: categoryColor(s.category) }))
-				.filter((r) => r.value > 0)
-				.sort((a, b) => b.value - a.value)
-				.slice(0, 5);
-			if (topRows.length > 0) {
-				const topCard = container.createDiv({ cls: "fp-card" });
-				cardHeadRow(topCard, "Top subscriptions", "MONTHLY COST");
-				barChart(topCard, topRows);
-			}
-
-			const payments = upcomingPayments(subs, today).slice(0, 5);
-			const upcomingCard = container.createDiv({ cls: "fp-card" });
-			const upcomingHead = cardHeadRow(upcomingCard, "Upcoming payments");
-			if (payments.length > 0) {
-				const label = upcomingHead.createDiv({ cls: "fp-card-head-label" });
-				label.createSpan({ text: `NEXT ${payments.length} · ` });
-				label.createSpan({ cls: "fp-money", text: formatEUR(payments.reduce((s, p) => s + monthlyCost(p.sub), 0)) });
-			}
-			if (payments.length === 0) {
-				upcomingCard.createEl("p", { cls: "fp-step-desc", text: "No upcoming payments." });
-			} else {
-				const list = upcomingCard.createDiv({ cls: "fp-sub-upcoming-list" });
-				payments.forEach((p) => renderUpcomingRow(list, p));
-			}
+			return;
 		}
 
-		if (subs.length > 0) renderList(container, subs, today);
+		const breakdown = container.createDiv({ cls: "fp-sub-breakdown-grid" });
+		renderShareCard(breakdown, "By category", totalsByCategory(subs, today), currency, categoryColor);
+		renderShareCard(breakdown, "By billing cycle", totalsByBillingCycle(subs, today), currency);
+		renderShareCard(breakdown, "Private vs business", totalsByPaidVia(subs, today), currency);
+
+		const topRows = subs
+			.filter((s) => isActive(s, today))
+			.map((s) => ({ label: s.name, value: monthlyCost(s), color: categoryColor(s.category) }))
+			.filter((r) => r.value > 0)
+			.sort((a, b) => b.value - a.value)
+			.slice(0, 5);
+		if (topRows.length > 0) {
+			const topCard = container.createDiv({ cls: "fp-card" });
+			cardHead(topCard, "Top subscriptions", { label: "Monthly cost" });
+			barChart(topCard, topRows, { formatValue: (n) => money(n, currency, 2) });
+		}
+
+		renderUpcoming(container, upcomingPayments(subs, today).slice(0, 6), currency);
+		renderList(container, subs, today, currency);
 	}
+
+	/* ---------- detection ---------- */
+
+	function renderDetection(parent: HTMLElement, plugin: FinancePlugin, today: Date, currency: string, refresh: () => void): void {
+		const store = plugin.store;
+		const dismissed = plugin.settings.dismissedSubscriptionKeys ?? [];
+		const candidates = detectRecurring(store, store.subscriptions, dismissed, { series: recurringSeries(store) });
+		if (candidates.length === 0) return;
+
+		const monthlyTotal = candidates.reduce((sum, c) => sum + c.monthlyCost, 0);
+		const card = parent.createDiv({ cls: "fp-card fp-detect-card" });
+		const head = cardHead(card, "Found in your ledger", {
+			sub: "These look like recurring payments you're not tracking yet.",
+		});
+		const label = head.createDiv({ cls: "fp-card-head-label" });
+		label.createSpan({ text: `${candidates.length} possible · ` });
+		label.createSpan({ cls: "fp-money", text: `${money(monthlyTotal, currency, 2)}/mo` });
+
+		let expanded = false;
+		const list = card.createDiv({ cls: "fp-detect-list" });
+		const draw = () => {
+			list.empty();
+			(expanded ? candidates : candidates.slice(0, DETECTION_PREVIEW)).forEach((c) => renderCandidate(list, c));
+			more.setText(expanded ? "Show fewer" : `Review all ${candidates.length}`);
+			more.toggleClass("is-hidden", candidates.length <= DETECTION_PREVIEW);
+		};
+		const more = card.createEl("button", { cls: "fp-btn fp-btn--ghost", attr: { type: "button" } });
+		more.addEventListener("click", () => {
+			expanded = !expanded;
+			draw();
+		});
+
+		function renderCandidate(host: HTMLElement, c: RecurringCandidate): void {
+			const row = host.createDiv({ cls: "fp-row fp-detect-row" });
+			initialsAvatar(row, c.displayName, catColor(c.displayName.length), "fp-detect-avatar");
+
+			const main = row.createDiv({ cls: "fp-row-main" });
+			const titleLine = main.createDiv({ cls: "fp-row-title" });
+			titleLine.createSpan({ text: c.displayName });
+			badge(titleLine, c.confidence, c.confidence === "high" ? "good" : c.confidence === "medium" ? "warn" : "neutral");
+			const accountName = store.accounts.find((a) => a.id === c.accountId)?.name;
+			main.createDiv({
+				cls: "fp-row-meta",
+				text: `${c.occurrences} payments since ${formatDay(c.firstSeen, { short: true })} · last ${formatDay(c.lastSeen, {
+					short: true,
+				})}${accountName ? ` · ${accountName}` : ""}`,
+			});
+
+			const value = row.createDiv({ cls: "fp-row-value" });
+			value.createDiv({ cls: "fp-money", text: money(c.cost, currency, 2) });
+			value.createDiv({ cls: "fp-row-value-unit", text: BILLING_CYCLE_LABEL[c.billingCycle].toLowerCase() });
+
+			// Row actions are always visible here: this panel exists to be answered, not browsed.
+			const actions = row.createDiv({ cls: "fp-row-actions is-persistent" });
+			const track = actions.createEl("button", { cls: "fp-btn fp-btn--primary", text: "Track", attr: { type: "button" } });
+			track.addEventListener("click", () =>
+				openSubscriptionWizard(plugin, undefined, () => refresh(), {
+					name: c.displayName,
+					cost: c.cost,
+					billingCycle: c.billingCycle,
+					accountId: c.accountId,
+					nextDueDate: c.nextDueDate,
+					merchantKey: c.merchantKey,
+				})
+			);
+			const reject = actions.createEl("button", { cls: "fp-btn fp-btn--ghost", text: "Not a subscription", attr: { type: "button" } });
+			reject.addEventListener("click", () => void dismissCandidate(c));
+		}
+
+		async function dismissCandidate(c: RecurringCandidate): Promise<void> {
+			const keys = plugin.settings.dismissedSubscriptionKeys ?? [];
+			if (!keys.includes(c.merchantKey)) plugin.settings.dismissedSubscriptionKeys = [...keys, c.merchantKey];
+			await plugin.saveSettings();
+			new Notice(`"${c.displayName}" won't be suggested again`);
+			refresh();
+		}
+
+		draw();
+	}
+
+	/* ---------- breakdown ---------- */
 
 	function renderShareCard(
 		parent: HTMLElement,
 		title: string,
 		rows: { label: string; value: number }[],
+		currency: string,
 		colorFor?: (label: string) => string
 	): void {
 		const card = parent.createDiv({ cls: "fp-card fp-sub-share-card" });
-		cardHeadRow(card, title, "MONTHLY SPEND");
+		cardHead(card, title, { label: "Monthly spend" });
 		const total = rows.reduce((s, r) => s + r.value, 0);
 		if (total <= 0) {
-			card.createEl("p", { cls: "fp-step-desc", text: "No spend yet." });
+			emptyState(card, { variant: "inline", iconName: "chart-pie", title: "No spend yet", description: "Add a subscription to see the split." });
 			return;
 		}
 		stackedShareBar(
 			card,
-			rows.map((r, i) => ({ label: r.label, value: r.value, color: colorFor ? colorFor(r.label) : CAT_COLORS[i % CAT_COLORS.length] })),
-			{ formatValue: formatEUR }
+			rows.map((r, i) => ({ label: r.label, value: r.value, color: colorFor ? colorFor(r.label) : catColor(i) })),
+			{ formatValue: (n) => money(n, currency, 2) }
 		);
 	}
 
-	function renderUpcomingRow(parent: HTMLElement, p: { sub: Subscription; date: string; daysUntil: number }): void {
-		const row = parent.createDiv({ cls: "fp-sub-upcoming-row" });
-		const dateCol = row.createDiv({ cls: "fp-sub-upcoming-date" });
-		dateCol.createDiv({ text: formatDateLabel(p.date) });
-		dateCol.createDiv({ cls: "fp-sub-upcoming-relative" + (p.daysUntil <= 0 ? " is-due" : ""), text: formatRelativeDays(p.daysUntil) });
+	/* ---------- upcoming ---------- */
 
-		initialsAvatar(row, p.sub.name, categoryColor(p.sub.category), "fp-sub-upcoming-avatar");
+	function renderUpcoming(parent: HTMLElement, payments: UpcomingPayment[], currency: string): void {
+		const card = parent.createDiv({ cls: "fp-card" });
+		// The charge that actually hits the account, not its normalized monthly share: a €120/year
+		// subscription due next week is €120 leaving your balance that day.
+		const total = payments.reduce((sum, p) => sum + p.amount, 0);
+		const head = cardHead(card, "Upcoming payments");
+		if (payments.length > 0) {
+			const label = head.createDiv({ cls: "fp-card-head-label" });
+			label.createSpan({ text: `Next ${payments.length} · ` });
+			label.createSpan({ cls: "fp-money", text: money(total, currency, 2) });
+		}
 
-		const info = row.createDiv({ cls: "fp-sub-upcoming-info" });
-		const nameLine = info.createDiv({ cls: "fp-sub-upcoming-name-line" });
-		nameLine.createSpan({ cls: "fp-sub-upcoming-name", text: p.sub.name });
-		badge(nameLine, p.sub.paidVia === "business" ? "BUSINESS" : "PRIVATE", p.sub.paidVia === "business" ? "warn" : "neutral");
-		info.createDiv({ cls: "fp-sub-upcoming-meta", text: `${p.sub.category}${p.sub.plan ? " · " + p.sub.plan : ""}` });
+		if (payments.length === 0) {
+			emptyState(card, {
+				variant: "inline",
+				iconName: "calendar-check",
+				title: "Nothing due",
+				description: "Active subscriptions with a next due date show up here, soonest first.",
+			});
+			return;
+		}
 
-		const amount = row.createDiv({ cls: "fp-sub-upcoming-amount fp-money" });
-		amount.createDiv({ text: formatEUR(monthlyCost(p.sub)) });
-		amount.createDiv({ cls: "fp-sub-upcoming-amount-sub", text: "/mo" });
+		const list = card.createDiv({ cls: "fp-row-list" });
+		payments.forEach((p) => {
+			const row = list.createDiv({ cls: "fp-row" });
+			const date = row.createDiv({ cls: "fp-row-date" });
+			date.createDiv({ text: formatDay(p.date, { short: true }) });
+			date.createDiv({ cls: "fp-row-date-rel" + (p.daysUntil <= 0 ? " is-due" : ""), text: relativeDays(p.daysUntil) });
+
+			initialsAvatar(row, p.sub.name, categoryColor(p.sub.category), "fp-row-avatar");
+
+			const main = row.createDiv({ cls: "fp-row-main" });
+			main.createDiv({ cls: "fp-row-title", text: p.sub.name });
+			main.createDiv({
+				cls: "fp-row-meta",
+				text: `${p.sub.category} · ${BILLING_CYCLE_LABEL[p.sub.billingCycle]}${p.sub.plan ? ` · ${p.sub.plan}` : ""}`,
+			});
+
+			const value = row.createDiv({ cls: "fp-row-value" });
+			value.createDiv({ cls: "fp-money", text: money(p.amount, currency, 2) });
+			value.createDiv({ cls: "fp-row-value-unit fp-money", text: `${money(monthlyCost(p.sub), currency, 2)}/mo` });
+		});
 	}
 
-	function renderList(parent: HTMLElement, subs: Subscription[], today: Date): void {
+	/* ---------- the list ---------- */
+
+	function renderList(parent: HTMLElement, subs: Subscription[], today: Date, currency: string): void {
 		const card = parent.createDiv({ cls: "fp-card" });
-		cardHeadRow(card, `${subs.length} subscription${subs.length === 1 ? "" : "s"}`);
+		cardHead(card, `${subs.length} subscription${subs.length === 1 ? "" : "s"}`);
 
 		const groups = new Map<string, Subscription[]>();
 		for (const s of subs) {
@@ -195,49 +274,50 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 
 		sortedGroups.forEach(([category, items]) => {
 			const groupTotal = items.reduce((sum, s) => sum + monthlyCost(s), 0);
-			const groupLabel = card.createDiv({ cls: "fp-sub-group-label" });
-			groupLabel.createSpan({ text: `${category.toUpperCase()} · ` });
-			groupLabel.createSpan({ cls: "fp-money", text: `${formatEUR(groupTotal)}/mo` });
-			const grid = card.createDiv({ cls: "fp-sub-card-grid" });
-			[...items].sort((a, b) => monthlyCost(b) - monthlyCost(a)).forEach((sub) => renderSubCard(grid, sub, today));
+			const groupLabel = card.createDiv({ cls: "fp-row-group-label" });
+			groupLabel.createSpan({ text: category });
+			groupLabel.createSpan({ cls: "fp-money", text: `${money(groupTotal, currency, 2)}/mo` });
+			const list = card.createDiv({ cls: "fp-row-list" });
+			[...items].sort((a, b) => monthlyCost(b) - monthlyCost(a)).forEach((sub) => renderSubRow(list, sub, today, currency));
 		});
 	}
 
-	function renderSubCard(parent: HTMLElement, sub: Subscription, today: Date): void {
-		const card = parent.createDiv({ cls: "fp-sub-card" + (isActive(sub, today) ? "" : " is-inactive") });
-		const top = card.createDiv({ cls: "fp-sub-card-top" });
-		initialsAvatar(top, sub.name, categoryColor(sub.category), "fp-sub-card-avatar");
-		const info = top.createDiv({ cls: "fp-sub-card-info" });
-		info.createDiv({ cls: "fp-sub-card-name", text: sub.name });
-		if (sub.plan) info.createDiv({ cls: "fp-sub-card-plan", text: sub.plan });
+	/**
+	 * A subscription list is a list. The card grid wasted horizontal space and broke price
+	 * scannability — the one thing you actually come to this page to do.
+	 */
+	function renderSubRow(parent: HTMLElement, sub: Subscription, today: Date, currency: string): void {
+		const active = isActive(sub, today);
+		const row = parent.createDiv({ cls: "fp-row" + (active ? "" : " is-inactive") });
+		initialsAvatar(row, sub.name, categoryColor(sub.category), "fp-row-avatar");
 
-		const amount = top.createDiv({ cls: "fp-sub-card-amount fp-money" });
-		amount.createDiv({ text: formatEUR(monthlyCost(sub)) });
-		amount.createDiv({ cls: "fp-sub-card-amount-sub", text: "/mo" });
-
-		const meta = card.createDiv({ cls: "fp-sub-card-meta" });
-		meta.createSpan({ text: `${sub.category} · ${BILLING_CYCLE_LABEL[sub.billingCycle]}` });
-		badge(meta, sub.paidVia === "business" ? "BUSINESS" : "PRIVATE", sub.paidVia === "business" ? "warn" : "neutral");
-		const accountName = sub.accountId ? plugin.store.accounts.find((a) => a.id === sub.accountId)?.name : undefined;
-		if (accountName) badge(meta, accountName.toUpperCase(), "neutral");
+		const main = row.createDiv({ cls: "fp-row-main" });
+		const titleLine = main.createDiv({ cls: "fp-row-title" });
+		titleLine.createSpan({ text: sub.name });
+		if (sub.plan) titleLine.createSpan({ cls: "fp-row-title-plan", text: sub.plan });
+		if (sub.paidVia === "business") badge(titleLine, "business", "warn");
 
 		const next = nextOccurrence(sub, today);
-		const dueLine = card.createDiv({ cls: "fp-sub-card-due" });
-		if (next) dueLine.setText(`Next due ${formatDateLabel(next)} · ${formatRelativeDays(daysUntil(next, today))}`);
-		else dueLine.setText(sub.endDate ? `Ended ${formatDateLabel(sub.endDate)}` : "No upcoming payment");
+		const accountName = sub.accountId ? plugin.store.accounts.find((a) => a.id === sub.accountId)?.name : undefined;
+		const meta = [BILLING_CYCLE_LABEL[sub.billingCycle], accountName, next ? `next ${formatDay(next, { short: true })} · ${relativeDays(daysUntil(next, today))}` : sub.endDate ? `ended ${formatDay(sub.endDate, { short: true })}` : "no upcoming payment"]
+			.filter(Boolean)
+			.join(" · ");
+		main.createDiv({ cls: "fp-row-meta", text: meta });
 
-		if (sub.notes) card.createDiv({ cls: "fp-sub-card-notes", text: sub.notes });
+		const value = row.createDiv({ cls: "fp-row-value" });
+		value.createDiv({ cls: "fp-money", text: money(sub.cost, currency, 2) });
+		value.createDiv({ cls: "fp-row-value-unit fp-money", text: `${money(monthlyCost(sub), currency, 2)}/mo` });
 
-		const actions = card.createDiv({ cls: "fp-sub-card-actions" });
+		const actions = row.createDiv({ cls: "fp-row-actions" });
 		if (sub.cancelUrl) {
-			const linkBtn = actions.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+			const linkBtn = actions.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": `Open cancel page for ${sub.name}` } });
 			icon(linkBtn, "external-link");
 			linkBtn.addEventListener("click", () => window.open(sub.cancelUrl, "_blank"));
 		}
-		const editBtn = actions.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+		const editBtn = actions.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": `Edit ${sub.name}` } });
 		icon(editBtn, "pencil");
 		editBtn.addEventListener("click", () => openSubscriptionWizard(plugin, sub, () => render()));
-		const deleteBtn = actions.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+		const deleteBtn = actions.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": `Delete ${sub.name}` } });
 		icon(deleteBtn, "trash-2");
 		deleteBtn.addEventListener("click", () => void remove(sub));
 	}

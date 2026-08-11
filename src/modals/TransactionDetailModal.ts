@@ -43,12 +43,12 @@ export class TransactionDetailModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
+		this.modalEl.addClass("fp-root");
 		const c = this.contentEl;
 		c.addClass("fp-detail-modal");
 
 		const store = this.plugin.store;
 		const account = store.accounts.find((a) => a.id === this.tx.accountId);
-		const category = this.tx.categoryId ? store.categories.find((cat) => cat.id === this.tx.categoryId) : undefined;
 
 		const head = c.createDiv({ cls: "fp-detail-header" });
 		head.createDiv({ cls: "fp-detail-desc fp-sensitive", text: this.tx.description || "(no description)" });
@@ -64,21 +64,7 @@ export class TransactionDetailModal extends Modal {
 
 		const catRow = body.createDiv({ cls: "fp-detail-row" });
 		catRow.createDiv({ cls: "fp-detail-label", text: "Category" });
-		const catValue = catRow.createDiv({ cls: "fp-detail-value" });
-		if (category) categoryChip(catValue, category.name, category.color, category.icon);
-		const select = catValue.createEl("select", { cls: "fp-setup-select" });
-		select.createEl("option", { text: category ? "Change category…" : "Set category…", value: "" });
-		store.categories.forEach((cat) => {
-			const opt = select.createEl("option", { text: cat.name, value: cat.id });
-			if (cat.id === this.tx.categoryId) opt.selected = true;
-		});
-		select.addEventListener("change", async () => {
-			if (!select.value) return;
-			await store.updateTransaction(this.tx.id, { categoryId: select.value });
-			this.plugin.refreshViews();
-			new Notice("Category updated");
-			this.close();
-		});
+		this.renderCategory(catRow.createDiv({ cls: "fp-detail-value" }));
 
 		row(body, "Type", this.tx.type || "—");
 		if (this.tx.code) row(body, "Code", this.tx.code);
@@ -115,6 +101,35 @@ export class TransactionDetailModal extends Modal {
 		icon(closeBtn, "check");
 		closeBtn.createSpan({ text: "Close" });
 		closeBtn.addEventListener("click", () => this.close());
+	}
+
+	/**
+	 * Renders the category chip + picker, re-rendering itself in place after a change.
+	 *
+	 * It used to close the modal on every category change, which meant categorizing N transactions
+	 * from the ledger cost N round trips through "find your place again". Staying open is the whole
+	 * fix: the chip updates, the select keeps its new value, and the row underneath stays put.
+	 */
+	private renderCategory(container: HTMLElement): void {
+		container.empty();
+		const store = this.plugin.store;
+		const category = this.tx.categoryId ? store.categories.find((cat) => cat.id === this.tx.categoryId) : undefined;
+
+		if (category) categoryChip(container, category.name, category.color, category.icon);
+		const select = container.createEl("select", { cls: "fp-setup-select" });
+		select.createEl("option", { text: category ? "Change category…" : "Set category…", value: "" });
+		store.categories.forEach((cat) => {
+			const opt = select.createEl("option", { text: cat.name, value: cat.id });
+			if (cat.id === this.tx.categoryId) opt.selected = true;
+		});
+		select.addEventListener("change", async () => {
+			if (!select.value) return;
+			await store.updateTransaction(this.tx.id, { categoryId: select.value });
+			this.tx.categoryId = select.value;
+			this.plugin.refreshViews();
+			new Notice("Category updated");
+			this.renderCategory(container);
+		});
 	}
 
 	/** Renders the current attachment state into `container`, re-rendering itself in place after any change. */

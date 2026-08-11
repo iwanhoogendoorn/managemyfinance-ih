@@ -2,7 +2,7 @@ import { CardDetailModal } from "../../modals/CardDetailModal";
 import type FinancePlugin from "../../main";
 import type { Card } from "../../types";
 import { renderCardVisual } from "../../ui/cardVisual";
-import { emptyState, icon, statTile } from "../../ui/dom";
+import { emptyState, icon } from "../../ui/dom";
 import { openCardWizard } from "../../wizards/CardWizard";
 
 /** One card, per your bank/card issuer: always linked to an account, counted and shown completely separately from it. */
@@ -21,15 +21,14 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 			cls: "fp-section-subtitle",
 			text: "Every payment card you carry, linked to the account it actually draws money from or borrows against.",
 		});
-		const addBtn = header.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const addBtn = header.createEl("button", { cls: "fp-btn fp-btn--primary", attr: { type: "button" } });
 		icon(addBtn, "plus");
 		addBtn.createSpan({ text: "Add card" });
 		addBtn.addEventListener("click", () => openCardWizard(plugin, { onSaved: () => render() }));
 
-		const accountIds = new Set(cards.map((c) => c.accountId));
-		const kpis = container.createDiv({ cls: "fp-stat-grid" });
-		statTile(kpis, { label: "Cards", value: String(cards.length), iconName: "credit-card", money: false });
-		statTile(kpis, { label: "Accounts covered", value: `${accountIds.size} / ${store.accounts.length}`, iconName: "layers", money: false });
+		// No KPI tiles here on purpose. `Transaction` carries no `cardId`, so card-level spend is not
+		// computable — "Cards: 4" and "Accounts covered: 3/5" were counting the page's own contents
+		// back at the reader. This page is a visual inventory, and that is a fine thing to be.
 
 		if (store.accounts.length === 0) {
 			emptyState(container, {
@@ -63,8 +62,12 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 	}
 
 	function renderCardTile(parent: HTMLElement, card: Card, accountName: string): void {
-		const tile = parent.createDiv({ cls: "fp-card-tile fp-card-tile-clickable" });
-		tile.createDiv({ cls: "fp-card-tile-account", text: accountName.toUpperCase() });
+		// A real <button>: the tile was a click-handler <div>, so it was neither focusable nor announced.
+		const tile = parent.createEl("button", {
+			cls: "fp-card-tile fp-card-tile-clickable",
+			attr: { type: "button", "aria-label": `${card.name} on ${accountName}` },
+		});
+		tile.createDiv({ cls: "fp-card-tile-account", text: accountName });
 		renderCardVisual(tile, card);
 		tile.addEventListener("click", () => new CardDetailModal(plugin.app, plugin, card, accountName, () => render()).open());
 	}

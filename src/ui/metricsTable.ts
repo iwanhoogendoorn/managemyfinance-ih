@@ -1,3 +1,5 @@
+import { microbar } from "./charts";
+
 export function formatEUR(n: number): string {
 	return new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 }
@@ -12,23 +14,22 @@ export function yoy(curr: number, prev: number | undefined): number | undefined 
 	return (curr - prev) / Math.abs(prev);
 }
 
-const HEAT_BAD: [number, number, number] = [239, 68, 68];
-const HEAT_WARN: [number, number, number] = [245, 158, 11];
-const HEAT_GOOD: [number, number, number] = [34, 197, 94];
-
-/** Excel-style 3-color scale: worst value in a row reads red, best reads green, via the row's own min/max. */
-export function heatColor(t: number, invert: boolean): string {
-	const x = Math.max(0, Math.min(1, invert ? 1 - t : t));
-	const [from, to] = x < 0.5 ? [HEAT_BAD, HEAT_WARN] : [HEAT_WARN, HEAT_GOOD];
-	const local = x < 0.5 ? x / 0.5 : (x - 0.5) / 0.5;
-	const rgb = from.map((c, i) => Math.round(c + (to[i] - c) * local));
-	return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.22)`;
+/**
+ * @deprecated Superseded by the inline microbar in {@link metricRow}. The old red→amber→green ramp
+ * was a rainbow scale with a *hue* at its midpoint (so "average" read as a third state, not as
+ * neutral) and its 0.22-alpha pastels went muddy on dark themes. Returns a transparent color so any
+ * remaining caller degrades to "no tint" instead of failing to compile.
+ */
+export function heatColor(_t: number, _invert: boolean): string {
+	return "transparent";
 }
 
 /**
- * A metric row: one value per year, rendered via `format`. With `heat`, each cell is tinted red→yellow→green
- * relative to the other years in the same row (Excel color-scale conditional formatting), so the current year's
- * cell reads at a glance against its own history. `invert` flips the scale for metrics where lower is better.
+ * A metric row: one value per year, rendered via `format`. With `heat`, each cell carries a 2px
+ * microbar under the number scaled to the row's own maximum — the same "scan a row across years"
+ * benefit as the old color scale, but identical in both themes and without tinting the text's own
+ * background. `invert` marks rows where a bigger bar is a worse result (expenses), which picks the
+ * bar's color; the number itself always stays in normal ink.
  */
 export function metricRow(
 	tbody: HTMLTableSectionElement,
@@ -39,15 +40,15 @@ export function metricRow(
 ): void {
 	const tr = tbody.createEl("tr", { cls: opts?.emphasize ? "fp-table-row-emphasis" : undefined });
 	tr.createEl("td", { text: label });
-	const min = Math.min(...values);
-	const max = Math.max(...values);
+	const peak = Math.max(...values.map((v) => Math.abs(v)), 0);
 	const money = format === formatEUR;
+	const barColor = opts?.heat === "invert" ? "var(--fp-neg-fill)" : "var(--fp-pos-fill)";
 	values.forEach((v) => {
-		const cell = tr.createEl("td", { text: format(v), cls: "fp-table-num" + (money ? " fp-money" : "") });
-		if (opts?.heat && max > min && v !== 0) {
-			const t = (v - min) / (max - min);
-			cell.style.backgroundColor = heatColor(t, opts.heat === "invert");
-		}
+		const cell = tr.createEl("td", { cls: "fp-table-num" });
+		// `.fp-money` rides the number, not the cell: privacy redaction paints a block behind its
+		// element, and on the `<td>` that block would swallow the microbar too.
+		cell.createSpan({ cls: money ? "fp-money" : undefined, text: format(v) });
+		if (opts?.heat && peak > 0) microbar(cell, Math.abs(v) / peak, barColor);
 	});
 }
 
@@ -76,10 +77,19 @@ export function yearHeaderRow(table: HTMLTableElement, years: string[], opts?: {
 	const thead = table.createEl("thead").createEl("tr");
 	thead.createEl("th", { text: "" });
 	years.forEach((y) => {
-		const th = thead.createEl("th", { text: y, cls: "fp-table-num" + (opts?.onClick ? " fp-table-year-clickable" : "") });
+		const th = thead.createEl("th", { cls: "fp-table-num" });
 		if (opts?.onClick) {
+			// A real <button>, so the drilldown is focusable, announced and keyboard-operable —
+			// a click handler on a bare <th> is none of those.
 			const onClick = opts.onClick;
-			th.addEventListener("click", () => onClick(y));
+			const btn = th.createEl("button", {
+				cls: "fp-table-year-clickable",
+				text: y,
+				attr: { type: "button", "aria-label": `Open ${y} details` },
+			});
+			btn.addEventListener("click", () => onClick(y));
+		} else {
+			th.setText(y);
 		}
 	});
 }

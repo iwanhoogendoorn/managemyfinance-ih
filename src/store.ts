@@ -25,6 +25,12 @@ export interface FinanceSettings {
 	accountOrder?: string[];
 	/** "auto" follows Obsidian's own Platform.isMobile; "on"/"off" force the mobile-friendly layout regardless of device. */
 	mobileLayout?: "auto" | "on" | "off";
+	/** True once first-run setup finished (or was skipped) — also set on migration for any install that already has accounts. */
+	onboardingCompleted?: boolean;
+	/** Normalized merchant keys the user marked "not a subscription" — suppressed from detection forever. */
+	dismissedSubscriptionKeys?: string[];
+	/** Insight ids the user dismissed from the overview feed — ids are deterministic, so dismissal survives recompute. */
+	dismissedInsightIds?: string[];
 }
 
 export const DEFAULT_SETTINGS: FinanceSettings = {
@@ -212,7 +218,14 @@ export class FinanceStore {
 
 		for (const [key, txs] of bySourceYear) {
 			const [source, year] = key.split("::");
-			await this.appendToLedger(source, year, txs);
+			try {
+				await this.appendToLedger(source, year, txs);
+			} catch (err) {
+				// A vault write can fail (permissions, a synced file locked, disk full). Naming the file
+				// it died on is the difference between "the import broke" and something actionable.
+				const path = normalizePath(`${this.path("data", "ledger", source)}/${year}.csv`);
+				throw new Error(`Couldn't write ${path}: ${err instanceof Error ? err.message : String(err)}`);
+			}
 		}
 		return { added, skipped };
 	}
@@ -276,13 +289,18 @@ export class FinanceStore {
 	/**
 	 * Bulk categoryId patch (e.g. from auto-categorization) — unlike calling updateTransaction in a
 	 * loop, each affected (source, year) ledger file is only read/rewritten once, not once per row.
+	 *
+	 * Membership, not value, decides whether a row is touched: a key mapped to `undefined` *clears*
+	 * that row's category. Without that, undoing a bulk assignment back to "uncategorized" would be
+	 * impossible to express, and the review queue's undo would be a lie.
 	 */
-	async recategorize(patches: Map<string, string>): Promise<number> {
+	async recategorize(patches: ReadonlyMap<string, string | undefined>): Promise<number> {
 		const touchedFiles = new Set<string>();
 		let count = 0;
 		for (const tx of this.transactions) {
+			if (!patches.has(tx.id)) continue;
 			const newCategoryId = patches.get(tx.id);
-			if (newCategoryId === undefined || tx.categoryId === newCategoryId) continue;
+			if (tx.categoryId === newCategoryId) continue;
 			tx.categoryId = newCategoryId;
 			touchedFiles.add(`${tx.source}::${(tx.date || "").slice(0, 4) || "unknown"}`);
 			count++;

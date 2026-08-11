@@ -48,20 +48,40 @@ function formSelectFieldVL(
 	return { row, select };
 }
 
+/**
+ * Everything detection can hand the wizard from a recurring charge it found in the ledger. All
+ * optional, all overridable by the user before saving — the wizard is still the only save path, so
+ * a detected subscription and a hand-entered one end up identical in `subscriptions.json`.
+ */
+export interface SubscriptionPrefill {
+	name?: string;
+	cost?: number;
+	billingCycle?: SubscriptionBillingCycle;
+	accountId?: string;
+	nextDueDate?: string;
+	/** The normalized ledger key this came from — persisted so detection can dedupe against it later. */
+	merchantKey?: string;
+}
+
 /** Add or edit one subscription over two quick steps: what it is, then when it renews — same fields as before, just off the page. */
-export function openSubscriptionWizard(plugin: FinancePlugin, existing?: Subscription, onSaved?: (sub: Subscription) => void): void {
+export function openSubscriptionWizard(
+	plugin: FinancePlugin,
+	existing?: Subscription,
+	onSaved?: (sub: Subscription) => void,
+	prefill?: SubscriptionPrefill
+): void {
 	const store = plugin.store;
 
-	let name = existing?.name ?? "";
+	let name = existing?.name ?? prefill?.name ?? "";
 	let plan = existing?.plan ?? "";
 	let website = existing?.website ?? "";
 	let category = existing?.category ?? SUBSCRIPTION_CATEGORIES[0];
-	let cost = existing ? String(existing.cost) : "";
-	let billingCycle: SubscriptionBillingCycle = existing?.billingCycle ?? "monthly";
+	let cost = existing ? String(existing.cost) : prefill?.cost !== undefined ? String(prefill.cost) : "";
+	let billingCycle: SubscriptionBillingCycle = existing?.billingCycle ?? prefill?.billingCycle ?? "monthly";
 	let paidVia: SubscriptionPaidVia = existing?.paidVia ?? "private";
 	let kind = existing?.kind ?? "Not SaaS";
-	let accountId = existing?.accountId ?? "";
-	let nextDueDate = existing?.nextDueDate ?? "";
+	let accountId = existing?.accountId ?? prefill?.accountId ?? "";
+	let nextDueDate = existing?.nextDueDate ?? prefill?.nextDueDate ?? "";
 	let endDate = existing?.endDate ?? "";
 	let cancelUrl = existing?.cancelUrl ?? "";
 	let notes = existing?.notes ?? "";
@@ -169,6 +189,9 @@ export function openSubscriptionWizard(plugin: FinancePlugin, existing?: Subscri
 					endDate: endDate || undefined,
 					cancelUrl: cancelUrl.trim() || undefined,
 					notes: notes.trim() || undefined,
+					// Keeps a detected subscription linked to the charges it came from, so detection
+					// never suggests it again and price-drift can match it back to the ledger.
+					merchantKey: existing?.merchantKey ?? prefill?.merchantKey,
 				};
 
 				if (existing) {

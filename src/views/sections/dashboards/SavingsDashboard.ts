@@ -1,66 +1,240 @@
-import { averageMonthlyExpenses, netWorth, summarizeByYear, yearSummaryFor } from "../../../kpi";
+import { balanceSeries, burnRate, fiProjection, netWorth, todayIso, windowSummary } from "../../../kpi";
 import type FinancePlugin from "../../../main";
-import { MonthDrilldownModal } from "../../../modals/MonthDrilldownModal";
 import type { Account } from "../../../types";
-import { statTile } from "../../../ui/dom";
-import { deltaRow, formatEUR, metricRow, yearHeaderRow, yoy } from "../../../ui/metricsTable";
+import { groupedColumnChart, lineChart, stackedShareBar } from "../../../ui/charts";
+import { emptyState, renderStat } from "../../../ui/dom";
+import { renderMeter } from "../../../ui/kpiCard";
+import {
+	accountCurrency,
+	balanceOf,
+	cardHead,
+	editableAmount,
+	formatDay,
+	formatMonth,
+	liquidAccountIds,
+	money,
+	monthWindow,
+	pct,
+	setStatFoot,
+	signedMoney,
+	spendingAccountIds,
+	ttmWindow,
+} from "../shared";
+
+/** Yield bands. Below 0.5% your bank is quietly keeping the interest; above 3% it is competitive. */
+const YIELD_GOOD = 0.03;
+const YIELD_WARN = 0.005;
 
 /**
- * A savings account's job is to hold a buffer and grow — so its KPIs center on balance growth and
- * how many months of everyday spending that balance would cover (the emergency-fund read).
+ * A savings account holds a buffer and grows. So the page answers three things: how long the buffer
+ * lasts, how much of the growth is yours versus the bank's, and how far off the goal is.
  */
 export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePlugin, account: Account): void {
 	const store = plugin.store;
-	const years = summarizeByYear(store, account.id);
-	const currentYear = yearSummaryFor(years);
-	const previousYear = yearSummaryFor(years, String(new Date().getFullYear() - 1));
-	const balance = netWorth(store, account.id);
+	const today = new Date();
+	const now = todayIso(today);
+	const ids = [account.id];
+	const currency = accountCurrency(account);
 
-	const spendingAccountIds = store.accounts.filter((a) => a.type === "debit" || a.type === "cash").map((a) => a.id);
-	const avgMonthlyExpenses = averageMonthlyExpenses(store, spendingAccountIds.length > 0 ? spendingAccountIds : undefined);
-	const monthsCovered = avgMonthlyExpenses > 0 ? balance / avgMonthlyExpenses : undefined;
+	const balance = netWorth(store, account.id, now);
+	const ttm = ttmWindow(today);
+	const ttmSummary = windowSummary(store, ttm.from, ttm.to, ids);
+	const contributions = ttmSummary.income - ttmSummary.passiveIncome;
+	const interest = ttmSummary.passiveIncome;
 
-	const balanceDelta = currentYear && previousYear ? yoy(currentYear.netWorthEOY, previousYear.netWorthEOY) : undefined;
+	const balances = balanceSeries(store, ids, "month", today);
+	const ttmBalances = balances.filter((b) => ttm.months.includes(b.key)).map((b) => b.balance);
+	const meanBalance = ttmBalances.length > 0 ? ttmBalances.reduce((a, b) => a + b, 0) / ttmBalances.length : 0;
+	const effectiveYield = meanBalance > 0 ? interest / meanBalance : undefined;
 
-	const tiles = container.createDiv({ cls: "fp-stat-grid" });
-	statTile(tiles, { label: "Current balance", value: formatEUR(balance), iconName: "piggy-bank" });
-	statTile(tiles, {
-		label: "Balance growth (YoY)",
-		value: balanceDelta === undefined ? "—" : `${balanceDelta >= 0 ? "+" : ""}${(balanceDelta * 100).toFixed(1)}%`,
-		iconName: "trending-up",
-		tone: balanceDelta === undefined ? "neutral" : balanceDelta >= 0 ? "good" : "bad",
-		money: false,
+	// Coverage is a portfolio question, not an account one: the buffer covers everything you spend,
+	// wherever you spend it from — credit included, or the runway is materially overstated.
+	const burn = burnRate(store, spendingAccountIds(store), 6, today);
+	const liquid = balanceOf(store, liquidAccountIds(store), now);
+	const monthsCovered = burn > 0 ? liquid / burn : undefined;
+
+	/* ---------- stats ---------- */
+
+	const grid = container.createDiv({ cls: "fp-stat-grid" });
+
+	renderStat(grid, {
+		label: "Current balance",
+		value: money(balance, currency),
+		size: "hero",
+		iconName: "piggy-bank",
+		sparklineValues: balances.slice(-24).map((b) => b.balance),
+		sparklineColor: "var(--fp-series-worth)",
 	});
-	statTile(tiles, {
+
+	const coverage = renderStat(grid, {
 		label: "Emergency fund coverage",
 		value: monthsCovered === undefined ? "—" : `${monthsCovered.toFixed(1)} mo`,
-		sub: "vs. average monthly spending",
 		iconName: "shield",
-		tone: monthsCovered === undefined ? "neutral" : monthsCovered >= 6 ? "good" : monthsCovered >= 3 ? "warn" : "bad",
 		money: false,
+		tone: monthsCovered === undefined ? "neutral" : monthsCovered >= 6 ? "good" : monthsCovered >= 3 ? "warn" : "bad",
 	});
-	statTile(tiles, {
-		label: "Net deposits this year",
-		value: currentYear ? formatEUR(currentYear.net) : "—",
-		iconName: "download",
-	});
+	setStatFoot(coverage, [
+		{ money: money(liquid, currency) },
+		" liquid against ",
+		{ money: money(burn, currency) },
+		"/mo of everyday spending",
+	]);
 
-	if (years.length > 0) {
+	const yieldCard = renderStat(grid, {
+		label: "Effective yield (12 months)",
+		value: effectiveYield === undefined ? "—" : pct(effectiveYield, 2),
+		iconName: "percent",
+		money: false,
+		tone: effectiveYield === undefined ? "neutral" : effectiveYield >= YIELD_GOOD ? "good" : effectiveYield >= YIELD_WARN ? "warn" : "bad",
+	});
+	setStatFoot(yieldCard, [{ money: money(interest, currency) }, " of interest on an average balance of ", { money: money(meanBalance, currency) }]);
+
+	const withdrawalMonths = ttm.months.filter((m) => {
+		const w = monthWindow(m);
+		return windowSummary(store, w.from, w.to, ids).expenses > 0;
+	}).length;
+	const withdrawals = renderStat(grid, {
+		label: "Withdrawals",
+		value: `${withdrawalMonths} of 12 months`,
+		iconName: "arrow-up-from-line",
+		money: false,
+		tone: withdrawalMonths >= 6 ? "warn" : "neutral",
+	});
+	setStatFoot(withdrawals, [{ money: money(ttmSummary.expenses, currency) }, " taken out over the last 12 months"]);
+
+	/* ---------- goal ---------- */
+
+	renderGoal(container, plugin, account, balance, (ttmSummary.net - interest) / 12, currency);
+
+	/* ---------- contributions vs interest ---------- */
+
+	if (contributions > 0 || interest > 0) {
 		const card = container.createDiv({ cls: "fp-card" });
-		card.createEl("h3", { text: "Balance history" });
-		const table = card.createEl("table", { cls: "fp-table fp-table-metrics" });
-		yearHeaderRow(table, years.map((y) => y.year), {
-			onClick: (year) => new MonthDrilldownModal(plugin.app, plugin, year, account.name, account.id).open(),
+		cardHead(card, "Where the growth came from", { sub: "Trailing 12 months — your deposits against the bank's interest" });
+		stackedShareBar(
+			card,
+			[
+				{ label: "Your contributions", value: Math.max(0, contributions), color: "var(--fp-series-net)" },
+				{ label: "Interest earned", value: Math.max(0, interest), color: "var(--fp-series-passive)" },
+			],
+			{ formatValue: (n) => money(n, currency) }
+		);
+	}
+
+	/* ---------- net contribution trend ---------- */
+
+	const trendMonths = balances.slice(-24).map((b) => b.key);
+	if (trendMonths.length > 1) {
+		const values = trendMonths.map((m) => {
+			const w = monthWindow(m);
+			const s = windowSummary(store, w.from, w.to, ids);
+			// Interest isn't a contribution — conflating the two is how "net deposits" quietly credits
+			// you with the bank's money.
+			return s.income - s.expenses - s.passiveIncome;
 		});
-		const tbody = table.createEl("tbody");
-		metricRow(tbody, "Balance (EOY)", years.map((y) => y.netWorthEOY), formatEUR, { emphasize: true, heat: "normal" });
-		deltaRow(tbody, years.map((y) => y.netWorthEOY));
-		metricRow(tbody, "Net deposits", years.map((y) => y.net), formatEUR, { heat: "normal" });
-	} else {
 		const card = container.createDiv({ cls: "fp-card" });
-		card.createEl("p", {
-			cls: "fp-step-desc",
-			text: `No transactions recorded on this account yet — its balance reflects the opening balance you set (${formatEUR(balance)}).`,
+		cardHead(card, "Net contributions", { sub: "Deposits less withdrawals, interest excluded" });
+		groupedColumnChart(
+			card,
+			trendMonths.map((m) => formatMonth(m).slice(0, 3)),
+			[{ label: "Net contribution", color: "var(--fp-series-net)", values }],
+			{ formatValue: (n) => money(n, currency), title: "Net contributions by month", description: "Deposits minus withdrawals, per month." }
+		);
+	}
+
+	/* ---------- balance history ---------- */
+
+	if (balances.length > 1) {
+		const card = container.createDiv({ cls: "fp-card" });
+		cardHead(card, "Balance history");
+		lineChart(
+			card,
+			balances.map((b) => b.key),
+			[{ label: "Balance", color: "var(--fp-series-worth)", values: balances.map((b) => b.balance) }],
+			{
+				area: true,
+				formatValue: (n) => money(n, currency),
+				title: "Balance over time",
+				description: `Month-end balance from ${balances[0].key} to ${balances[balances.length - 1].key}.`,
+			}
+		);
+	} else if (balances.length === 0) {
+		const card = container.createDiv({ cls: "fp-card" });
+		emptyState(card, {
+			variant: "inline",
+			iconName: "piggy-bank",
+			title: "No transactions on this account yet",
+			description: "Its balance is whatever opening balance you set. Import a statement to see growth over time.",
 		});
 	}
+}
+
+/**
+ * Goal progress. A savings account without a target is a bucket — but the target is one number the
+ * user has to give us, so it is asked for inline, next to the figure it changes, rather than behind
+ * an account-settings modal.
+ */
+function renderGoal(
+	container: HTMLElement,
+	plugin: FinancePlugin,
+	account: Account,
+	balance: number,
+	monthlyContribution: number,
+	currency: string
+): void {
+	const card = container.createDiv({ cls: "fp-card fp-goal-card" });
+	const head = cardHead(card, "Savings goal");
+	editableAmount(head, {
+		emptyLabel: "Set a goal",
+		editLabel: "Change goal",
+		value: account.goalAmount,
+		placeholder: "10000",
+		onSave: async (value) => {
+			const target = plugin.store.accounts.find((a) => a.id === account.id);
+			if (!target) return;
+			target.goalAmount = value;
+			await plugin.store.saveAccounts();
+			plugin.refreshViews();
+		},
+	});
+
+	const goal = account.goalAmount;
+	if (!goal || goal <= 0) {
+		emptyState(card, {
+			variant: "inline",
+			iconName: "target",
+			title: "No goal set",
+			description: "Give this account a target and it will tell you how far along you are and when you'd get there.",
+		});
+		return;
+	}
+
+	// A zero expected return: a goal is a plan, and a plan shouldn't be underwritten by a market
+	// assumption the user never made.
+	const years = monthlyContribution > 0 ? fiProjection(balance, monthlyContribution, 0, goal) : undefined;
+	const monthsToGoal = years === undefined ? undefined : Math.round(years * 12);
+
+	renderMeter(card, {
+		label: account.goalDate ? `Target by ${formatDay(account.goalDate)}` : "Progress to goal",
+		value: balance / goal,
+		valueLabel: `${money(balance, currency)} of ${money(goal, currency)}`,
+		tone: "ok",
+		renderSub: (el) => {
+			if (balance >= goal) {
+				el.createSpan({ text: "Goal reached — " });
+				el.createSpan({ cls: "fp-money", text: money(balance - goal, currency) });
+				el.createSpan({ text: " past the target." });
+				return;
+			}
+			el.createSpan({ cls: "fp-money", text: money(goal - balance, currency) });
+			el.createSpan({ text: " to go" });
+			if (monthsToGoal !== undefined && monthlyContribution > 0) {
+				el.createSpan({ text: " · at " });
+				el.createSpan({ cls: "fp-money", text: signedMoney(monthlyContribution, currency) });
+				el.createSpan({ text: `/mo that's about ${monthsToGoal} month${monthsToGoal === 1 ? "" : "s"}` });
+			} else {
+				el.createSpan({ text: " · no net contributions in the last 12 months, so there's no pace to project" });
+			}
+		},
+	});
 }

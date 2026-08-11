@@ -1,11 +1,26 @@
 import { App, Modal } from "obsidian";
 import { icon } from "../ui/dom";
 
+/**
+ * Handed to every step's `render`. A step that wants to drive navigation itself — a terminal summary
+ * screen whose actions are "review these" / "go to the ledger" rather than "Next" — needs a way to
+ * close or jump without reaching into the modal's private state.
+ */
+export interface WizardApi {
+	close: () => void;
+	next: () => void;
+	back: () => void;
+	/** Jump to a step by its `id`; a no-op for an unknown id. */
+	goTo: (stepId: string) => void;
+	/** Re-runs the current step's own `render` — for steps whose body depends on state they mutate. */
+	rerender: () => void;
+}
+
 export interface WizardStep {
 	id: string;
 	title: string;
 	icon: string;
-	render: (container: HTMLElement) => void | Promise<void>;
+	render: (container: HTMLElement, api: WizardApi) => void | Promise<void>;
 	canGoNext?: () => boolean;
 	onNext?: () => void | Promise<void>;
 	nextLabel?: string;
@@ -13,6 +28,14 @@ export interface WizardStep {
 	skippable?: boolean;
 	skipLabel?: string;
 	onSkip?: () => void | Promise<void>;
+	/** Suppresses Back/Cancel — for a step that has already committed something, where "Back" would
+	 *  offer to undo work that cannot be undone. */
+	hideBack?: boolean;
+	/** Suppresses the Next/Finish button — for a step that renders its own terminal actions. */
+	hideNext?: boolean;
+	/** Kept out of the stepper header (and out of its numbering) — e.g. a post-commit summary screen,
+	 *  which is a destination, not a step you are working through. */
+	hidden?: boolean;
 }
 
 /**
@@ -38,8 +61,39 @@ export class WizardModal extends Modal {
 		this.wizIcon = opts.icon;
 	}
 
+	/** Navigation handed to step bodies — see {@link WizardApi}. */
+	private get api(): WizardApi {
+		return {
+			close: () => this.close(),
+			next: () => {
+				if (this.stepIndex < this.steps.length - 1) {
+					this.stepIndex++;
+					void this.renderStep();
+				} else {
+					this.close();
+				}
+			},
+			back: () => {
+				if (this.stepIndex > 0) {
+					this.stepIndex--;
+					void this.renderStep();
+				}
+			},
+			goTo: (stepId: string) => {
+				const i = this.steps.findIndex((s) => s.id === stepId);
+				if (i === -1) return;
+				this.stepIndex = i;
+				void this.renderStep();
+			},
+			rerender: () => void this.renderStep(),
+		};
+	}
+
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
+		// `.fp-root` is where the design tokens live; `.fp-wizard-modal` is kept as the alias every
+		// existing modal rule is written against.
+		this.modalEl.addClass("fp-root");
 		this.contentEl.addClass("fp-wizard");
 
 		const head = this.contentEl.createDiv({ cls: "fp-wizard-header" });
@@ -61,16 +115,21 @@ export class WizardModal extends Modal {
 
 	private renderStepsIndicator(): void {
 		this.stepsEl.empty();
-		this.steps.forEach((step, i) => {
+		const visible = this.steps.filter((s) => !s.hidden);
+		const activeStep = this.steps[this.stepIndex];
+		// A hidden step (the post-import summary) sits *after* everything in the stepper, so the
+		// header reads as fully complete rather than snapping back to the last visible step.
+		const activeVisibleIdx = activeStep.hidden ? visible.length : visible.indexOf(activeStep);
+		visible.forEach((step, i) => {
 			const cls = ["fp-wizard-step"];
-			if (i === this.stepIndex) cls.push("is-active");
-			if (i < this.stepIndex) cls.push("is-done");
+			if (i === activeVisibleIdx) cls.push("is-active");
+			if (i < activeVisibleIdx) cls.push("is-done");
 			const dot = this.stepsEl.createDiv({ cls: cls.join(" ") });
 			const circle = dot.createDiv({ cls: "fp-wizard-step-circle" });
-			icon(circle, i < this.stepIndex ? "check" : step.icon);
+			icon(circle, i < activeVisibleIdx ? "check" : step.icon);
 			dot.createDiv({ cls: "fp-wizard-step-label", text: step.title });
-			if (i < this.steps.length - 1) {
-				this.stepsEl.createDiv({ cls: "fp-wizard-step-line" + (i < this.stepIndex ? " is-done" : "") });
+			if (i < visible.length - 1) {
+				this.stepsEl.createDiv({ cls: "fp-wizard-step-line" + (i < activeVisibleIdx ? " is-done" : "") });
 			}
 		});
 	}
@@ -79,7 +138,7 @@ export class WizardModal extends Modal {
 		this.renderStepsIndicator();
 		this.bodyEl.empty();
 		const step = this.steps[this.stepIndex];
-		await step.render(this.bodyEl);
+		await step.render(this.bodyEl, this.api);
 		this.renderFooter();
 	}
 
@@ -88,7 +147,12 @@ export class WizardModal extends Modal {
 		const left = this.footerEl.createDiv({ cls: "fp-wizard-footer-left" });
 		const right = this.footerEl.createDiv({ cls: "fp-wizard-footer-right" });
 
-		if (this.stepIndex > 0) {
+		const step = this.steps[this.stepIndex];
+		const isLast = this.stepIndex === this.steps.length - 1;
+
+		if (step.hideBack) {
+			// nothing on the left — this step has already committed something
+		} else if (this.stepIndex > 0) {
 			const back = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Back" });
 			back.addEventListener("click", () => {
 				this.stepIndex--;
@@ -99,9 +163,6 @@ export class WizardModal extends Modal {
 			cancel.addEventListener("click", () => this.close());
 		}
 
-		const step = this.steps[this.stepIndex];
-		const isLast = this.stepIndex === this.steps.length - 1;
-
 		if (step.skippable) {
 			const skip = right.createEl("button", { cls: "fp-btn fp-btn-ghost", text: step.skipLabel ?? "Skip" });
 			skip.addEventListener("click", async () => {
@@ -110,8 +171,10 @@ export class WizardModal extends Modal {
 			});
 		}
 
+		if (step.hideNext) return;
+
 		const next = right.createEl("button", {
-			cls: "fp-btn fp-btn-primary",
+			cls: "fp-btn fp-btn--primary fp-btn-primary",
 			text: step.nextLabel ?? (isLast ? "Finish" : "Next"),
 		});
 		next.addEventListener("click", async () => {

@@ -1,13 +1,15 @@
 import { ItemView, Menu, Platform, WorkspaceLeaf } from "obsidian";
 import { ACCOUNT_TYPE_META, VIEW_TYPE_FINANCE } from "../constants";
+import { netWorth } from "../kpi";
 import type FinancePlugin from "../main";
 import { CreateAccountModal } from "../modals/CreateAccountModal";
 import { ManageAccountsModal } from "../modals/ManageAccountsModal";
 import { ManagePortfoliosModal } from "../modals/ManagePortfoliosModal";
 import type { Account } from "../types";
 import { icon } from "../ui/dom";
-import { openCardWizard } from "../wizards/CardWizard";
+import { formatEUR } from "../ui/metricsTable";
 import { openCreatePortfolioWizard } from "../wizards/PortfolioWizard";
+import { renderSetupView, shouldShowSetup } from "./SetupView";
 import { renderAccountPage } from "./sections/AccountPage";
 import { renderBudgetsSection } from "./sections/BudgetsSection";
 import { renderCardsSection } from "./sections/CardsSection";
@@ -33,12 +35,20 @@ function possessive(name: string): string {
 }
 
 /**
- * Account-centric workspace: the sidebar lists "All Accounts" plus every account you have (instead
+ * Account-centric workspace: the rail lists "All Accounts" plus every account you have (instead
  * of generic Dashboard/Ledger/... tabs), and picking one shows that account's own dashboard and
  * ledger together on a single page.
+ *
+ * The rail is deliberately zoned — brand, primary tabs, accounts (with balances), utility footer —
+ * so the four different *kinds* of thing in it stop sharing one visual treatment. Its width is
+ * driven by container queries on `.fp-shell`, not by `Platform.isMobile`: the same view is
+ * full-screen and docked at 340px within one session.
  */
 export class FinanceView extends ItemView {
-	private navItemsEl!: HTMLElement;
+	private railEl!: HTMLElement;
+	private tabsEl!: HTMLElement;
+	private accountsEl!: HTMLElement;
+	private footerEl!: HTMLElement;
 	private bodyEl!: HTMLElement;
 	private brandEl!: HTMLElement;
 	private brandTitleEl!: HTMLElement;
@@ -60,56 +70,64 @@ export class FinanceView extends ItemView {
 	async onOpen(): Promise<void> {
 		const root = this.contentEl;
 		root.empty();
+		// `.fp-root` is the token root; `.fp-workspace` is kept as an alias while modals and
+		// sections migrate onto it.
 		root.addClass("fp-workspace");
+		root.addClass("fp-root");
 		this.applyPrivacyClass();
-		this.applyMobileClass();
+		this.applyNarrowOverride();
 
 		const shell = root.createDiv({ cls: "fp-shell" });
-		const nav = shell.createDiv({ cls: "fp-nav" });
-		this.bodyEl = shell.createDiv({ cls: "fp-content" });
+		this.railEl = shell.createDiv({ cls: "fp-rail fp-nav" });
+		const content = shell.createDiv({ cls: "fp-content" });
+		this.bodyEl = content.createDiv({ cls: "fp-content-inner" });
 
-		this.brandEl = nav.createDiv({ cls: "fp-nav-brand fp-nav-brand-switcher" });
+		const brandZone = this.railEl.createDiv({ cls: "fp-rail-brand" });
+		this.brandEl = brandZone.createEl("button", {
+			cls: "fp-nav-brand fp-nav-brand-switcher",
+			attr: { type: "button", "aria-haspopup": "menu", "aria-label": "Switch portfolio" },
+		});
 		icon(this.brandEl, "wallet", "fp-nav-brand-icon");
 		const brandText = this.brandEl.createDiv({ cls: "fp-nav-brand-text" });
 		this.brandTitleEl = brandText.createDiv({ cls: "fp-nav-brand-title" });
 		this.brandEl.addEventListener("click", () => this.openPortfolioMenu());
 		this.renderBrandTitle();
 
-		this.navItemsEl = nav.createDiv({ cls: "fp-nav-items" });
+		const railBody = this.railEl.createDiv({ cls: "fp-rail-body" });
+		this.tabsEl = railBody.createDiv({
+			cls: "fp-rail-tabs fp-nav-items",
+			attr: { role: "tablist", "aria-orientation": "vertical", "aria-label": "Finance sections" },
+		});
+		this.accountsEl = railBody.createDiv({ cls: "fp-rail-section" });
+		this.footerEl = this.railEl.createDiv({ cls: "fp-rail-footer" });
+
 		this.renderNav();
 		this.renderBody();
-		this.maybeShowCardsIntro();
-	}
-
-	/** Auto-prompts once, ever, across every portfolio, and only when the user truly has zero cards. Marked
-	 *  seen the moment the wizard is opened (not from onSkip/onSaved) so dismissing it any other way —
-	 *  Escape, backdrop click — also counts and it never nags again. */
-	private maybeShowCardsIntro(): void {
-		if (this.plugin.settings.cardsIntroShown) return;
-		if (this.plugin.store.accounts.length === 0) return;
-		if (this.plugin.store.cards.length > 0) return;
-		this.plugin.settings.cardsIntroShown = true;
-		void this.plugin.saveSettings();
-		openCardWizard(this.plugin, {
-			skippable: true,
-			skipLabel: "Skip for now",
-			onSaved: () => this.refresh(),
-		});
+		// The cards intro used to auto-open here. Nothing should open a *card* wizard before the user
+		// has seen their own numbers — cards are cosmetic and, on a fresh install, there are no
+		// transactions to put on one. It lives on the Cards tab as a dismissible prompt instead.
 	}
 
 	refresh(): void {
-		this.applyMobileClass();
+		this.applyNarrowOverride();
+		// Privacy is global page state that outlives the view, so re-assert it on every refresh
+		// rather than only in onOpen().
+		this.applyPrivacyClass();
 		this.renderBrandTitle();
 		this.renderNav();
 		this.renderBody();
 	}
 
-	/** "auto" (default) follows Obsidian's own Platform.isMobile; the setting can force it on/off regardless of device,
-	 *  e.g. to preview the layout on desktop. Applied to the view root so styles.css can scope rules under `.fp-mobile`. */
-	private applyMobileClass(): void {
+	/**
+	 * Layout is container-driven now (`@container fp-shell`), so this only handles the *manual*
+	 * override: "on" forces the narrow branch at any width (useful to preview it on desktop), "off"
+	 * never forces it, "auto" keeps the historical behaviour of following `Platform.isMobile` —
+	 * a phone's WebView reports a wide container in landscape but still wants the stacked layout.
+	 */
+	private applyNarrowOverride(): void {
 		const mode = this.plugin.settings.mobileLayout ?? "auto";
-		const isMobile = mode === "on" || (mode !== "off" && Platform.isMobile);
-		this.contentEl.toggleClass("fp-mobile", isMobile);
+		const force = mode === "on" || (mode !== "off" && Platform.isMobile);
+		this.contentEl.toggleClass("fp-force-narrow", force);
 	}
 
 	private renderBrandTitle(): void {
@@ -213,16 +231,45 @@ export class FinanceView extends ItemView {
 		});
 	}
 
-	private renderDraggableTab(def: NavTabDef): void {
-		const item = this.navItemsEl.createDiv({
+	/** The tail slot holds the balance and the drag grip in the same place — the grip fades in over
+	 *  the balance on hover, so the rail is not permanently cluttered with six grip icons. */
+	private navTail(item: HTMLElement, draggable: boolean, balance?: string): void {
+		const tail = item.createDiv({ cls: "fp-nav-tail" });
+		if (balance !== undefined) tail.createSpan({ cls: "fp-nav-balance fp-money", text: balance });
+		if (draggable) icon(tail, "grip-vertical", "fp-nav-drag-handle");
+	}
+
+	/** Roving tabindex across the primary tabs: one stop in the tab order, arrows move within it. */
+	private wireRovingTabs(buttons: HTMLElement[]): void {
+		buttons.forEach((btn, i) => {
+			btn.addEventListener("keydown", (ev: KeyboardEvent) => {
+				const next = ev.key === "ArrowDown" ? i + 1 : ev.key === "ArrowUp" ? i - 1 : -1;
+				if (next < 0 || next >= buttons.length) return;
+				ev.preventDefault();
+				buttons[next].focus();
+			});
+		});
+	}
+
+	private renderDraggableTab(def: NavTabDef, focusable: boolean): HTMLElement {
+		const item = this.tabsEl.createEl("button", {
 			cls: "fp-nav-item fp-nav-item-draggable" + (def.isActive ? " is-active" : ""),
-			attr: { draggable: "true" },
+			attr: {
+				type: "button",
+				role: "tab",
+				draggable: "true",
+				"aria-selected": String(def.isActive),
+				tabindex: focusable ? "0" : "-1",
+				// The label is hidden in the collapsed (icon) rail, so it has to survive as a tooltip.
+				title: def.label,
+			},
 		});
 		icon(item, def.icon, "fp-nav-icon");
 		item.createSpan({ cls: "fp-nav-label", text: def.label });
-		icon(item, "grip-vertical", "fp-nav-drag-handle");
+		this.navTail(item, true);
 		item.addEventListener("click", () => def.onClick());
 		this.wireDrag(item, def.id, (draggedId, targetId) => void this.reorderNavTabs(draggedId, targetId));
+		return item;
 	}
 
 	/** Saved order, filtered to accounts that still exist in this portfolio, then any new/unordered accounts appended by type. */
@@ -247,7 +294,10 @@ export class FinanceView extends ItemView {
 	}
 
 	private renderNav(): void {
-		this.navItemsEl.empty();
+		this.tabsEl.empty();
+		this.accountsEl.empty();
+		this.footerEl.empty();
+
 		const activeAccountId = this.plugin.settings.activeAccountId;
 		const activeView = this.plugin.settings.activeView;
 
@@ -281,56 +331,101 @@ export class FinanceView extends ItemView {
 				onClick: () => void this.selectView("cards"),
 			},
 		};
-		this.navTabOrder().forEach((id) => this.renderDraggableTab(tabDefs[id]));
+		const order = this.navTabOrder();
+		const activeIdx = Math.max(0, order.findIndex((id) => tabDefs[id].isActive));
+		const tabButtons = order.map((id, i) => this.renderDraggableTab(tabDefs[id], i === activeIdx));
+		this.wireRovingTabs(tabButtons);
 
-		const privacyOn = !!this.plugin.settings.privacyMode;
-		const privacyItem = this.navItemsEl.createDiv({ cls: "fp-nav-item fp-nav-item-ghost" + (privacyOn ? " is-privacy-on" : "") });
-		icon(privacyItem, privacyOn ? "eye-off" : "eye", "fp-nav-icon");
-		privacyItem.createSpan({ cls: "fp-nav-label", text: privacyOn ? "Amounts hidden" : "Hide amounts" });
-		privacyItem.setAttribute("title", "Blur every amount — hover one to peek. Useful when demoing the plugin.");
-		privacyItem.addEventListener("click", () => void this.togglePrivacy());
+		this.renderAccountsSection(activeAccountId, activeView);
+		this.renderUtilityFooter();
+	}
 
+	private renderAccountsSection(activeAccountId: string | undefined, activeView: string | undefined): void {
 		const accountById = new Map(this.plugin.store.accounts.map((a) => [a.id, a]));
 		const accounts = this.accountOrder()
 			.map((id) => accountById.get(id))
 			.filter((a): a is Account => !!a);
+
 		if (accounts.length > 0) {
-			this.navItemsEl.createDiv({ cls: "fp-nav-section-label", text: "Accounts" });
+			// Balances in the rail: the single most useful thing a finance sidebar can show, and the
+			// group total answers "what am I worth" without leaving whatever page you are on.
+			const total = accounts.reduce((sum, a) => sum + netWorth(this.plugin.store, a.id), 0);
+			const head = this.accountsEl.createDiv({ cls: "fp-rail-section-head" });
+			head.createSpan({ cls: "fp-overline fp-nav-section-label", text: "Accounts" });
+			head.createSpan({ cls: "fp-rail-section-total fp-money", text: formatEUR(total) });
 		}
+
 		accounts.forEach((acc) => {
-			const item = this.navItemsEl.createDiv({
-				cls: "fp-nav-item fp-nav-item-draggable" + (!activeView && activeAccountId === acc.id ? " is-active" : ""),
-				attr: { draggable: "true" },
+			const isActive = !activeView && activeAccountId === acc.id;
+			const item = this.accountsEl.createEl("button", {
+				cls: "fp-nav-item fp-rail-account fp-nav-item-draggable" + (isActive ? " is-active" : ""),
+				attr: {
+					type: "button",
+					draggable: "true",
+					"aria-current": isActive ? "page" : "false",
+					// Icons cannot distinguish "Revolut Main" from "Revolut Savings" — both are a
+					// landmark — so the collapsed rail leans on the tooltip.
+					title: `${acc.name} · ${ACCOUNT_TYPE_META[acc.type].label}`,
+				},
 			});
 			icon(item, ACCOUNT_TYPE_META[acc.type].icon, "fp-nav-icon");
 			const textCol = item.createDiv({ cls: "fp-nav-item-text" });
 			textCol.createDiv({ cls: "fp-nav-label", text: acc.name });
 			textCol.createDiv({ cls: "fp-nav-item-type", text: ACCOUNT_TYPE_META[acc.type].label });
-			icon(item, "grip-vertical", "fp-nav-drag-handle");
+			this.navTail(item, true, formatEUR(netWorth(this.plugin.store, acc.id)));
 			item.addEventListener("click", () => void this.selectAccount(acc.id));
 			this.wireDrag(item, acc.id, (draggedId, targetId) => void this.reorderAccounts(draggedId, targetId));
 		});
 
-		const addItem = this.navItemsEl.createDiv({ cls: "fp-nav-item fp-nav-item-ghost" });
+		const addItem = this.accountsEl.createEl("button", {
+			cls: "fp-nav-item fp-nav-item-ghost",
+			attr: { type: "button" },
+		});
 		icon(addItem, "plus", "fp-nav-icon");
 		addItem.createSpan({ cls: "fp-nav-label", text: "Add account" });
 		addItem.addEventListener("click", () => {
 			new CreateAccountModal(this.app, this.plugin, (account) => void this.selectAccount(account.id)).open();
 		});
+	}
 
-		const manageItem = this.navItemsEl.createDiv({ cls: "fp-nav-item fp-nav-item-ghost" });
+	/** Utility footer — the two *controls* that were previously rendered as nav items sitting between
+	 *  the tabs and the accounts, which made them read as destinations. */
+	private renderUtilityFooter(): void {
+		const manageItem = this.footerEl.createEl("button", {
+			cls: "fp-nav-util",
+			attr: { type: "button", title: "Manage accounts…", "aria-label": "Manage accounts" },
+		});
 		icon(manageItem, "settings", "fp-nav-icon");
-		manageItem.createSpan({ cls: "fp-nav-label", text: "Manage accounts…" });
+		manageItem.createSpan({ cls: "fp-nav-label", text: "Manage" });
 		manageItem.addEventListener("click", () => {
 			new ManageAccountsModal(this.app, this.plugin, () => {
 				this.renderNav();
 				this.renderBody();
 			}).open();
 		});
+
+		const privacyOn = !!this.plugin.settings.privacyMode;
+		const privacyItem = this.footerEl.createEl("button", {
+			cls: "fp-nav-util" + (privacyOn ? " is-privacy-on" : ""),
+			attr: {
+				type: "button",
+				"aria-pressed": String(privacyOn),
+				title: "Redact every amount — hover one to peek. Useful when demoing the plugin.",
+			},
+		});
+		icon(privacyItem, privacyOn ? "eye-off" : "eye", "fp-nav-icon");
+		privacyItem.createSpan({ cls: "fp-nav-label", text: privacyOn ? "Amounts hidden" : "Hide amounts" });
+		privacyItem.addEventListener("click", () => void this.togglePrivacy());
 	}
 
 	private renderBody(): void {
 		this.bodyEl.empty();
+		// First run owns the whole body: a fresh install with no accounts has nothing to show on any
+		// tab, and the old empty state was a dead end that told you to go hunt in the sidebar.
+		if (shouldShowSetup(this.plugin)) {
+			renderSetupView(this.bodyEl, this.plugin, () => this.refresh());
+			return;
+		}
 		if (this.plugin.settings.activeView === "budgets") {
 			renderBudgetsSection(this.bodyEl, this.plugin);
 		} else if (this.plugin.settings.activeView === "subscriptions") {

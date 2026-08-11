@@ -66,16 +66,32 @@ export function renderCardVisual(parent: HTMLElement, card: CardVisualData, cls?
 	}
 	renderNetworkMark(bottom, card.network);
 
+	// The tilt is the one deliberate transform-lift in the app, so it gets the two guards the old
+	// implementation lacked: it is skipped entirely when the user asks for reduced motion, and the
+	// writes are batched into a frame instead of one style recalc per mousemove event.
+	const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+	let raf = 0;
+	let pending: { x: number; y: number } | undefined;
+
 	face.addEventListener("mousemove", (ev: MouseEvent) => {
+		if (reduceMotion.matches) return;
 		const rect = face.getBoundingClientRect();
-		const x = (ev.clientX - rect.left) / rect.width;
-		const y = (ev.clientY - rect.top) / rect.height;
-		const rotateY = (x - 0.5) * 14;
-		const rotateX = (0.5 - y) * 10;
-		face.style.transform = `perspective(700px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
-		shine.style.background = `radial-gradient(circle at ${x * 100}% ${y * 100}%, rgba(255,255,255,0.35), transparent 55%)`;
+		pending = { x: (ev.clientX - rect.left) / rect.width, y: (ev.clientY - rect.top) / rect.height };
+		if (raf) return;
+		raf = requestAnimationFrame(() => {
+			raf = 0;
+			if (!pending) return;
+			const { x, y } = pending;
+			const rotateY = (x - 0.5) * 14;
+			const rotateX = (0.5 - y) * 10;
+			face.style.transform = `perspective(700px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+			shine.style.background = `radial-gradient(circle at ${x * 100}% ${y * 100}%, rgba(255,255,255,0.35), transparent 55%)`;
+		});
 	});
 	face.addEventListener("mouseleave", () => {
+		if (raf) cancelAnimationFrame(raf);
+		raf = 0;
+		pending = undefined;
 		face.style.transform = "";
 		shine.style.background = "";
 	});

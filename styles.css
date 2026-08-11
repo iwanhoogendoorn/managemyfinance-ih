@@ -1,84 +1,454 @@
-/* Finance plugin design system.
-   Built on Obsidian's own CSS variables so it adapts to light/dark and any theme's accent,
-   with a small set of semantic tone colors (good/warn/bad) layered on top for financial status. */
+/* ==========================================================================
+   Finance plugin — design system
+   --------------------------------------------------------------------------
+   Layer order (do not reorder; later layers assume earlier ones):
 
+     L0  Tokens                — the only place raw values are allowed
+     L1  Global behaviours     — focus, motion, forced colors, privacy, rhythm
+     L2  Primitives            — button, icon, badge, chip, avatar, input, empty
+     L3  Components            — card, stat, delta, meter, row, table, filterbar
+     L4  Charts                — SVG chrome + div-based bars
+     L5  App shell             — rail, content, page head, tabs
+     L6  Sections              — ledger, wizard/import, modals, subs, cards, budgets
+     L7  Responsive            — @container fp-shell + the manual narrow override
+     L8  LEGACY                — aliases keeping un-migrated sections rendering
+
+   Principles: Obsidian's theme owns the canvas, we own the components. One
+   card, one stat, one table — variants are modifiers. Quiet chrome, loud data.
+   Container queries, not device queries. Color is earned.
+   ========================================================================== */
+
+/* ==========================================================================
+   L0 — TOKENS
+   L1 primitives (theme-invariant) · L2 semantic roles (mapped onto Obsidian)
+   · L3 dark re-steps (only what must change)
+
+   `.fp-root` is the token root. `.fp-workspace` is kept as an alias while the
+   view migrates, and `.fp-wizard-modal` is on every modal root in the plugin —
+   modals mount outside the view subtree, so they need their own copy.
+   ========================================================================== */
+
+.fp-root,
 .fp-workspace,
 .fp-wizard-modal {
-	--fp-good: #22c55e;
-	--fp-good-bg: rgba(34, 197, 94, 0.12);
-	--fp-warn: #f59e0b;
-	--fp-warn-bg: rgba(245, 158, 11, 0.12);
-	--fp-bad: #ef4444;
-	--fp-bad-bg: rgba(239, 68, 68, 0.12);
-	--fp-neutral: var(--interactive-accent);
-	--fp-neutral-bg: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
-	--fp-radius-sm: 4px;
-	--fp-radius-md: 6px;
-	--fp-radius-lg: 8px;
-	--fp-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.06);
+	/* ---------- Space — 4px base. These are the only legal values. ---------- */
+	--fp-space-1: 4px;
+	--fp-space-2: 8px;
+	--fp-space-3: 12px;
+	--fp-space-4: 16px;
+	--fp-space-5: 20px;
+	--fp-space-6: 24px;
+	--fp-space-8: 32px;
+	--fp-space-10: 40px;
+	--fp-space-12: 48px;
+	--fp-space-16: 64px;
+
+	/* Composed rhythm — use these, not raw space values, for layout. */
+	--fp-gutter: var(--fp-space-6);
+	--fp-card-pad: var(--fp-space-5);
+	--fp-card-pad-tight: var(--fp-space-4);
+	--fp-grid-gap: var(--fp-space-4);
+	--fp-stack: var(--fp-space-6);
+
+	/* ---------- Radius ---------- */
+	--fp-radius-xs: 4px; /* chips, inputs, bar data-ends */
+	--fp-radius-sm: 6px; /* buttons, small controls */
+	--fp-radius-md: 10px; /* cards, tiles, panels */
+	--fp-radius-lg: 14px; /* modals, hero surfaces */
+	--fp-radius-pill: 999px;
+
+	/* ---------- Type ---------- */
+	--fp-font: var(--font-interface);
+	--fp-font-mono: var(--font-monospace);
+
+	--fp-fs-micro: 10px; /* chart axis ticks only */
+	--fp-fs-overline: 11px; /* the ONE uppercase style */
+	--fp-fs-xs: 12px; /* meta, table header, secondary */
+	--fp-fs-sm: 13px; /* table body, dense UI */
+	--fp-fs-md: 14px; /* body, nav, controls */
+	--fp-fs-lg: 16px; /* card titles */
+	--fp-fs-xl: 20px; /* section titles */
+	--fp-fs-2xl: 26px; /* KPI value */
+	--fp-fs-3xl: 38px; /* hero figure — exactly one per view */
+
+	--fp-fw-regular: 400;
+	--fp-fw-medium: 500;
+	--fp-fw-semibold: 600;
+	--fp-fw-bold: 700; /* rare: hero + emphasized table rows only */
+
+	--fp-lh-tight: 1.15;
+	--fp-lh-snug: 1.35;
+	--fp-lh-body: 1.5;
+
+	--fp-ls-display: -0.015em; /* big numbers only */
+	--fp-ls-overline: 0.06em; /* the ONE letterspaced style */
+
+	/* ---------- Surfaces & lines (derived from the active theme) ----------
+	   Light: cards share the page surface, separated by hairline + shadow.
+	   Dark (L3): shadows don't read, so cards lift by lightness. */
+	--fp-bg-app: var(--background-primary);
+	--fp-bg-rail: var(--background-secondary);
+	--fp-bg-card: var(--background-primary);
+	--fp-bg-card-hover: var(--background-modifier-hover);
+	--fp-bg-inset: color-mix(in srgb, var(--text-normal) 4%, var(--background-primary));
+	--fp-bg-track: color-mix(in srgb, var(--text-normal) 9%, transparent);
+
+	/* Never use --background-modifier-border-focus as a divider: it is the accent. */
+	--fp-line: color-mix(in srgb, var(--text-normal) 11%, transparent);
+	--fp-line-strong: color-mix(in srgb, var(--text-normal) 20%, transparent);
+	--fp-line-hairline: color-mix(in srgb, var(--text-normal) 7%, transparent);
+
+	/* ---------- Ink ---------- */
+	--fp-ink: var(--text-normal);
+	--fp-ink-secondary: var(--text-muted);
+	--fp-ink-muted: var(--text-faint);
+	--fp-ink-on-fill: var(--text-on-accent);
+
+	/* ---------- Accent (identity, never status) ---------- */
+	--fp-accent: var(--interactive-accent); /* fills only */
+	--fp-accent-hover: var(--interactive-accent-hover);
+	--fp-accent-ink: var(--text-accent); /* accent as TEXT — theme-safe */
+	--fp-accent-wash: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	--fp-accent-wash-strong: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+
+	/* ---------- Semantic status — split ink (text) from fill (marks) ----------
+	   Measured vs #ffffff: pos-ink 4.44:1 · neg-ink 5.69:1 · warn-ink 4.68:1
+	   Fills vs #ffffff:    pos-fill 3.37:1 · neg-fill 4.80:1 · warn-fill 3.53:1
+	   The old --fp-good/#22c55e measured 2.28:1 as light-mode text.
+	   Status color NEVER carries meaning alone — always paired with an icon or a word. */
+	--fp-pos-ink: #0f8a3e;
+	--fp-pos-fill: #12a150;
+	--fp-pos-wash: color-mix(in srgb, var(--fp-pos-fill) 12%, transparent);
+
+	--fp-neg-ink: #c22c2c;
+	--fp-neg-fill: #d03b3b;
+	--fp-neg-wash: color-mix(in srgb, var(--fp-neg-fill) 12%, transparent);
+
+	--fp-warn-ink: #a86400;
+	--fp-warn-fill: #bd7a00;
+	--fp-warn-wash: color-mix(in srgb, var(--fp-warn-fill) 14%, transparent);
+
+	/* ---------- Chart chrome — derived, so it adapts to ANY theme ---------- */
+	--fp-chart-grid: color-mix(in srgb, var(--text-normal) 9%, transparent);
+	--fp-chart-baseline: color-mix(in srgb, var(--text-normal) 22%, transparent);
+	--fp-chart-axis-ink: var(--text-faint);
+	--fp-chart-surface: var(--fp-bg-card); /* the color of gaps and rings */
+
+	/* ---------- Categorical palette — 8 fixed slots, assigned in order ----------
+	   Validated on the Obsidian light surface (#ffffff):
+	   lightness band PASS · chroma floor PASS · adjacent CVD ΔE 9.1 PASS
+	   · adjacent normal-vision ΔE 19.6 PASS · contrast WARN on slots 3/4/5
+	   (relief rule: those series always carry a direct label or the table view). */
+	--fp-cat-1: #2a78d6; /* blue */
+	--fp-cat-2: #eb6834; /* orange */
+	--fp-cat-3: #1baf7a; /* aqua */
+	--fp-cat-4: #eda100; /* yellow */
+	--fp-cat-5: #e87ba4; /* magenta */
+	--fp-cat-6: #008300; /* green */
+	--fp-cat-7: #4a3aa7; /* violet */
+	--fp-cat-8: #e34948; /* red */
+
+	/* Fixed financial series roles — stable across every chart in the app. */
+	--fp-series-income: var(--fp-cat-6);
+	--fp-series-expenses: var(--fp-cat-8);
+	--fp-series-net: var(--fp-cat-1);
+	--fp-series-worth: var(--fp-cat-7);
+	--fp-series-passive: var(--fp-cat-3);
+
+	/* ---------- Elevation ---------- */
+	--fp-elev-0: none;
+	--fp-elev-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.05);
+	--fp-elev-2: 0 2px 4px rgba(0, 0, 0, 0.05), 0 6px 16px rgba(0, 0, 0, 0.07);
+	--fp-elev-3: 0 8px 20px rgba(0, 0, 0, 0.1), 0 20px 48px rgba(0, 0, 0, 0.12);
+
+	/* ---------- Motion ---------- */
+	--fp-dur-1: 90ms; /* color/opacity only */
+	--fp-dur-2: 150ms; /* the default */
+	--fp-dur-3: 240ms; /* size/position, panels */
+	--fp-ease: cubic-bezier(0.2, 0, 0.2, 1);
+	--fp-ease-out: cubic-bezier(0, 0, 0.2, 1);
+	--fp-ease-spring: cubic-bezier(0.2, 0.8, 0.3, 1);
+
+	/* ---------- Focus ---------- */
+	--fp-focus-ring: 0 0 0 2px var(--fp-bg-app), 0 0 0 4px var(--fp-accent);
+
+	/* ---------- Layout ---------- */
+	--fp-rail-w: 232px;
+	--fp-rail-w-collapsed: 56px;
+	--fp-content-max: 1280px;
+
+	/* ---------- LEGACY aliases — remove in wave 3/4 ----------
+	   Un-migrated sections and JS call sites still reference these names
+	   (e.g. `sparklineColor: "var(--fp-chart-income)"`). Mapped onto the new
+	   tokens so they inherit the corrected contrast rather than the old hex. */
+	--fp-good: var(--fp-pos-ink);
+	--fp-good-bg: var(--fp-pos-wash);
+	--fp-warn: var(--fp-warn-ink);
+	--fp-warn-bg: var(--fp-warn-wash);
+	--fp-bad: var(--fp-neg-ink);
+	--fp-bad-bg: var(--fp-neg-wash);
+	--fp-neutral: var(--fp-accent-ink);
+	--fp-neutral-bg: var(--fp-accent-wash);
+	--fp-shadow: var(--fp-elev-1);
+	--fp-chart-income: var(--fp-series-income);
+	--fp-chart-expenses: var(--fp-series-expenses);
+	--fp-chart-net: var(--fp-series-net);
+	--fp-chart-axis-text: var(--fp-chart-axis-ink);
+
+	font-family: var(--fp-font);
+	color: var(--fp-ink);
 }
 
-/* ---------- Buttons ---------- */
+/* ==========================================================================
+   L0b — dark re-steps. Only what must change.
+   ========================================================================== */
+
+.theme-dark .fp-root,
+.theme-dark .fp-workspace,
+.theme-dark .fp-wizard-modal {
+	/* Cards lift by lightness, not by shadow. */
+	--fp-bg-card: color-mix(in srgb, var(--background-primary) 93%, #ffffff);
+	--fp-bg-inset: color-mix(in srgb, var(--background-primary) 96%, #000000);
+	--fp-bg-track: color-mix(in srgb, var(--text-normal) 12%, transparent);
+
+	--fp-line: color-mix(in srgb, var(--text-normal) 14%, transparent);
+	--fp-line-strong: color-mix(in srgb, var(--text-normal) 24%, transparent);
+
+	/* Measured vs #1e1e1e: pos-ink 8.22:1 · neg-ink 5.76:1 · warn-ink 7.41:1 */
+	--fp-pos-ink: #3ecf6e;
+	--fp-pos-fill: #2fb862;
+	--fp-neg-ink: #f07070;
+	--fp-neg-fill: #e05c5c;
+	--fp-warn-ink: #e0a13a;
+	--fp-warn-fill: #d99424;
+
+	/* Validated on the Obsidian dark surface (#1e1e1e): all six checks PASS
+	   (adjacent CVD ΔE 8.4 · normal-vision ΔE 19.3 · contrast all ≥ 3:1). */
+	--fp-cat-1: #3987e5;
+	--fp-cat-2: #d95926;
+	--fp-cat-3: #199e70;
+	--fp-cat-4: #c98500;
+	--fp-cat-5: #d55181;
+	--fp-cat-6: #008300;
+	--fp-cat-7: #9085e9;
+	--fp-cat-8: #e66767;
+
+	--fp-chart-grid: color-mix(in srgb, var(--text-normal) 11%, transparent);
+	--fp-chart-baseline: color-mix(in srgb, var(--text-normal) 26%, transparent);
+
+	--fp-elev-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+	--fp-elev-2: 0 2px 6px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.35);
+	--fp-elev-3: 0 10px 30px rgba(0, 0, 0, 0.6), 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+/* ==========================================================================
+   L1 — GLOBAL BEHAVIOURS
+   ========================================================================== */
+
+.fp-root *:focus-visible,
+.fp-workspace *:focus-visible,
+.fp-wizard-modal *:focus-visible {
+	outline: none;
+	box-shadow: var(--fp-focus-ring);
+	border-radius: var(--fp-radius-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fp-root *,
+	.fp-workspace *,
+	.fp-wizard-modal * {
+		transition-duration: 1ms !important;
+		animation-duration: 1ms !important;
+	}
+	.fp-root .fp-card-visual,
+	.fp-workspace .fp-card-visual,
+	.fp-wizard-modal .fp-card-visual {
+		transform: none !important;
+	}
+}
+
+@media (forced-colors: active) {
+	.fp-root .fp-card,
+	.fp-root .fp-stat {
+		border: 1px solid CanvasText;
+	}
+	.fp-root .fp-chart-line {
+		stroke: CanvasText;
+	}
+}
+
+/* The ONE vertical rhythm rule for migrated layouts. */
+.fp-stack > * + * {
+	margin-top: var(--fp-stack);
+}
+
+/* The ONE uppercase style in the app — card eyebrows and section labels, nothing else.
+   Table headers, stat labels and nav dividers are all sentence case now. */
+.fp-overline {
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-semibold);
+	text-transform: uppercase;
+	letter-spacing: var(--fp-ls-overline);
+	color: var(--fp-ink-muted);
+	line-height: var(--fp-lh-snug);
+}
+
+/* ---------- Privacy mode ----------
+   Redaction, not blur: `filter: blur()` leaks word shape and length (a blurred
+   "€1,204,388" is visibly longer than "€42") and reads as a rendering bug. */
+
+.fp-money {
+	transition: color var(--fp-dur-1) var(--fp-ease), background-color var(--fp-dur-1) var(--fp-ease);
+	border-radius: 3px;
+}
+.fp-privacy .fp-money {
+	color: transparent;
+	background: var(--fp-bg-track);
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
+	user-select: none;
+	cursor: default;
+}
+.fp-privacy .fp-money:hover {
+	color: inherit;
+	background: transparent;
+}
+/* Table cells can't shrink-wrap their text, so a full-cell block would read as a filled
+   column. Paint a right-aligned bar instead — same redaction, correct proportions. */
+.fp-privacy td.fp-money,
+.fp-privacy th.fp-money {
+	background: none;
+	background-image: linear-gradient(var(--fp-bg-track), var(--fp-bg-track));
+	background-repeat: no-repeat;
+	background-size: 60% 1.15em;
+	background-position: right center;
+}
+.fp-privacy td.fp-money:hover,
+.fp-privacy th.fp-money:hover {
+	background-image: none;
+}
+/* Microbars encode magnitude, so they hide with the numbers they annotate. */
+.fp-privacy .fp-microbar {
+	opacity: 0;
+}
+/* SVG text can't take a background box, so chart labels keep the blur. */
+.fp-privacy .fp-chart-money text,
+.fp-privacy .fp-chart-money .fp-chart-tooltip-value {
+	filter: blur(5px);
+	transition: filter var(--fp-dur-1) var(--fp-ease);
+}
+.fp-privacy .fp-chart-money:hover text,
+.fp-privacy .fp-chart-money:hover .fp-chart-tooltip-value {
+	filter: none;
+}
+
+.fp-sensitive {
+	transition: filter var(--fp-dur-1) var(--fp-ease);
+}
+.fp-privacy .fp-sensitive {
+	filter: blur(5px);
+	user-select: none;
+	cursor: default;
+}
+.fp-privacy .fp-sensitive:hover {
+	filter: none;
+}
+
+/* ==========================================================================
+   L2 — PRIMITIVES
+   ========================================================================== */
+
+/* ---------- Buttons ----------
+   The global `translateY(-1px)` hover lift and the accent glow are gone: the lift
+   jittered 28px icon buttons, and the glow fights Obsidian's flat chrome. */
 
 .fp-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
-	padding: 6px 14px;
-	border-radius: var(--fp-radius-sm);
-	font-size: var(--font-ui-small);
-	font-weight: 600;
-	cursor: pointer;
+	justify-content: center;
+	gap: var(--fp-space-2);
+	height: 30px;
+	padding: 0 var(--fp-space-3);
 	border: 1px solid transparent;
-	transition: transform 0.08s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+	border-radius: var(--fp-radius-sm);
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-medium);
+	font-family: inherit;
+	cursor: pointer;
+	white-space: nowrap;
+	box-shadow: none;
+	transition: background-color var(--fp-dur-1) var(--fp-ease), border-color var(--fp-dur-1) var(--fp-ease),
+		color var(--fp-dur-1) var(--fp-ease);
 }
-.fp-btn:hover {
-	transform: translateY(-1px);
-}
-.fp-btn:active {
-	transform: translateY(0);
-}
+.fp-btn--primary,
 .fp-btn-primary {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	box-shadow: 0 2px 8px color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	background: var(--fp-accent);
+	color: var(--fp-ink-on-fill);
 }
+.fp-btn--primary:hover,
 .fp-btn-primary:hover {
-	background: var(--interactive-accent-hover);
+	background: var(--fp-accent-hover);
 }
+.fp-btn--secondary,
 .fp-btn-secondary {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-	border-color: var(--background-modifier-border);
+	background: var(--fp-bg-card);
+	color: var(--fp-ink);
+	border-color: var(--fp-line);
 }
+.fp-btn--secondary:hover,
+.fp-btn-secondary:hover {
+	background: var(--fp-bg-card-hover);
+	border-color: var(--fp-line-strong);
+}
+.fp-btn--ghost,
 .fp-btn-ghost {
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--fp-ink-secondary);
 }
+.fp-btn--ghost:hover,
 .fp-btn-ghost:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
+	background: var(--fp-bg-card-hover);
+	color: var(--fp-ink);
 }
+.fp-btn--danger,
 .fp-btn-danger {
-	background: var(--fp-bad);
-	color: var(--text-on-accent);
-	box-shadow: 0 2px 8px color-mix(in srgb, var(--fp-bad) 35%, transparent);
+	background: var(--fp-neg-fill);
+	color: #fff;
 }
+.fp-btn--danger:hover,
 .fp-btn-danger:hover {
-	background: color-mix(in srgb, var(--fp-bad) 85%, black);
+	background: color-mix(in srgb, var(--fp-neg-fill) 85%, black);
 }
+.fp-btn--chip,
 .fp-btn-chip {
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	border-color: var(--background-modifier-border);
-	border-radius: 999px;
-	padding: 5px 12px;
+	background: var(--fp-bg-inset);
+	color: var(--fp-ink);
+	border-color: var(--fp-line);
+	border-radius: var(--fp-radius-pill);
+	padding: 0 var(--fp-space-3);
 }
+.fp-btn--chip:hover,
 .fp-btn-chip:hover {
-	background: var(--background-modifier-hover);
+	background: var(--fp-bg-card-hover);
 }
+.fp-btn--icon,
 .fp-btn-icon {
-	padding: 4px 6px;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+}
+.fp-btn:active {
+	transform: none;
+}
+.fp-btn--primary:active,
+.fp-btn-primary:active,
+.fp-btn--secondary:active,
+.fp-btn-secondary:active {
+	filter: brightness(0.96);
+}
+.fp-btn[disabled] {
+	opacity: 0.45;
+	cursor: not-allowed;
 }
 
 /* ---------- Generic icon ---------- */
@@ -98,41 +468,41 @@
 .fp-badge {
 	display: inline-flex;
 	align-items: center;
-	padding: 2px 9px;
-	border-radius: 999px;
-	font-size: var(--font-ui-smaller);
-	font-weight: 600;
+	padding: 2px var(--fp-space-2);
+	border-radius: var(--fp-radius-pill);
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-medium);
 	white-space: nowrap;
 }
 .fp-tone-good.fp-badge,
 .fp-tone-good .fp-badge {
-	color: var(--fp-good);
-	background: var(--fp-good-bg);
+	color: var(--fp-pos-ink);
+	background: var(--fp-pos-wash);
 }
 .fp-tone-warn.fp-badge,
 .fp-tone-warn .fp-badge {
-	color: var(--fp-warn);
-	background: var(--fp-warn-bg);
+	color: var(--fp-warn-ink);
+	background: var(--fp-warn-wash);
 }
 .fp-tone-bad.fp-badge,
 .fp-tone-bad .fp-badge {
-	color: var(--fp-bad);
-	background: var(--fp-bad-bg);
+	color: var(--fp-neg-ink);
+	background: var(--fp-neg-wash);
 }
 .fp-tone-neutral.fp-badge {
-	color: var(--fp-neutral);
-	background: var(--fp-neutral-bg);
+	color: var(--fp-accent-ink);
+	background: var(--fp-accent-wash);
 }
 
 .fp-chip {
-	--fp-chip-color: var(--fp-neutral);
+	--fp-chip-color: var(--fp-accent-ink);
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
 	padding: 3px 10px 3px 8px;
-	border-radius: 999px;
-	font-size: var(--font-ui-smaller);
-	font-weight: 600;
+	border-radius: var(--fp-radius-pill);
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-medium);
 	color: var(--fp-chip-color);
 	background: color-mix(in srgb, var(--fp-chip-color) 14%, transparent);
 }
@@ -141,93 +511,1158 @@
 	height: 0.85em;
 }
 
-/* ---------- Empty states ---------- */
+.fp-avatar {
+	--fp-avatar-color: var(--fp-accent-ink);
+	width: 36px;
+	height: 36px;
+	border-radius: var(--fp-radius-sm);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	font-weight: var(--fp-fw-semibold);
+	font-size: var(--fp-fs-md);
+	color: var(--fp-avatar-color);
+	background: color-mix(in srgb, var(--fp-avatar-color) 16%, transparent);
+}
+
+/* ---------- Inputs ---------- */
+
+.fp-input,
+.fp-select,
+.fp-search,
+.fp-filter-select,
+.fp-filter-date,
+.fp-setup-select {
+	height: 30px;
+	padding: 0 var(--fp-space-3);
+	background: var(--fp-bg-card);
+	color: var(--fp-ink);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-sm);
+	font-size: var(--fp-fs-sm);
+	font-family: inherit;
+	transition: border-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-input:hover,
+.fp-select:hover,
+.fp-search:hover,
+.fp-filter-select:hover,
+.fp-filter-date:hover {
+	border-color: var(--fp-line-strong);
+}
+.fp-input:focus-visible,
+.fp-select:focus-visible,
+.fp-search:focus-visible {
+	border-color: var(--fp-accent);
+}
+.fp-search {
+	width: 100%;
+	max-width: 360px;
+}
+.fp-filter-date-sep {
+	color: var(--fp-ink-secondary);
+}
+
+/* ---------- Empty states — one component, three densities ---------- */
 
 .fp-empty {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	text-align: center;
-	gap: 10px;
-	padding: 56px 24px;
-	color: var(--text-muted);
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-12) var(--fp-space-6);
+	color: var(--fp-ink-secondary);
 }
-.fp-empty-icon {
-	width: 52px;
-	height: 52px;
-	border-radius: 50%;
-	background: var(--fp-neutral-bg);
-	color: var(--fp-neutral);
-	display: flex;
-	align-items: center;
+.fp-empty--inline {
+	padding: var(--fp-space-6) var(--fp-space-4);
+}
+.fp-empty--row {
+	flex-direction: row;
 	justify-content: center;
-	font-size: 22px;
-	margin-bottom: 4px;
+	padding: var(--fp-space-4);
+	gap: var(--fp-space-2);
+}
+/* Neutral plate, not an accent disc: an accent circle on an empty screen implies a
+   primary action that isn't there. */
+.fp-empty-icon {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-inset);
+	color: var(--fp-ink-muted);
+	flex-shrink: 0;
+}
+.fp-empty-icon svg,
+.fp-empty-icon .fp-icon svg {
+	width: 20px;
+	height: 20px;
+}
+.fp-empty--row .fp-empty-icon {
+	width: 24px;
+	height: 24px;
+	background: transparent;
+}
+.fp-empty-text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-1);
+	align-items: center;
+}
+.fp-empty--row .fp-empty-text {
+	align-items: flex-start;
+	text-align: left;
 }
 .fp-empty-title {
-	font-size: var(--font-ui-large);
-	font-weight: 700;
-	color: var(--text-normal);
+	font-size: var(--fp-fs-lg);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+}
+.fp-empty--row .fp-empty-title {
+	font-size: var(--fp-fs-sm);
 }
 .fp-empty-desc {
-	max-width: 420px;
-	font-size: var(--font-ui-medium);
+	max-width: 44ch;
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink-secondary);
+	line-height: var(--fp-lh-body);
 }
 
-/* ---------- Workspace shell ---------- */
+/* ---------- Loading ---------- */
 
-.fp-workspace {
+/* A re-render holds the frame rather than flashing a skeleton — the store is local JSON. */
+.fp-refreshing {
+	opacity: 0.55;
+	transition: opacity var(--fp-dur-2) var(--fp-ease);
+	pointer-events: none;
+}
+.fp-skeleton {
+	background: linear-gradient(
+		90deg,
+		var(--fp-bg-track) 0%,
+		color-mix(in srgb, var(--fp-bg-track) 50%, transparent) 50%,
+		var(--fp-bg-track) 100%
+	);
+	background-size: 200% 100%;
+	border-radius: var(--fp-radius-xs);
+	animation: fp-shimmer 1.4s var(--fp-ease) infinite;
+}
+@keyframes fp-shimmer {
+	to {
+		background-position: -200% 0;
+	}
+}
+
+/* ==========================================================================
+   L3 — COMPONENTS
+   ========================================================================== */
+
+/* ---------- Card — the single base surface ---------- */
+
+.fp-card {
+	background: var(--fp-bg-card);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-md);
+	padding: var(--fp-card-pad);
+	box-shadow: var(--fp-elev-1);
+	/* LEGACY — remove in wave 3/4: un-migrated sections stack cards without `.fp-stack`. */
+	margin-bottom: var(--fp-stack);
+}
+.fp-card--tight {
+	padding: var(--fp-card-pad-tight);
+}
+.fp-card--flush {
+	padding: 0;
+}
+.fp-card--inset {
+	background: var(--fp-bg-inset);
+	box-shadow: none;
+}
+.fp-card--interactive {
+	cursor: pointer;
+	transition: border-color var(--fp-dur-2) var(--fp-ease), box-shadow var(--fp-dur-2) var(--fp-ease),
+		transform var(--fp-dur-2) var(--fp-ease-spring);
+}
+.fp-card--interactive:hover {
+	border-color: var(--fp-line-strong);
+	box-shadow: var(--fp-elev-2);
+	transform: translateY(-1px);
+}
+.fp-stack > .fp-card {
+	margin-bottom: 0;
+}
+
+.fp-card-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+	margin-bottom: var(--fp-space-4);
+}
+.fp-card-title,
+.fp-card h3 {
+	font-size: var(--fp-fs-lg);
+	font-weight: var(--fp-fw-semibold);
+	line-height: var(--fp-lh-snug);
+	letter-spacing: 0;
+	color: var(--fp-ink);
+	margin: 0 0 var(--fp-space-4);
+}
+.fp-card-sub {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	margin-top: 2px;
+}
+
+/* ---------- Stat — one component, three sizes ----------
+   Replaces `.fp-stat-tile` + `.fp-kpi-card`. The 4px full-height tone stripe is
+   gone: it defaulted to the accent, so neutral tiles carried the loudest ink on
+   the page encoding nothing. Status now lives in the delta chip. */
+
+.fp-stat-grid,
+.fp-kpi-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: var(--fp-grid-gap);
+	margin-bottom: var(--fp-stack);
+}
+.fp-stat {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-2);
+	min-width: 0;
+	margin-bottom: 0;
+}
+.fp-stat-eyebrow {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	min-width: 0;
+}
+.fp-stat-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fp-stat-icon {
+	color: var(--fp-ink-muted);
+	flex-shrink: 0;
+}
+.fp-stat-icon svg {
+	width: 13px;
+	height: 13px;
+}
+.fp-stat-body {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+}
+.fp-stat-value {
+	font-size: var(--fp-fs-2xl);
+	font-weight: var(--fp-fw-semibold);
+	line-height: var(--fp-lh-tight);
+	letter-spacing: var(--fp-ls-display);
+	color: var(--fp-ink);
+	/* Proportional, not tabular: `tabular-nums` makes "€121" look loose at 26px.
+	   Deltas below sit in a column, so those stay tabular. */
+	font-variant-numeric: proportional-nums;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.fp-stat--hero .fp-stat-value {
+	font-size: var(--fp-fs-3xl);
+}
+.fp-stat--compact .fp-stat-value {
+	font-size: var(--fp-fs-xl);
+}
+.fp-stat-spark {
+	flex-shrink: 0;
+	line-height: 0;
+}
+.fp-stat-foot {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+}
+/* A genuinely alarming tile tints only its border — never its whole surface. */
+.fp-stat--danger {
+	border-color: color-mix(in srgb, var(--fp-neg-fill) 40%, var(--fp-line));
+}
+
+/* ---------- Delta chip — direction glyph + sign + value. Never color alone. ---------- */
+
+.fp-delta {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	margin-left: auto;
+	padding: 2px var(--fp-space-2);
+	border-radius: var(--fp-radius-pill);
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-semibold);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	letter-spacing: 0;
+	text-transform: none;
+}
+.fp-delta--good {
+	color: var(--fp-pos-ink);
+	background: var(--fp-pos-wash);
+}
+.fp-delta--bad {
+	color: var(--fp-neg-ink);
+	background: var(--fp-neg-wash);
+}
+.fp-delta--flat {
+	color: var(--fp-ink-secondary);
+	background: var(--fp-bg-track);
+}
+.fp-delta svg {
+	width: 11px;
+	height: 11px;
+	flex-shrink: 0;
+}
+
+/* ---------- Meter — ratio to a limit ---------- */
+
+.fp-meter-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+	margin-bottom: var(--fp-space-3);
+}
+.fp-meter-label {
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
+	text-transform: none;
+	letter-spacing: 0;
+}
+.fp-meter-value {
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+	font-variant-numeric: tabular-nums;
+}
+.fp-meter-track {
+	position: relative;
+	height: 8px;
+	border-radius: var(--fp-radius-xs);
+	background: var(--fp-bg-track);
+	overflow: hidden;
+}
+.fp-meter-fill {
 	height: 100%;
-	padding: 0 !important;
+	border-radius: var(--fp-radius-xs);
+	background: var(--fp-accent);
+	transition: width var(--fp-dur-3) var(--fp-ease-out), background-color var(--fp-dur-2) var(--fp-ease);
 }
+.fp-meter--warn .fp-meter-fill {
+	background: var(--fp-warn-fill);
+}
+.fp-meter--over .fp-meter-fill {
+	background: var(--fp-neg-fill);
+}
+/* Over budget: the fill caps at 100% and the overflow reads as a hatched tail, so
+   "110% spent" is visible rather than clamped and therefore invisible. */
+.fp-meter--over .fp-meter-track::after {
+	content: "";
+	position: absolute;
+	inset: 0 0 0 var(--fp-meter-cap, 100%);
+	background: repeating-linear-gradient(135deg, var(--fp-neg-fill) 0 3px, transparent 3px 6px);
+}
+/* The pace marker turns "78% spent" from a number into a judgement. */
+.fp-meter-pace {
+	position: absolute;
+	top: -2px;
+	bottom: -2px;
+	width: 2px;
+	border-radius: 1px;
+	background: var(--fp-ink);
+	opacity: 0.55;
+	pointer-events: none;
+}
+.fp-meter-sub,
+.fp-meter-labels {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+	margin-top: var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+}
+
+/* ---------- List row — subscriptions, upcoming payments, accounts ---------- */
+
+.fp-row {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-3);
+	min-height: 52px;
+	padding: var(--fp-space-2) var(--fp-space-3);
+	border-radius: var(--fp-radius-sm);
+	transition: background-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-row + .fp-row {
+	box-shadow: inset 0 1px 0 var(--fp-line-hairline);
+}
+.fp-row:hover {
+	background: var(--fp-bg-card-hover);
+}
+.fp-row-main {
+	flex: 1;
+	min-width: 0;
+}
+.fp-row-title {
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fp-row-meta {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	margin-top: 1px;
+}
+.fp-row-value {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fp-fw-semibold);
+	white-space: nowrap;
+}
+.fp-row-value-unit {
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-regular);
+	color: var(--fp-ink-muted);
+}
+.fp-row-actions {
+	display: flex;
+	gap: 2px;
+	opacity: 0;
+	transition: opacity var(--fp-dur-1) var(--fp-ease);
+}
+/* :focus-within is required, or keyboard users can never reach the row actions. */
+.fp-row:hover .fp-row-actions,
+.fp-row:focus-within .fp-row-actions {
+	opacity: 1;
+}
+
+/* ---------- Data table ---------- */
+
+.fp-table {
+	width: 100%;
+	border-collapse: separate;
+	border-spacing: 0;
+	font-size: var(--fp-fs-sm);
+}
+.fp-table thead th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--fp-bg-card);
+	text-align: left;
+	padding: var(--fp-space-2) var(--fp-space-3);
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	text-transform: none; /* was UPPERCASE 700 */
+	letter-spacing: 0;
+	color: var(--fp-ink-secondary);
+	white-space: nowrap;
+	border-bottom: 1px solid var(--fp-line);
+}
+.fp-table tbody td {
+	padding: var(--fp-space-2) var(--fp-space-3);
+	/* NOT --background-modifier-border-focus: that variable is the theme accent, which
+	   was drawing a faint blue rule under every table row. */
+	border-bottom: 1px solid var(--fp-line-hairline);
+	color: var(--fp-ink);
+	vertical-align: middle;
+}
+.fp-table tbody tr:last-child td {
+	border-bottom: none;
+}
+.fp-table tbody tr:hover td {
+	background: var(--fp-bg-card-hover);
+}
+.fp-table tbody tr:focus-visible {
+	outline: none;
+	box-shadow: inset var(--fp-focus-ring);
+}
+.fp-table--comfortable tbody td {
+	padding: var(--fp-space-3);
+}
+.fp-table--dense tbody td,
+.fp-table--dense thead th {
+	padding: 5px var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+}
+
+/* Numbers: right-aligned, tabular, never wrapping. A RULE, not an option. */
+.fp-table [data-num],
+.fp-table-num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	font-feature-settings: "tnum" 1;
+}
+.fp-table-metrics {
+	margin-top: var(--fp-space-4);
+}
+.fp-table-metrics th:first-child,
+.fp-table-metrics td:first-child {
+	text-align: left;
+	color: var(--fp-ink);
+}
+.fp-table-row-clickable {
+	cursor: pointer;
+}
+.fp-table-row-delta td {
+	padding-top: 2px;
+	padding-bottom: 6px;
+	border-bottom: none;
+	color: var(--fp-ink-muted);
+	font-size: var(--fp-fs-xs);
+}
+.fp-table-row-delta td:first-child {
+	color: var(--fp-ink-muted);
+	font-style: italic;
+}
+.fp-table-row-emphasis td {
+	font-weight: var(--fp-fw-bold);
+	color: var(--fp-ink);
+}
+.fp-delta-good {
+	color: var(--fp-pos-ink);
+}
+.fp-delta-bad {
+	color: var(--fp-neg-ink);
+}
+
+/* Year-column drilldown headers are real buttons now. */
+.fp-table-year-clickable {
+	background: none;
+	border: none;
+	padding: 2px 6px;
+	margin: -2px -6px;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+	border-radius: var(--fp-radius-xs);
+	transition: background-color var(--fp-dur-1) var(--fp-ease), color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-table-year-clickable:hover {
+	background: var(--fp-accent-wash);
+	color: var(--fp-accent-ink);
+}
+
+/* Sortable header */
+.fp-th-sort,
+.fp-ledger-th-sortable {
+	cursor: pointer;
+	user-select: none;
+	white-space: nowrap;
+}
+.fp-th-sort:hover,
+.fp-ledger-th-sortable:hover,
+.fp-ledger-th-sortable.is-sorted {
+	color: var(--fp-ink);
+}
+.fp-th-sort[aria-sort="ascending"],
+.fp-th-sort[aria-sort="descending"] {
+	color: var(--fp-ink);
+	font-weight: var(--fp-fw-semibold);
+}
+.fp-th-sort-icon {
+	opacity: 0;
+	margin-left: 2px;
+	transition: opacity var(--fp-dur-1) var(--fp-ease);
+}
+.fp-th-sort:hover .fp-th-sort-icon,
+.fp-th-sort[aria-sort]:not([aria-sort="none"]) .fp-th-sort-icon {
+	opacity: 1;
+}
+
+/* Horizontal scroll that can actually fire — `width: 100%` with no min-width squashes
+   columns forever instead of scrolling. */
+.fp-table-scroll,
+.fp-ledger-table-wrap {
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+}
+.fp-table-scroll .fp-table,
+.fp-ledger-table-wrap .fp-table {
+	min-width: 640px;
+}
+
+/* Amounts: outgoings stay in normal ink — the minus sign is the encoding. A bank
+   ledger is 80–95% outgoings, so coloring them all leaves a wall of red and no ink
+   left for the rows that matter. Negative ink is reserved for genuine exceptions. */
+.fp-amount,
+.fp-cell-amount {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+	white-space: nowrap;
+}
+.fp-amount--in,
+.fp-cell-amount.is-positive {
+	color: var(--fp-pos-ink);
+	font-weight: var(--fp-fw-semibold);
+}
+.fp-cell-amount.is-negative {
+	color: var(--fp-ink);
+}
+.fp-cell-date {
+	white-space: nowrap;
+	color: var(--fp-ink-secondary);
+}
+
+/* Microbar — the replacement for the old red→amber→green heat tint. */
+.fp-microbar {
+	--fp-microbar-color: var(--fp-pos-fill);
+	width: var(--fp-microbar-w, 0%);
+	height: 2px;
+	margin: 3px 0 0 auto;
+	border-radius: 1px;
+	background: var(--fp-microbar-color);
+	opacity: 0.75;
+	transition: opacity var(--fp-dur-1) var(--fp-ease);
+}
+
+/* ---------- Filter bar — one row, above everything it scopes ---------- */
+
+.fp-filterbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--fp-space-2);
+	padding: var(--fp-space-3);
+	background: var(--fp-bg-inset);
+	border: 1px solid var(--fp-line-hairline);
+	border-radius: var(--fp-radius-md);
+	margin-bottom: var(--fp-space-4);
+}
+.fp-filterbar-search {
+	flex: 1 1 220px;
+	min-width: 160px;
+}
+.fp-filterbar-stats {
+	margin-left: auto;
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+}
+.fp-filterbar-chips {
+	flex-basis: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-2);
+}
+.fp-filterbar-chips:empty {
+	display: none;
+}
+.fp-daterange-menu-item {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	height: 30px;
+	padding: 0 var(--fp-space-3);
+	border-radius: var(--fp-radius-xs);
+}
+.fp-daterange-menu-item[aria-selected="true"]::before {
+	content: "✓";
+	font-weight: var(--fp-fw-bold);
+}
+.fp-daterange-custom {
+	border-top: 1px solid var(--fp-line-hairline);
+	margin-top: var(--fp-space-1);
+	padding-top: var(--fp-space-2);
+}
+
+/* ==========================================================================
+   L4 — CHARTS
+   Everything inside an SVG is rendered at 1 user unit = 1 CSS pixel (see
+   `mountResponsiveChart`), so these sizes are literal at every pane width.
+   ========================================================================== */
+
+.fp-chart {
+	margin-bottom: var(--fp-space-1);
+}
+.fp-chart-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-2) var(--fp-space-4);
+	margin-bottom: var(--fp-space-3);
+}
+.fp-chart-legend-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
+	background: none;
+	border: none;
+	padding: 2px 4px;
+	font-family: inherit;
+	cursor: pointer;
+	border-radius: var(--fp-radius-xs);
+}
+.fp-chart-legend-item[aria-pressed="false"] {
+	opacity: 0.4;
+}
+/* The legend key mirrors the mark: a bar for lines, a square for areas and columns. */
+.fp-chart-key--line {
+	width: 12px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--fp-key);
+}
+.fp-chart-key--area {
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	background: var(--fp-key);
+}
+.fp-chart-swatch {
+	--fp-swatch-color: var(--fp-accent-ink);
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--fp-swatch-color);
+	flex-shrink: 0;
+}
+/* Both classes ride the same span, so the key variants need the higher-specificity
+   form to beat `.fp-chart-swatch`'s round 10×10 default. */
+.fp-chart-key--line.fp-chart-swatch,
+.fp-chart-key--area.fp-chart-swatch {
+	background: var(--fp-key, var(--fp-swatch-color));
+}
+.fp-chart-key--line.fp-chart-swatch {
+	width: 12px;
+	height: 2px;
+	border-radius: 1px;
+}
+.fp-chart-key--area.fp-chart-swatch {
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+}
+
+.fp-chart-plot {
+	position: relative;
+}
+.fp-chart-svg {
+	display: block;
+	overflow: visible;
+}
+.fp-chart-grid {
+	stroke: var(--fp-chart-grid);
+	stroke-width: 1;
+	fill: none;
+}
+.fp-chart-baseline {
+	stroke: var(--fp-chart-baseline);
+	stroke-width: 1;
+	fill: none;
+}
+.fp-chart-axis {
+	font-size: var(--fp-fs-micro);
+	fill: var(--fp-chart-axis-ink);
+	font-variant-numeric: tabular-nums;
+}
+.fp-chart-line {
+	fill: none;
+	stroke: var(--fp-line-color);
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.fp-chart-area {
+	stroke: none;
+}
+.fp-chart-column {
+	fill: var(--fp-bar-color);
+	/* Surface-colored gaps, not gaps that let the page background through. */
+	stroke: var(--fp-chart-surface);
+	stroke-width: 1;
+}
+.fp-chart-dot {
+	fill: var(--fp-line-color);
+	stroke: var(--fp-chart-surface);
+	stroke-width: 2;
+}
+.fp-chart-leader {
+	stroke: var(--fp-chart-grid);
+	stroke-width: 1;
+	fill: none;
+}
+.fp-chart-end-label {
+	font-size: 11px;
+	font-weight: var(--fp-fw-semibold);
+	fill: var(--fp-ink);
+}
+.fp-chart-hit {
+	fill: transparent;
+	cursor: crosshair;
+}
+.fp-chart-crosshair {
+	stroke: var(--fp-chart-baseline);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
+	pointer-events: none;
+}
+.fp-chart-hover {
+	pointer-events: none;
+}
+
+.fp-chart-tooltip {
+	position: absolute;
+	top: 0;
+	pointer-events: none;
+	z-index: 5;
+	min-width: 150px;
+	padding: var(--fp-space-2) var(--fp-space-3);
+	background: var(--fp-bg-card);
+	border: 1px solid var(--fp-line-strong);
+	border-radius: var(--fp-radius-sm);
+	box-shadow: var(--fp-elev-2);
+	font-size: var(--fp-fs-xs);
+	opacity: 0;
+	transform: translateY(2px);
+	transition: opacity var(--fp-dur-1) var(--fp-ease), transform var(--fp-dur-1) var(--fp-ease);
+}
+.fp-chart-tooltip.is-visible {
+	opacity: 1;
+}
+.fp-chart-tooltip-title {
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+	padding-bottom: var(--fp-space-1);
+	margin-bottom: var(--fp-space-1);
+	border-bottom: 1px solid var(--fp-line-hairline);
+}
+.fp-chart-tooltip-row {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	padding: 2px 0;
+	color: var(--fp-ink-secondary);
+}
+.fp-chart-tooltip-value {
+	margin-left: auto;
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Chart / Table view toggle ---------- */
+
+.fp-view-toggle {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	background: var(--fp-bg-inset);
+	border-radius: var(--fp-radius-sm);
+	margin-bottom: var(--fp-space-3);
+}
+.fp-view-toggle-btn {
+	background: none;
+	border: none;
+	font: inherit;
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
+	padding: 3px var(--fp-space-3);
+	border-radius: var(--fp-radius-xs);
+	cursor: pointer;
+	transition: background-color var(--fp-dur-1) var(--fp-ease), color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-view-toggle-btn.is-active {
+	background: var(--fp-bg-card);
+	color: var(--fp-ink);
+	box-shadow: var(--fp-elev-1);
+}
+.fp-view-panel.is-hidden {
+	display: none;
+}
+
+/* ---------- Sparkline ---------- */
+
+.fp-sparkline {
+	display: block;
+	overflow: visible;
+}
+.fp-sparkline-line {
+	fill: none;
+	stroke: var(--fp-ink-muted);
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.fp-sparkline-area {
+	fill: var(--fp-line-color);
+	opacity: 0.12;
+	stroke: none;
+}
+.fp-sparkline-dot {
+	fill: var(--fp-line-color);
+}
+
+/* ---------- Share bar (part-to-whole; no donuts) ---------- */
+
+.fp-share-bar {
+	display: flex;
+	gap: 2px;
+	height: 12px;
+	/* The gap must be the SURFACE color. With the old border color showing through it
+	   read as a stroke around every segment. */
+	background: var(--fp-chart-surface);
+	border-radius: var(--fp-radius-xs);
+	overflow: hidden;
+	margin-bottom: var(--fp-space-4);
+}
+.fp-share-bar-seg {
+	background: var(--fp-seg-color);
+	min-width: 3px;
+	transition: opacity var(--fp-dur-1) var(--fp-ease);
+}
+.fp-share-bar:hover .fp-share-bar-seg {
+	opacity: 0.45;
+}
+.fp-share-bar:hover .fp-share-bar-seg:hover {
+	opacity: 1;
+}
+.fp-share-bar-legend {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-2);
+}
+.fp-share-bar-legend-item {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	font-size: var(--fp-fs-sm);
+	padding: 1px 4px;
+	margin: 0 -4px;
+	border-radius: var(--fp-radius-xs);
+	transition: background-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-share-bar-legend-item.is-highlight {
+	background: var(--fp-bg-card-hover);
+}
+.fp-share-bar-legend-label {
+	flex: 1;
+	color: var(--fp-ink);
+	font-weight: var(--fp-fw-medium);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fp-share-bar-legend-value {
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* ---------- Horizontal bar chart (category totals) ---------- */
+
+.fp-barchart {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-1);
+}
+.fp-barchart-row {
+	/* `minmax(0, 9rem)` instead of a fixed 170px: the old fixed column truncated
+	   "Shipping & Handling" at every width and starved the track in a docked leaf. */
+	display: grid;
+	grid-template-columns: minmax(0, 9rem) 1fr auto;
+	align-items: center;
+	gap: var(--fp-space-3);
+	min-height: 28px;
+	padding: 0 var(--fp-space-1);
+	border-radius: var(--fp-radius-xs);
+	transition: background-color var(--fp-dur-1) var(--fp-ease);
+}
+/* Rows rendered as real <button>s (deep-linking bars) — strip the UA button chrome
+   so they read identically to plain rows, with the pointer carrying the affordance. */
+.fp-barchart-row--clickable {
+	border: none;
+	background: transparent;
+	font: inherit;
+	color: inherit;
+	text-align: left;
+	width: 100%;
+	cursor: pointer;
+}
+.fp-barchart-row:hover {
+	background: var(--fp-bg-card-hover);
+}
+.fp-barchart-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+.fp-barchart-icon {
+	flex-shrink: 0;
+	color: var(--fp-ink-secondary);
+}
+.fp-barchart-track {
+	height: 10px;
+	background: var(--fp-bg-track);
+	border-radius: var(--fp-radius-xs);
+	overflow: hidden;
+}
+.fp-barchart-fill {
+	--fp-bar-color: var(--fp-accent);
+	height: 100%;
+	min-width: 3px;
+	background: var(--fp-bar-color);
+	/* Square at the baseline, rounded at the data end. A fully pill-shaped bar rounds
+	   its own origin, which misstates near-zero values. */
+	border-radius: 0 var(--fp-radius-xs) var(--fp-radius-xs) 0;
+	transition: width var(--fp-dur-3) var(--fp-ease-out);
+}
+.fp-barchart-value {
+	justify-self: end;
+	font-size: var(--fp-fs-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink);
+	min-width: 5.5rem;
+	text-align: right;
+}
+
+/* ==========================================================================
+   L5 — APP SHELL
+   ========================================================================== */
+
+.fp-workspace,
+.fp-root {
+	height: 100%;
+	padding: 0 !important; /* beats Obsidian's own .view-content padding */
+}
+
 .fp-shell {
+	/* The query container. One DOM is a 232px labeled rail, a 56px icon rail, or a
+	   top bar — with no Platform check and no re-render. */
+	container-type: inline-size;
+	container-name: fp-shell;
 	display: flex;
 	height: 100%;
 	min-height: 0;
 }
 
-.fp-nav {
-	width: 268px;
+/* ---------- Rail ---------- */
+
+.fp-rail {
+	width: var(--fp-rail-w);
 	flex-shrink: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 16px 12px;
-	background: var(--background-secondary);
-	border-right: 1px solid var(--background-modifier-border);
+	min-height: 0;
+	padding: var(--fp-space-3) var(--fp-space-2);
+	gap: var(--fp-space-2);
+	background: var(--fp-bg-rail);
+	border-right: 1px solid var(--fp-line);
+	transition: width var(--fp-dur-3) var(--fp-ease);
 }
+.fp-rail-brand {
+	padding-bottom: var(--fp-space-2);
+	border-bottom: 1px solid var(--fp-line-hairline);
+}
+.fp-rail-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-4);
+}
+.fp-rail-tabs {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.fp-rail-section {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.fp-rail-section-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--fp-space-2);
+	padding: 0 var(--fp-space-3) var(--fp-space-1);
+}
+.fp-rail-section-total {
+	font-size: var(--fp-fs-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink-secondary);
+	white-space: nowrap;
+}
+.fp-rail-footer {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-1);
+	padding-top: var(--fp-space-2);
+	border-top: 1px solid var(--fp-line-hairline);
+}
+
+/* Brand zone */
 .fp-nav-brand {
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 4px 6px 16px;
+	gap: var(--fp-space-3);
+	width: 100%;
+	padding: var(--fp-space-2);
+	background: none;
+	border: none;
+	font: inherit;
+	text-align: left;
+	color: var(--fp-ink);
+	min-width: 0;
 }
 .fp-nav-brand-icon {
-	width: 34px;
-	height: 34px;
-	border-radius: var(--fp-radius-md);
-	background: linear-gradient(135deg, var(--interactive-accent), color-mix(in srgb, var(--interactive-accent) 60%, #22c55e));
-	color: var(--text-on-accent);
+	width: 30px;
+	height: 30px;
+	border-radius: var(--fp-radius-sm);
+	background: linear-gradient(135deg, var(--fp-accent), color-mix(in srgb, var(--fp-accent) 60%, var(--fp-cat-3)));
+	color: var(--fp-ink-on-fill);
 	flex-shrink: 0;
 }
 .fp-nav-brand-icon svg {
-	width: 18px;
-	height: 18px;
+	width: 17px;
+	height: 17px;
 }
 .fp-nav-brand-text {
 	display: flex;
 	flex-direction: column;
-	gap: 1px;
 	min-width: 0;
 }
 .fp-nav-brand-title {
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	font-weight: 800;
-	font-size: var(--font-ui-large);
-	color: var(--text-normal);
-	line-height: 1.2;
+	gap: var(--fp-space-1);
+	font-weight: var(--fp-fw-semibold);
+	font-size: var(--fp-fs-md);
+	color: var(--fp-ink);
+	line-height: var(--fp-lh-snug);
+	min-width: 0;
 }
 .fp-nav-brand-title-text {
 	min-width: 0;
@@ -238,366 +1673,322 @@
 .fp-nav-brand-switcher {
 	cursor: pointer;
 	border-radius: var(--fp-radius-sm);
-	transition: background-color 0.12s ease;
+	transition: background-color var(--fp-dur-1) var(--fp-ease);
 }
 .fp-nav-brand-switcher:hover {
-	background: var(--background-modifier-hover);
+	background: var(--fp-bg-card-hover);
 }
 .fp-nav-brand-switcher:hover .fp-nav-brand-chevron {
-	color: var(--text-normal);
+	color: var(--fp-ink);
 }
 .fp-nav-brand-chevron {
-	color: var(--text-faint);
+	color: var(--fp-ink-muted);
 	flex-shrink: 0;
-	transition: color 0.12s ease;
+	transition: color var(--fp-dur-1) var(--fp-ease);
 }
 .fp-nav-brand-chevron svg {
-	width: 15px;
-	height: 15px;
+	width: 14px;
+	height: 14px;
 }
 
-.fp-nav-import {
-	width: 100%;
-	justify-content: center;
-	padding: 10px 14px;
-	font-size: var(--font-ui-medium);
-	margin-bottom: 14px;
-}
-.fp-nav-items {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	flex: 1;
-}
+/* Nav items */
 .fp-nav-item {
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 9px 10px;
+	gap: var(--fp-space-3);
+	width: 100%;
+	min-height: 36px;
+	padding: 0 var(--fp-space-3);
+	background: none;
+	border: none;
+	font-family: inherit;
+	text-align: left;
 	border-radius: var(--fp-radius-sm);
-	color: var(--text-normal);
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
 	cursor: pointer;
-	font-size: var(--font-ui-medium);
-	font-weight: 500;
-	transition: background-color 0.12s ease, color 0.12s ease;
+	position: relative;
+	transition: background-color var(--fp-dur-1) var(--fp-ease), color var(--fp-dur-1) var(--fp-ease);
 }
 .fp-nav-item:hover {
-	background: var(--background-modifier-hover);
+	background: var(--fp-bg-card-hover);
+	color: var(--fp-ink);
 }
 .fp-nav-item.is-active {
-	background: var(--background-modifier-border);
-	color: var(--text-normal);
-	font-weight: 600;
+	background: var(--fp-accent-wash);
+	color: var(--fp-ink);
+	font-weight: var(--fp-fw-semibold);
+}
+/* A left accent bar rather than a radius or padding change — those shift the text. */
+.fp-nav-item.is-active::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 8px;
+	bottom: 8px;
+	width: 3px;
+	border-radius: var(--fp-radius-pill);
+	background: var(--fp-accent);
 }
 .fp-nav-icon {
-	color: var(--text-muted);
+	color: var(--fp-ink-muted);
 	flex-shrink: 0;
+}
+.fp-nav-icon svg {
+	width: 17px;
+	height: 17px;
+}
+.fp-nav-item.is-active .fp-nav-icon,
+.fp-nav-item:hover .fp-nav-icon {
+	color: var(--fp-ink);
 }
 .fp-nav-item-text {
 	display: flex;
 	flex-direction: column;
-	gap: 1px;
 	min-width: 0;
+	flex: 1;
 }
 .fp-nav-label {
+	flex: 1;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .fp-nav-item-type {
-	font-size: var(--font-ui-smaller);
-	font-weight: 500;
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
-	color: var(--text-faint);
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-regular);
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--fp-ink-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
-.fp-nav-section-label {
-	margin: 10px 10px 2px;
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-faint);
+.fp-nav-item-ghost {
+	color: var(--fp-ink-muted);
+	font-weight: var(--fp-fw-regular);
 }
-.fp-nav-item-draggable {
+.fp-nav-item-ghost:hover {
+	color: var(--fp-ink);
+}
+
+/* The tail holds the balance and the drag grip in one slot — the grip fades in over
+   the balance on hover, so the most-used surface isn't permanently cluttered. */
+.fp-nav-tail {
 	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	flex-shrink: 0;
+	min-width: 14px;
+	margin-left: auto;
+}
+.fp-nav-balance {
+	font-size: var(--fp-fs-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink-secondary);
+	white-space: nowrap;
+	transition: opacity var(--fp-dur-1) var(--fp-ease);
+}
+.fp-nav-item.is-active .fp-nav-balance {
+	color: var(--fp-ink);
+}
+.fp-nav-drag-handle {
+	position: absolute;
+	right: 0;
+	color: var(--fp-ink-muted);
+	opacity: 0;
+	cursor: grab;
+	transition: opacity var(--fp-dur-1) var(--fp-ease);
+}
+.fp-nav-drag-handle svg {
+	width: 15px;
+	height: 15px;
+}
+.fp-rail-tabs:hover .fp-nav-item-draggable:hover .fp-nav-drag-handle,
+.fp-rail-section:hover .fp-nav-item-draggable:hover .fp-nav-drag-handle,
+.fp-nav-item-draggable:focus-within .fp-nav-drag-handle {
+	opacity: 1;
+}
+.fp-nav-item-draggable:hover .fp-nav-balance {
+	opacity: 0;
 }
 .fp-nav-item-draggable.is-dragging {
 	opacity: 0.4;
 }
-.fp-nav-item-draggable.is-drag-over::before {
+.fp-nav-item-draggable.is-drag-over::after {
 	content: "";
 	position: absolute;
 	left: 6px;
 	right: 6px;
-	top: -3px;
+	top: -2px;
 	height: 2px;
-	border-radius: 999px;
-	background: var(--fp-neutral);
+	border-radius: var(--fp-radius-pill);
+	background: var(--fp-accent);
 }
-.fp-nav-drag-handle {
-	margin-left: auto;
-	flex-shrink: 0;
-	color: var(--text-faint);
-	opacity: 0;
-	cursor: grab;
-	transition: opacity 0.12s ease;
+
+/* Utility footer buttons — demoted controls, not destinations. */
+.fp-nav-util {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	flex: 1;
+	min-width: 0;
+	height: 30px;
+	padding: 0 var(--fp-space-2);
+	background: none;
+	border: none;
+	font-family: inherit;
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-muted);
+	border-radius: var(--fp-radius-sm);
+	cursor: pointer;
+	transition: background-color var(--fp-dur-1) var(--fp-ease), color var(--fp-dur-1) var(--fp-ease);
 }
-.fp-nav-item-draggable:hover .fp-nav-drag-handle {
-	opacity: 0.7;
+.fp-nav-util:hover {
+	background: var(--fp-bg-card-hover);
+	color: var(--fp-ink);
 }
-.fp-nav-drag-handle:hover {
-	opacity: 1 !important;
+.fp-nav-util .fp-nav-icon svg {
+	width: 15px;
+	height: 15px;
 }
-.fp-nav-item-ghost {
-	color: var(--text-muted);
-	font-weight: 500;
+.fp-nav-util.is-privacy-on {
+	color: var(--fp-accent-ink);
 }
-.fp-nav-item-ghost .fp-nav-icon {
-	color: var(--text-faint);
+.fp-nav-util.is-privacy-on .fp-nav-icon {
+	color: var(--fp-accent-ink);
 }
-.fp-nav-item.is-active .fp-nav-icon,
-.fp-nav-item:hover .fp-nav-icon {
-	color: var(--text-normal);
-}
-.fp-nav-icon svg {
-	width: 18px;
-	height: 18px;
-}
+
+/* ---------- Content ---------- */
 
 .fp-content {
 	flex: 1;
 	min-width: 0;
 	overflow-y: auto;
-	padding: 28px 32px;
+	padding: var(--fp-space-8) var(--fp-gutter) var(--fp-space-16);
+	background: var(--fp-bg-app);
+}
+/* Without a max-width, a 1800px full-screen leaf stretches each KPI card to ~580px
+   with a 26px number floating in the middle of it. */
+.fp-content-inner {
+	max-width: var(--fp-content-max);
+	margin: 0 auto;
 }
 
+/* ---------- Page head — headings normalized away from the theme ----------
+   `.fp-section-header h2` previously inherited the theme's markdown h2, which in
+   Minimal or Blue Topaz is a different font, size, color and bottom border. */
+
+.fp-page-head,
 .fp-section-header {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
-	margin-bottom: 18px;
+	gap: var(--fp-space-4);
+	margin-bottom: var(--fp-space-6);
+	padding-bottom: var(--fp-space-4);
+	border-bottom: 1px solid var(--fp-line-hairline);
 }
+.fp-page-title,
 .fp-section-header h2 {
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	line-height: var(--fp-lh-snug);
+	color: var(--fp-ink);
 	margin: 0;
+	letter-spacing: 0;
+}
+.fp-page-sub,
+.fp-section-subtitle {
+	margin-top: var(--fp-space-1);
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink-secondary);
+	max-width: 62ch;
 }
 .fp-section-header-actions {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--fp-space-2);
 	flex-shrink: 0;
 }
-
 .fp-account-page-divider {
-	border-top: 1px solid var(--background-modifier-border);
-	margin: 32px 0 20px;
+	border-top: 1px solid var(--fp-line);
+	margin: var(--fp-space-8) 0 var(--fp-space-5);
 }
 .fp-account-page-ledger-title {
-	margin: 0 0 14px;
-}
-
-/* ---------- Stat tiles ---------- */
-
-.fp-stat-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 14px;
-	margin-bottom: 24px;
-}
-.fp-stat-tile {
-	--fp-tone-color: var(--fp-neutral);
-	position: relative;
-	padding: 16px 18px;
-	border-radius: var(--fp-radius-lg);
-	background: var(--background-primary-alt, var(--background-secondary));
-	border: 1px solid var(--background-modifier-border);
-	box-shadow: var(--fp-shadow);
-	overflow: hidden;
-}
-.fp-stat-tile::before {
-	content: "";
-	position: absolute;
-	inset: 0 auto 0 0;
-	width: 4px;
-	background: var(--fp-tone-color);
-}
-.fp-stat-tile.fp-tone-good {
-	--fp-tone-color: var(--fp-good);
-}
-.fp-stat-tile.fp-tone-warn {
-	--fp-tone-color: var(--fp-warn);
-}
-.fp-stat-tile.fp-tone-bad {
-	--fp-tone-color: var(--fp-bad);
-}
-.fp-stat-head {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	margin-bottom: 10px;
-}
-.fp-stat-icon {
-	color: var(--fp-tone-color);
-}
-.fp-stat-value {
-	font-size: 1.6em;
-	font-weight: 800;
-	color: var(--text-normal);
-	line-height: 1.1;
-}
-.fp-stat-sub {
-	margin-top: 4px;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	margin: 0 0 var(--fp-space-3);
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
 }
 
 /* ---------- Tabs ---------- */
 
 .fp-tabs {
 	display: flex;
-	gap: 4px;
-	margin-bottom: 14px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	gap: var(--fp-space-1);
+	margin-bottom: var(--fp-space-3);
+	border-bottom: 1px solid var(--fp-line);
 }
 .fp-tab {
-	padding: 6px 14px;
-	font-size: var(--font-ui-small);
-	font-weight: 600;
-	color: var(--text-muted);
-	cursor: pointer;
+	padding: 6px var(--fp-space-3);
+	background: none;
+	border: none;
 	border-bottom: 2px solid transparent;
 	margin-bottom: -1px;
-	transition: color 0.12s ease, border-color 0.12s ease;
+	font-family: inherit;
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
+	cursor: pointer;
+	transition: color var(--fp-dur-2) var(--fp-ease), border-color var(--fp-dur-2) var(--fp-ease);
 }
 .fp-tab:hover {
-	color: var(--text-normal);
+	color: var(--fp-ink);
 }
 .fp-tab.is-active {
-	color: var(--fp-neutral);
-	border-bottom-color: var(--fp-neutral);
+	color: var(--fp-ink);
+	font-weight: var(--fp-fw-semibold);
+	border-bottom-color: var(--fp-accent);
 }
 .fp-tab-panel.is-hidden {
 	display: none;
 }
 .fp-tab-panel h4 {
-	margin: 4px 0 10px;
-	font-size: var(--font-ui-small);
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
-	color: var(--text-muted);
+	margin: var(--fp-space-1) 0 var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--fp-ink-secondary);
 }
 .fp-tab-panel h4:not(:first-child) {
-	margin-top: 22px;
+	margin-top: var(--fp-space-5);
 }
 
-/* ---------- Cards & tables ---------- */
-
-.fp-card {
-	background: var(--background-primary-alt, var(--background-secondary));
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--fp-radius-lg);
-	padding: 18px 20px;
-	box-shadow: var(--fp-shadow);
-	margin-bottom: 20px;
-}
-.fp-card h3 {
-	margin-top: 0;
-}
-
-.fp-table {
-	width: 100%;
-	border-collapse: collapse;
-	font-size: var(--font-ui-small);
-}
-.fp-table th {
-	text-align: left;
-	padding: 8px 10px;
-	color: var(--text-muted);
-	font-weight: 700;
-	font-size: var(--font-ui-smaller);
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-.fp-table td {
-	padding: 8px 10px;
-	border-bottom: 1px solid var(--background-modifier-border-focus, var(--background-modifier-border));
-}
-.fp-table tbody tr:hover {
-	background: var(--background-modifier-hover);
-}
-.fp-table-row-clickable {
-	cursor: pointer;
-}
-.fp-accounts-overview-name {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	font-weight: 600;
-	color: var(--text-normal);
-}
-.fp-accounts-overview-icon {
-	color: var(--fp-neutral);
-}
-
-.fp-table-num {
-	text-align: right;
-	font-variant-numeric: tabular-nums;
-}
-.fp-table-metrics {
-	margin-top: 16px;
-}
-.fp-table-metrics th:first-child,
-.fp-table-metrics td:first-child {
-	text-align: left;
-	color: var(--text-normal);
-}
-.fp-table-year-clickable {
-	cursor: pointer;
-	border-radius: var(--fp-radius-sm);
-	transition: background-color 0.12s ease, color 0.12s ease;
-}
-.fp-table-year-clickable:hover {
-	background: var(--fp-neutral-bg);
-	color: var(--fp-neutral);
-}
-.fp-table-row-delta td {
-	padding-top: 2px;
-	padding-bottom: 6px;
-	border-bottom: none;
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-}
-.fp-table-row-delta td:first-child {
-	color: var(--text-faint);
-	font-style: italic;
-}
-.fp-table-row-emphasis td {
-	font-weight: 700;
-	color: var(--text-normal);
-}
-.fp-delta-good {
-	color: var(--fp-good);
-}
-.fp-delta-bad {
-	color: var(--fp-bad);
-}
+/* ==========================================================================
+   L6 — SECTIONS (un-migrated markup, re-tokenized)
+   ========================================================================== */
 
 /* ---------- Ledger ---------- */
 
 .fp-ledger-controls {
-	margin-bottom: 10px;
+	margin-bottom: var(--fp-space-2);
+}
+.fp-ledger-filters {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	flex-wrap: wrap;
+	margin-bottom: var(--fp-space-3);
 }
 .fp-ledger-summary {
 	display: flex;
-	gap: 24px;
-	margin-bottom: 14px;
+	gap: var(--fp-space-6);
+	margin-bottom: var(--fp-space-3);
 }
 .fp-ledger-summary-item {
 	display: flex;
@@ -605,63 +1996,22 @@
 	gap: 6px;
 }
 .fp-ledger-summary-value {
-	font-size: var(--font-ui-large);
-	font-weight: 800;
-	color: var(--text-normal);
+	font-size: var(--fp-fs-lg);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+	font-variant-numeric: tabular-nums;
 }
 .fp-ledger-summary-value.is-negative {
-	color: var(--fp-bad);
+	color: var(--fp-ink);
 }
 .fp-ledger-summary-value.is-positive {
-	color: var(--fp-good);
+	color: var(--fp-pos-ink);
 }
 .fp-ledger-summary-label {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
-}
-.fp-search {
-	width: 100%;
-	max-width: 360px;
-	padding: 7px 10px;
-	border-radius: var(--fp-radius-sm);
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-}
-.fp-ledger-filters {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	flex-wrap: wrap;
-	margin-bottom: 14px;
-}
-.fp-filter-select,
-.fp-filter-date {
-	padding: 7px 10px;
-	border-radius: var(--fp-radius-sm);
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
-}
-.fp-filter-date-sep {
-	color: var(--text-muted);
-}
-.fp-ledger-table-wrap {
-	overflow-x: auto;
-}
-.fp-ledger-th-sortable {
-	cursor: pointer;
-	user-select: none;
-	white-space: nowrap;
-}
-.fp-ledger-th-sortable:hover {
-	color: var(--text-normal);
-}
-.fp-ledger-th-sortable.is-sorted {
-	color: var(--text-normal);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	text-transform: none;
+	letter-spacing: 0;
 }
 .fp-ledger-sort-indicator {
 	display: inline-flex;
@@ -675,20 +2025,15 @@
 .fp-ledger-row {
 	cursor: pointer;
 }
-.fp-cell-date {
-	white-space: nowrap;
-	color: var(--text-muted);
+.fp-accounts-overview-name {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
 }
-.fp-cell-amount {
-	text-align: right;
-	font-weight: 700;
-	font-variant-numeric: tabular-nums;
-}
-.fp-cell-amount.is-negative {
-	color: var(--fp-bad);
-}
-.fp-cell-amount.is-positive {
-	color: var(--fp-good);
+.fp-accounts-overview-icon {
+	color: var(--fp-ink-secondary);
 }
 
 /* ---------- Wizard modal ---------- */
@@ -699,13 +2044,13 @@
 .fp-wizard {
 	display: flex;
 	flex-direction: column;
-	gap: 18px;
-	padding: 4px;
+	gap: var(--fp-space-5);
+	padding: var(--fp-space-1);
 }
 .fp-wizard-header {
 	display: flex;
 	align-items: center;
-	gap: 14px;
+	gap: var(--fp-space-3);
 }
 .fp-wizard-header-text {
 	display: flex;
@@ -717,8 +2062,8 @@
 	width: 44px;
 	height: 44px;
 	border-radius: var(--fp-radius-md);
-	background: linear-gradient(135deg, var(--interactive-accent), color-mix(in srgb, var(--interactive-accent) 55%, #a855f7));
-	color: var(--text-on-accent);
+	background: linear-gradient(135deg, var(--fp-accent), color-mix(in srgb, var(--fp-accent) 55%, var(--fp-cat-7)));
+	color: var(--fp-ink-on-fill);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -726,12 +2071,13 @@
 	flex-shrink: 0;
 }
 .fp-wizard-title {
-	font-size: var(--font-ui-large);
-	font-weight: 800;
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	line-height: var(--fp-lh-snug);
 }
 .fp-wizard-subtitle {
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
+	color: var(--fp-ink-secondary);
+	font-size: var(--fp-fs-sm);
 }
 
 .fp-wizard-steps {
@@ -753,22 +2099,22 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: var(--background-modifier-border);
-	color: var(--text-muted);
-	transition: background-color 0.15s ease, color 0.15s ease;
+	background: var(--fp-bg-track);
+	color: var(--fp-ink-secondary);
+	transition: background-color var(--fp-dur-2) var(--fp-ease), color var(--fp-dur-2) var(--fp-ease);
 }
 .fp-wizard-step.is-active .fp-wizard-step-circle {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	box-shadow: 0 0 0 4px var(--fp-neutral-bg);
+	background: var(--fp-accent);
+	color: var(--fp-ink-on-fill);
+	box-shadow: 0 0 0 4px var(--fp-accent-wash);
 }
 .fp-wizard-step.is-done .fp-wizard-step-circle {
-	background: var(--fp-good);
-	color: var(--text-on-accent);
+	background: var(--fp-pos-fill);
+	color: #fff;
 }
 .fp-wizard-step-label {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-overline);
+	color: var(--fp-ink-secondary);
 	text-align: center;
 	white-space: nowrap;
 	overflow: hidden;
@@ -776,49 +2122,48 @@
 	max-width: 80px;
 }
 .fp-wizard-step.is-active .fp-wizard-step-label {
-	color: var(--text-normal);
-	font-weight: 700;
+	color: var(--fp-ink);
+	font-weight: var(--fp-fw-semibold);
 }
 .fp-wizard-step-line {
 	flex: 1 1 auto;
 	height: 2px;
-	background: var(--background-modifier-border);
-	margin: 0 -6px;
-	margin-bottom: 22px;
+	background: var(--fp-line);
+	margin: 0 -6px var(--fp-space-5);
 }
 .fp-wizard-step-line.is-done {
-	background: var(--fp-good);
+	background: var(--fp-pos-fill);
 }
 
 .fp-wizard-body {
 	min-height: 220px;
 	max-height: 52vh;
 	overflow-y: auto;
-	padding: 4px 2px;
+	padding: var(--fp-space-1) 2px;
 }
 .fp-wizard-body h3 {
 	margin-top: 0;
 }
 .fp-step-desc {
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	margin: 4px 0 14px;
+	color: var(--fp-ink-secondary);
+	font-size: var(--fp-fs-sm);
+	line-height: var(--fp-lh-body);
+	margin: var(--fp-space-1) 0 var(--fp-space-3);
 }
-
 .fp-step-welcome {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	text-align: center;
-	gap: 8px;
-	padding: 20px 12px 4px;
+	gap: var(--fp-space-2);
+	padding: var(--fp-space-5) var(--fp-space-3) var(--fp-space-1);
 }
 .fp-welcome-icon {
 	width: 60px;
 	height: 60px;
 	border-radius: 50%;
-	background: var(--fp-neutral-bg);
-	color: var(--fp-neutral);
+	background: var(--fp-accent-wash);
+	color: var(--fp-accent-ink);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -826,44 +2171,39 @@
 	margin-bottom: 6px;
 }
 .fp-welcome-icon.fp-tone-good {
-	background: var(--fp-good-bg);
-	color: var(--fp-good);
+	background: var(--fp-pos-wash);
+	color: var(--fp-pos-ink);
 }
-
 .fp-wizard-footer {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding-top: 10px;
-	border-top: 1px solid var(--background-modifier-border);
+	padding-top: var(--fp-space-2);
+	border-top: 1px solid var(--fp-line);
 }
 .fp-wizard-footer-left,
 .fp-wizard-footer-right {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--fp-space-2);
 }
 
-/* ---------- Onboarding: accounts & categories ---------- */
-
-/* .fp-account-list / .fp-account-row are now defined once, under "Account modals" below — the
-   account-editing step of the old modal onboarding flow that styled them here has been replaced
-   by ManageAccountsModal / ManagePortfoliosModal, which use that definition instead. */
+/* ---------- Categories ---------- */
 
 .fp-category-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-	gap: 8px;
+	gap: var(--fp-space-2);
 }
 .fp-category-item {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 8px;
-	padding: 7px 10px;
+	gap: var(--fp-space-2);
+	padding: 7px var(--fp-space-2);
 	border-radius: var(--fp-radius-sm);
-	background: var(--background-secondary);
-	transition: opacity 0.15s ease;
+	background: var(--fp-bg-inset);
+	transition: opacity var(--fp-dur-2) var(--fp-ease);
 }
 .fp-category-item.is-archived {
 	opacity: 0.4;
@@ -876,57 +2216,56 @@
 	flex-direction: column;
 	align-items: center;
 	gap: 6px;
-	padding: 28px 16px;
-	border: 2px dashed var(--background-modifier-border);
-	border-radius: var(--fp-radius-lg);
-	margin-bottom: 14px;
+	padding: var(--fp-space-6) var(--fp-space-4);
+	border: 2px dashed var(--fp-line-strong);
+	border-radius: var(--fp-radius-md);
+	margin-bottom: var(--fp-space-3);
 	cursor: pointer;
-	transition: border-color 0.15s ease, background-color 0.15s ease;
+	transition: border-color var(--fp-dur-2) var(--fp-ease), background-color var(--fp-dur-2) var(--fp-ease);
 }
 .fp-dropzone:hover {
-	border-color: var(--interactive-accent);
-	background: var(--background-modifier-hover);
+	border-color: var(--fp-accent);
+	background: var(--fp-bg-card-hover);
 }
 .fp-dropzone.is-dragover {
-	border-color: var(--interactive-accent);
-	background: var(--fp-neutral-bg);
+	border-color: var(--fp-accent);
+	background: var(--fp-accent-wash);
 }
 .fp-dropzone.has-file {
 	border-style: solid;
-	border-color: var(--fp-good);
-	background: var(--fp-good-bg);
+	border-color: var(--fp-pos-fill);
+	background: var(--fp-pos-wash);
 }
 .fp-dropzone-icon {
-	color: var(--fp-neutral);
+	color: var(--fp-accent-ink);
 	font-size: 22px;
 }
 .fp-dropzone.has-file .fp-dropzone-icon {
-	color: var(--fp-good);
+	color: var(--fp-pos-ink);
 }
 .fp-dropzone-text {
-	font-weight: 700;
-	color: var(--text-normal);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
 }
 .fp-dropzone-subtext {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
 }
 .fp-file-input-hidden {
 	display: none;
 }
-
 .fp-format-row {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
-	margin-bottom: 12px;
+	margin-bottom: var(--fp-space-3);
 }
 .fp-setting-row {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	margin-bottom: 14px;
-	font-size: var(--font-ui-small);
+	gap: var(--fp-space-2);
+	margin-bottom: var(--fp-space-3);
+	font-size: var(--fp-fs-sm);
 }
 .fp-iban-map {
 	max-height: 220px;
@@ -935,28 +2274,26 @@
 .fp-column-mapping-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 12px 16px;
-	margin-bottom: 14px;
+	gap: var(--fp-space-3) var(--fp-space-4);
+	margin-bottom: var(--fp-space-3);
 }
 .fp-iban-label {
-	font-family: var(--font-monospace);
+	font-family: var(--fp-font-mono);
 	min-width: 200px;
 }
-
 .fp-preview-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: var(--font-ui-smaller);
+	font-size: var(--fp-fs-xs);
 	display: block;
 	overflow-x: auto;
 	white-space: nowrap;
 }
 .fp-preview-table th,
 .fp-preview-table td {
-	padding: 5px 8px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 5px var(--fp-space-2);
+	border-bottom: 1px solid var(--fp-line-hairline);
 }
-
 .fp-review-list {
 	display: flex;
 	flex-direction: column;
@@ -966,395 +2303,46 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 10px;
-	padding: 7px 10px;
+	gap: var(--fp-space-2);
+	padding: 7px var(--fp-space-2);
 	border-radius: var(--fp-radius-sm);
-	background: var(--background-secondary);
+	background: var(--fp-bg-inset);
 }
 .fp-review-desc {
-	font-size: var(--font-ui-smaller);
+	font-size: var(--fp-fs-xs);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	flex: 1;
 }
-
 .fp-import-stats {
 	display: flex;
-	gap: 10px;
+	gap: var(--fp-space-2);
 	flex-wrap: wrap;
 }
 .fp-import-stat {
-	padding: 8px 14px;
+	padding: var(--fp-space-2) var(--fp-space-3);
 	border-radius: var(--fp-radius-sm);
-	background: var(--fp-neutral-bg);
-	color: var(--fp-neutral);
-	font-weight: 700;
-	font-size: var(--font-ui-small);
+	background: var(--fp-accent-wash);
+	color: var(--fp-accent-ink);
+	font-weight: var(--fp-fw-semibold);
+	font-size: var(--fp-fs-sm);
 }
 
-/* ==========================================================================
-   Charts — categorical palette validated for CVD-safe adjacent contrast
-   (see the dataviz skill). Light/dark steps swap via Obsidian's .theme-dark.
-   ========================================================================== */
+/* ---------- Account & detail modals ---------- */
 
-.fp-workspace {
-	--fp-chart-income: #008300;
-	--fp-chart-expenses: #e34948;
-	--fp-chart-net: #2a78d6;
-	--fp-chart-grid: #e1e0d9;
-	--fp-chart-baseline: #c3c2b7;
-	--fp-chart-axis-text: #898781;
-	/* Categorical slots 1–5 (blue/orange/aqua/yellow/magenta) — validated CVD-safe adjacent, light mode. */
-	--fp-cat-1: #2a78d6;
-	--fp-cat-2: #eb6834;
-	--fp-cat-3: #1baf7a;
-	--fp-cat-4: #eda100;
-	--fp-cat-5: #e87ba4;
-}
-.theme-dark .fp-workspace {
-	--fp-chart-expenses: #e66767;
-	--fp-chart-net: #3987e5;
-	--fp-chart-grid: #2c2c2a;
-	--fp-chart-baseline: #383835;
-	--fp-cat-1: #3987e5;
-	--fp-cat-2: #d95926;
-	--fp-cat-3: #199e70;
-	--fp-cat-4: #c98500;
-	--fp-cat-5: #d55181;
-}
-
-.fp-chart {
-	margin-bottom: 6px;
-}
-.fp-chart-legend {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 16px;
-	margin-bottom: 8px;
-}
-.fp-chart-legend-item {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
-	font-weight: 600;
-}
-.fp-chart-swatch {
-	--fp-swatch-color: var(--fp-neutral);
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
-	background: var(--fp-swatch-color);
-	flex-shrink: 0;
-}
-
-.fp-chart-svg-wrap {
-	position: relative;
-}
-.fp-chart-svg {
-	width: 100%;
-	height: auto;
-	display: block;
-	overflow: visible;
-}
-.fp-chart-grid {
-	stroke: var(--fp-chart-grid);
-	stroke-width: 1;
-}
-.fp-chart-baseline {
-	stroke: var(--fp-chart-baseline);
-	stroke-width: 1;
-}
-.fp-chart-axis-label {
-	font-size: 10px;
-	fill: var(--fp-chart-axis-text);
-}
-.fp-chart-line {
-	fill: none;
-	stroke: var(--fp-line-color);
-	stroke-width: 2;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-.fp-chart-dot {
-	fill: var(--fp-line-color);
-	stroke: var(--background-primary-alt, var(--background-secondary));
-	stroke-width: 2;
-}
-.fp-chart-end-label {
-	font-size: 11px;
-	font-weight: 700;
-	fill: var(--text-normal);
-}
-.fp-chart-hit {
-	fill: transparent;
-	cursor: crosshair;
-}
-.fp-chart-crosshair {
-	stroke: var(--fp-chart-axis-text);
-	stroke-width: 1;
-	stroke-dasharray: 3 3;
-	pointer-events: none;
-}
-.fp-chart-tooltip {
-	position: absolute;
-	top: 0;
-	pointer-events: none;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--fp-radius-sm);
-	box-shadow: var(--fp-shadow);
-	padding: 8px 10px;
-	font-size: var(--font-ui-smaller);
-	min-width: 140px;
-	z-index: 5;
-}
-.fp-chart-tooltip-title {
-	font-weight: 700;
-	margin-bottom: 4px;
-	color: var(--text-normal);
-}
-.fp-chart-tooltip-row {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	color: var(--text-muted);
-	padding: 1px 0;
-}
-.fp-chart-tooltip-value {
-	margin-left: auto;
-	font-weight: 700;
-	color: var(--text-normal);
-}
-
-/* ---------- Sparkline (stat-tile trend) ---------- */
-
-.fp-sparkline {
-	display: block;
-	width: 96px;
-	height: 32px;
-	overflow: visible;
-}
-.fp-sparkline-line {
-	fill: none;
-	stroke: var(--text-faint);
-	stroke-width: 2;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-.fp-sparkline-dot {
-	fill: var(--fp-line-color);
-}
-
-/* ---------- Share bar (part-to-whole) ---------- */
-
-.fp-share-bar {
-	display: flex;
-	gap: 2px;
-	height: 14px;
-	border-radius: var(--fp-radius-sm);
-	overflow: hidden;
-	margin-bottom: 16px;
-	background: var(--background-modifier-border);
-}
-.fp-share-bar-seg {
-	background: var(--fp-seg-color);
-	min-width: 2px;
-}
-.fp-share-bar-legend {
-	display: flex;
-	flex-direction: column;
-	gap: 9px;
-}
-.fp-share-bar-legend-item {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	font-size: var(--font-ui-small);
-}
-.fp-share-bar-legend-label {
-	flex: 1;
-	color: var(--text-normal);
-	font-weight: 600;
-}
-.fp-share-bar-legend-value {
-	color: var(--text-muted);
-	font-variant-numeric: tabular-nums;
-}
-
-/* ---------- KPI cards (hero / value / delta / sparkline) ---------- */
-
-.fp-kpi-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-	gap: 14px;
-	margin-bottom: 20px;
-}
-.fp-kpi-card {
-	background: var(--background-primary-alt, var(--background-secondary));
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--fp-radius-lg);
-	padding: 16px 18px;
-	box-shadow: var(--fp-shadow);
-}
-.fp-kpi-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	margin-bottom: 10px;
-}
-.fp-kpi-label {
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-muted);
-}
-.fp-kpi-delta {
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-}
-.fp-kpi-delta.is-good {
-	color: var(--fp-good);
-}
-.fp-kpi-delta.is-bad {
-	color: var(--fp-bad);
-}
-.fp-kpi-body {
-	display: flex;
-	align-items: flex-end;
-	justify-content: space-between;
-	gap: 12px;
-}
-.fp-kpi-value {
-	font-size: 1.6em;
-	font-weight: 800;
-	color: var(--text-normal);
-	line-height: 1.1;
-}
-.fp-kpi-hero .fp-kpi-value {
-	font-size: 2.5em;
-}
-.fp-kpi-spark {
-	flex-shrink: 0;
-}
-.fp-kpi-sub {
-	margin-top: 10px;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
-/* ---------- Meter (ratio-to-limit) ---------- */
-
-.fp-meter-card {
-	background: var(--background-primary-alt, var(--background-secondary));
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--fp-radius-lg);
-	padding: 16px 18px;
-	box-shadow: var(--fp-shadow);
-	margin-bottom: 20px;
-}
-.fp-meter-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	margin-bottom: 10px;
-}
-.fp-meter-label {
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-muted);
-}
-.fp-meter-value {
-	font-size: var(--font-ui-large);
-	font-weight: 800;
-	color: var(--text-normal);
-}
-.fp-meter-track {
-	height: 10px;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--fp-neutral) 16%, var(--background-modifier-border));
-	overflow: hidden;
-}
-.fp-meter-fill {
-	height: 100%;
-	background: var(--fp-neutral);
-	border-radius: 999px;
-}
-.fp-meter-sub {
-	margin-top: 10px;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
-/* ---------- Horizontal bar chart (category totals) ---------- */
-
-.fp-barchart {
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-}
-.fp-barchart-row {
-	display: grid;
-	grid-template-columns: 170px 1fr 80px;
-	align-items: center;
-	gap: 12px;
-}
-.fp-barchart-label {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	font-size: var(--font-ui-small);
-	color: var(--text-normal);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.fp-barchart-icon {
-	flex-shrink: 0;
-	color: var(--text-muted);
-}
-.fp-barchart-track {
-	height: 10px;
-	background: var(--background-modifier-border);
-	border-radius: 999px;
-	overflow: hidden;
-}
-.fp-barchart-fill {
-	--fp-bar-color: var(--fp-neutral);
-	height: 100%;
-	background: var(--fp-bar-color);
-	border-radius: 999px;
-}
-.fp-barchart-value {
-	text-align: right;
-	font-size: var(--font-ui-small);
-	font-weight: 700;
-	font-variant-numeric: tabular-nums;
-	color: var(--text-normal);
-}
-
-/* ---------- Account modals ---------- */
-
-.fp-account-modal {
-	padding: 4px;
+.fp-account-modal,
+.fp-detail-modal {
+	padding: var(--fp-space-1);
 }
 .fp-drilldown-modal {
 	width: min(1040px, 95vw);
 }
-.fp-table-scroll {
-	overflow-x: auto;
-}
 .fp-form {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
-	margin: 14px 0;
+	gap: var(--fp-space-3);
+	margin: var(--fp-space-3) 0;
 }
 .fp-form-row {
 	display: flex;
@@ -1362,23 +2350,25 @@
 	gap: 5px;
 }
 .fp-form-row label {
-	font-size: var(--font-ui-small);
-	font-weight: 600;
-	color: var(--text-muted);
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
 }
 .fp-form-row input,
 .fp-form-row select {
-	padding: 7px 10px;
+	height: 30px;
+	padding: 0 var(--fp-space-3);
 	border-radius: var(--fp-radius-sm);
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
+	border: 1px solid var(--fp-line);
+	background: var(--fp-bg-card);
+	color: var(--fp-ink);
+	font-size: var(--fp-fs-sm);
+	font-family: inherit;
 }
 .fp-type-checkbox-list {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	gap: var(--fp-space-2);
 }
 .fp-type-checkbox-row {
 	display: flex;
@@ -1394,20 +2384,20 @@
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	padding: 6px 12px;
-	border-radius: 999px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
-	font-weight: 500;
+	padding: 6px var(--fp-space-3);
+	border-radius: var(--fp-radius-pill);
+	border: 1px solid var(--fp-line);
+	background: var(--fp-bg-inset);
+	color: var(--fp-ink);
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-medium);
 	cursor: pointer;
 }
 .fp-type-checkbox-row input[type="checkbox"]:checked + label {
-	border-color: var(--fp-neutral);
-	background: var(--fp-neutral-bg);
-	color: var(--fp-neutral);
-	font-weight: 600;
+	border-color: var(--fp-accent);
+	background: var(--fp-accent-wash);
+	color: var(--fp-accent-ink);
+	font-weight: var(--fp-fw-semibold);
 }
 .fp-type-checkbox-icon {
 	color: inherit;
@@ -1416,21 +2406,21 @@
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	margin-bottom: 8px;
+	margin-bottom: var(--fp-space-2);
 	max-height: 320px;
 	overflow-y: auto;
 }
 .fp-account-row {
 	display: flex;
 	align-items: center;
-	gap: 10px;
-	padding: 10px 12px;
+	gap: var(--fp-space-2);
+	padding: var(--fp-space-2) var(--fp-space-3);
 	border-radius: var(--fp-radius-sm);
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
+	background: var(--fp-bg-inset);
+	border: 1px solid var(--fp-line-hairline);
 }
 .fp-account-row-icon {
-	color: var(--fp-neutral);
+	color: var(--fp-ink-secondary);
 	flex-shrink: 0;
 }
 .fp-account-row-info {
@@ -1438,42 +2428,37 @@
 	min-width: 0;
 }
 .fp-account-row-name {
-	font-weight: 700;
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+	font-size: var(--fp-fs-sm);
 }
 .fp-account-row-meta {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
 }
 .fp-account-row-balance {
-	font-weight: 700;
-	color: var(--text-normal);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
 
-/* ---------- Transaction detail modal ---------- */
-
-.fp-detail-modal {
-	padding: 4px;
-}
 .fp-detail-header {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
-	gap: 14px;
-	padding-bottom: 14px;
-	margin-bottom: 14px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	gap: var(--fp-space-3);
+	padding-bottom: var(--fp-space-3);
+	margin-bottom: var(--fp-space-3);
+	border-bottom: 1px solid var(--fp-line);
 }
 .fp-detail-desc {
-	font-size: var(--font-ui-large);
-	font-weight: 700;
-	color: var(--text-normal);
+	font-size: var(--fp-fs-lg);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
 }
 .fp-detail-amount {
-	font-size: 1.3em;
+	font-size: var(--fp-fs-xl);
 	flex-shrink: 0;
 }
 .fp-detail-body {
@@ -1482,46 +2467,39 @@
 	gap: 2px;
 }
 .fp-detail-body h4 {
-	margin: 14px 0 6px;
-	font-size: var(--font-ui-small);
+	margin: var(--fp-space-3) 0 6px;
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-semibold);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
-	color: var(--text-muted);
+	letter-spacing: var(--fp-ls-overline);
+	color: var(--fp-ink-muted);
 }
 .fp-detail-row {
 	display: grid;
 	grid-template-columns: 140px 1fr;
-	gap: 12px;
+	gap: var(--fp-space-3);
 	padding: 6px 0;
-	border-bottom: 1px solid var(--background-modifier-border-focus, var(--background-modifier-border));
+	border-bottom: 1px solid var(--fp-line-hairline);
 }
 .fp-detail-label {
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	font-weight: 600;
+	color: var(--fp-ink-secondary);
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-medium);
 }
 .fp-detail-value {
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
+	color: var(--fp-ink);
+	font-size: var(--fp-fs-sm);
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--fp-space-2);
 	flex-wrap: wrap;
 }
-.fp-setup-select {
-	padding: 7px 10px;
-	border-radius: var(--fp-radius-sm);
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
-}
 .fp-detail-raw {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	background: var(--background-secondary);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	background: var(--fp-bg-inset);
 	border-radius: var(--fp-radius-sm);
-	padding: 10px 12px;
+	padding: var(--fp-space-2) var(--fp-space-3);
 	white-space: pre-wrap;
 	word-break: break-word;
 	max-height: 160px;
@@ -1530,58 +2508,34 @@
 
 /* ---------- Subscriptions ---------- */
 
-.fp-section-subtitle {
-	margin-top: 2px;
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	max-width: 640px;
-}
-
 .fp-card-head-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 10px;
-	margin-bottom: 14px;
+	gap: var(--fp-space-2);
+	margin-bottom: var(--fp-space-3);
 }
 .fp-card-head-row h3 {
 	margin: 0;
 }
 .fp-card-head-label {
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-semibold);
 	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-faint);
+	letter-spacing: var(--fp-ls-overline);
+	color: var(--fp-ink-muted);
 	white-space: nowrap;
 }
-
-.fp-avatar {
-	--fp-avatar-color: var(--fp-neutral);
-	width: 36px;
-	height: 36px;
-	border-radius: var(--fp-radius-md);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	font-weight: 800;
-	font-size: var(--font-ui-medium);
-	color: var(--fp-avatar-color);
-	background: color-mix(in srgb, var(--fp-avatar-color) 16%, transparent);
-}
-
 .fp-sub-breakdown-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-	gap: 16px;
-	margin-bottom: 20px;
+	gap: var(--fp-grid-gap);
+	margin-bottom: var(--fp-stack);
 	align-items: stretch;
 }
 .fp-sub-breakdown-grid .fp-card {
 	margin-bottom: 0;
 }
-
 .fp-sub-upcoming-list {
 	display: flex;
 	flex-direction: column;
@@ -1589,9 +2543,9 @@
 .fp-sub-upcoming-row {
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 10px 0;
-	border-bottom: 1px solid var(--background-modifier-border);
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-2) 0;
+	border-bottom: 1px solid var(--fp-line-hairline);
 }
 .fp-sub-upcoming-row:last-child {
 	border-bottom: none;
@@ -1600,16 +2554,17 @@
 .fp-sub-upcoming-date {
 	width: 96px;
 	flex-shrink: 0;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	line-height: 1.4;
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	line-height: var(--fp-lh-snug);
 }
 .fp-sub-upcoming-relative {
-	font-weight: 600;
-	color: var(--fp-neutral);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
 }
 .fp-sub-upcoming-relative.is-due {
-	color: var(--fp-bad);
+	color: var(--fp-warn-ink);
+	font-weight: var(--fp-fw-semibold);
 }
 .fp-sub-upcoming-info {
 	flex: 1;
@@ -1618,57 +2573,57 @@
 .fp-sub-upcoming-name-line {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--fp-space-2);
 }
 .fp-sub-upcoming-name {
-	font-weight: 700;
-	color: var(--text-normal);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
 }
 .fp-sub-upcoming-meta {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
 	margin-top: 2px;
 }
-.fp-sub-upcoming-amount {
+.fp-sub-upcoming-amount,
+.fp-sub-card-amount {
 	text-align: right;
-	font-weight: 700;
-	color: var(--text-normal);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
-.fp-sub-upcoming-amount-sub {
-	font-size: var(--font-ui-smaller);
-	font-weight: 500;
-	color: var(--text-faint);
+.fp-sub-upcoming-amount-sub,
+.fp-sub-card-amount-sub {
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-regular);
+	color: var(--fp-ink-muted);
 }
-
 .fp-sub-form-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 12px 16px;
+	gap: var(--fp-space-3) var(--fp-space-4);
 }
 .fp-sub-form-footer {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
-	margin-top: 16px;
-	padding-top: 14px;
-	border-top: 1px solid var(--background-modifier-border);
+	gap: var(--fp-space-3);
+	margin-top: var(--fp-space-4);
+	padding-top: var(--fp-space-3);
+	border-top: 1px solid var(--fp-line);
 }
 .fp-sub-form-preview {
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink-secondary);
 	font-variant-numeric: tabular-nums;
 }
-
 .fp-sub-group-label {
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-semibold);
 	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-faint);
-	margin: 18px 0 10px;
+	letter-spacing: var(--fp-ls-overline);
+	color: var(--fp-ink-muted);
+	margin: var(--fp-space-5) 0 var(--fp-space-2);
 }
 .fp-sub-group-label:first-child {
 	margin-top: 0;
@@ -1676,13 +2631,14 @@
 .fp-sub-card-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-	gap: 12px;
+	gap: var(--fp-space-3);
 }
 .fp-sub-card {
-	padding: 16px 18px;
-	border-radius: var(--fp-radius-lg);
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
+	padding: var(--fp-card-pad-tight);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-card);
+	border: 1px solid var(--fp-line);
+	box-shadow: var(--fp-elev-1);
 }
 .fp-sub-card.is-inactive {
 	opacity: 0.55;
@@ -1690,97 +2646,58 @@
 .fp-sub-card-top {
 	display: flex;
 	align-items: flex-start;
-	gap: 10px;
-	margin-bottom: 10px;
+	gap: var(--fp-space-2);
+	margin-bottom: var(--fp-space-2);
 }
 .fp-sub-card-info {
 	flex: 1;
 	min-width: 0;
 }
 .fp-sub-card-name {
-	font-weight: 700;
-	color: var(--text-normal);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
 }
 .fp-sub-card-plan {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
 	margin-top: 1px;
-}
-.fp-sub-card-amount {
-	text-align: right;
-	font-weight: 700;
-	color: var(--text-normal);
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-}
-.fp-sub-card-amount-sub {
-	font-size: var(--font-ui-smaller);
-	font-weight: 500;
-	color: var(--text-faint);
 }
 .fp-sub-card-meta {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	margin-bottom: 8px;
+	gap: var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	margin-bottom: var(--fp-space-2);
 }
 .fp-sub-card-due {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
 }
 .fp-sub-card-notes {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
 	font-style: italic;
 	margin-top: 6px;
 }
 .fp-sub-card-actions {
 	display: flex;
 	justify-content: flex-end;
-	gap: 4px;
-	margin-top: 10px;
+	gap: var(--fp-space-1);
+	margin-top: var(--fp-space-2);
 }
 
-/* ---------- Privacy mode ---------- */
-
-.fp-nav-item.is-privacy-on {
-	color: var(--fp-neutral);
-}
-.fp-nav-item.is-privacy-on .fp-nav-icon {
-	color: var(--fp-neutral);
-}
-
-.fp-money {
-	transition: filter 0.12s ease;
-}
-.fp-privacy .fp-money {
-	filter: blur(6px);
-	user-select: none;
-	cursor: default;
-}
-.fp-privacy .fp-money:hover {
-	filter: none;
-}
-.fp-privacy .fp-chart-money text,
-.fp-privacy .fp-chart-money .fp-chart-tooltip-value {
-	filter: blur(5px);
-	transition: filter 0.12s ease;
-}
-.fp-privacy .fp-chart-money:hover text,
-.fp-privacy .fp-chart-money:hover .fp-chart-tooltip-value {
-	filter: none;
-}
-
-/* ---------- Cards ---------- */
+/* ---------- Payment-card visuals ----------
+   NOTE: this family (.fp-card-visual / .fp-card-grid / .fp-card-tile) is the
+   *payment card*, not the generic .fp-card surface. Best-in-repo art; only the
+   radius reads from a token — the bespoke shadows are deliberate. */
 
 .fp-card-visual {
 	position: relative;
 	width: 320px;
 	max-width: 100%;
 	aspect-ratio: 1.586 / 1;
-	border-radius: 16px;
+	border-radius: var(--fp-radius-lg);
 	padding: 18px 20px;
 	display: flex;
 	flex-direction: column;
@@ -1790,7 +2707,7 @@
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.08),
 		inset 0 1px 1px rgba(255, 255, 255, 0.18), inset 0 -14px 22px rgba(0, 0, 0, 0.16);
 	overflow: hidden;
-	transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
+	transition: transform var(--fp-dur-2) var(--fp-ease-out), box-shadow var(--fp-dur-2) var(--fp-ease-out);
 	will-change: transform;
 }
 /* A static diagonal gloss band plus fine linear "brushed metal" texture — on top of the per-move
@@ -1854,10 +2771,10 @@
 }
 .fp-card-visual-primary {
 	font-size: 10px;
-	font-weight: 800;
+	font-weight: 700;
 	letter-spacing: 0.06em;
 	padding: 2px 8px;
-	border-radius: 999px;
+	border-radius: var(--fp-radius-pill);
 	background: rgba(255, 255, 255, 0.18);
 	white-space: nowrap;
 }
@@ -1928,7 +2845,7 @@
 	height: 19px;
 }
 .fp-card-visual-number {
-	font-family: var(--font-monospace);
+	font-family: var(--fp-font-mono);
 	font-size: 17px;
 	letter-spacing: 0.12em;
 	font-weight: 600;
@@ -1936,8 +2853,7 @@
 	z-index: 1;
 }
 /* Embossed-relief lettering — a light catch-edge above, a dark cast-shadow below, as if the digits
-   are physically raised and lit from above-left. Shared by the number/name/exp so the whole
-   personalization line reads as one embossed strip, the way it does on a real card. */
+   are physically raised and lit from above-left. */
 .fp-card-visual-number,
 .fp-card-visual-name,
 .fp-card-visual-exp {
@@ -1984,7 +2900,7 @@
 }
 .fp-card-visual-network {
 	font-size: 15px;
-	font-weight: 800;
+	font-weight: 700;
 	font-style: italic;
 	letter-spacing: 0.02em;
 	flex-shrink: 0;
@@ -1994,10 +2910,10 @@
 	background: rgba(255, 255, 255, 0.92);
 	color: #006fcf;
 	padding: 3px 7px;
-	border-radius: 4px;
+	border-radius: var(--fp-radius-xs);
 	font-style: normal;
 	font-size: 11px;
-	font-weight: 800;
+	font-weight: 700;
 	letter-spacing: 0.04em;
 }
 .fp-card-network-discover span {
@@ -2027,104 +2943,90 @@
 	z-index: 2;
 	opacity: 0.85;
 }
-
 .fp-card-preview-wrap {
 	display: flex;
 	justify-content: center;
-	padding: 24px 0 8px;
+	padding: var(--fp-space-6) 0 var(--fp-space-2);
 }
-
 .fp-card-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-	gap: 24px 20px;
-	margin-bottom: 8px;
+	gap: var(--fp-space-6) var(--fp-space-5);
+	margin-bottom: var(--fp-space-2);
 }
 .fp-card-tile {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 10px;
+	gap: var(--fp-space-2);
 }
 .fp-card-tile-clickable {
 	cursor: pointer;
 }
 .fp-card-tile-account {
 	align-self: flex-start;
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--fp-neutral);
-}
-
-.fp-sensitive {
-	transition: filter 0.12s ease;
-}
-.fp-privacy .fp-sensitive {
-	filter: blur(5px);
-	user-select: none;
-	cursor: default;
-}
-.fp-privacy .fp-sensitive:hover {
-	filter: none;
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--fp-ink-secondary);
 }
 
 /* ---------- Categorization flags ---------- */
 
 .fp-flags-card {
-	border-color: color-mix(in srgb, var(--fp-warn) 40%, var(--background-modifier-border));
+	border-color: color-mix(in srgb, var(--fp-warn-fill) 40%, var(--fp-line));
 }
 .fp-flags-card .fp-card-head-label {
-	color: var(--fp-warn);
-	background: var(--fp-warn-bg);
-	padding: 2px 8px;
-	border-radius: 999px;
+	color: var(--fp-warn-ink);
+	background: var(--fp-warn-wash);
+	padding: 2px var(--fp-space-2);
+	border-radius: var(--fp-radius-pill);
 }
 .fp-flags-desc {
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	margin: 0 0 12px;
+	color: var(--fp-ink-secondary);
+	font-size: var(--fp-fs-sm);
+	margin: 0 0 var(--fp-space-3);
 }
 .fp-flags-list {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: var(--fp-space-2);
 }
 .fp-flag-row {
-	padding: 10px 12px;
-	border-radius: var(--fp-radius-md);
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
+	padding: var(--fp-space-2) var(--fp-space-3);
+	border-radius: var(--fp-radius-sm);
+	background: var(--fp-bg-inset);
+	border: 1px solid var(--fp-line-hairline);
 }
 .fp-flag-row-top {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
-	gap: 10px;
+	gap: var(--fp-space-2);
 	margin-bottom: 6px;
 }
 .fp-flag-row-name {
-	font-weight: 700;
-	color: var(--text-normal);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
 }
 .fp-flag-row-meta {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
 	white-space: nowrap;
 }
 .fp-flag-row-outliers {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px 14px;
+	gap: var(--fp-space-2) var(--fp-space-3);
 }
 .fp-flag-outlier {
-	font-size: var(--font-ui-smaller);
-	color: var(--fp-warn);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-warn-ink);
 }
 .fp-flag-outlier-more {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
 }
 
 /* ---------- Budgets ---------- */
@@ -2132,51 +3034,59 @@
 .fp-budget-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-	gap: 12px;
+	gap: var(--fp-space-3);
 }
 .fp-budget-card {
-	padding: 16px 18px;
-	border-radius: var(--fp-radius-lg);
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
+	padding: var(--fp-card-pad-tight);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-card);
+	border: 1px solid var(--fp-line);
+	box-shadow: var(--fp-elev-1);
 }
+/* Tone lives on the meter fill and the wording; only a genuinely over-budget card
+   tints its border. "On track" needs no green outline. */
 .fp-budget-card.fp-tone-good {
-	border-color: color-mix(in srgb, var(--fp-good) 35%, var(--background-modifier-border));
+	border-color: var(--fp-line);
 }
 .fp-budget-card.fp-tone-warn {
-	border-color: color-mix(in srgb, var(--fp-warn) 45%, var(--background-modifier-border));
+	border-color: color-mix(in srgb, var(--fp-warn-fill) 40%, var(--fp-line));
 }
 .fp-budget-card.fp-tone-bad {
-	border-color: color-mix(in srgb, var(--fp-bad) 55%, var(--background-modifier-border));
+	border-color: color-mix(in srgb, var(--fp-neg-fill) 45%, var(--fp-line));
 }
 .fp-budget-card-top {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 10px;
-	margin-bottom: 12px;
+	gap: var(--fp-space-2);
+	margin-bottom: var(--fp-space-3);
 }
 .fp-budget-input-wrap {
 	display: flex;
 	align-items: center;
 	gap: 3px;
 	flex-shrink: 0;
-	padding: 3px 8px;
-	border-radius: var(--fp-radius-md);
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
+	padding: 3px var(--fp-space-2);
+	border-radius: var(--fp-radius-sm);
+	border: 1px solid var(--fp-line);
+	background: var(--fp-bg-card);
+	transition: border-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-budget-input-wrap:focus-within {
+	border-color: var(--fp-accent);
 }
 .fp-budget-input-prefix {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
 }
 .fp-budget-input {
 	width: 56px;
 	border: none;
 	background: transparent;
-	font-size: var(--font-ui-small);
-	font-weight: 700;
-	color: var(--text-normal);
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-semibold);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink);
 	text-align: right;
 	padding: 0;
 }
@@ -2185,34 +3095,36 @@
 }
 .fp-budget-track {
 	height: 8px;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--fp-neutral) 16%, var(--background-modifier-border));
+	border-radius: var(--fp-radius-xs);
+	background: var(--fp-bg-track);
 	overflow: hidden;
 }
 .fp-budget-fill {
 	height: 100%;
-	border-radius: 999px;
-	background: var(--fp-good);
+	border-radius: var(--fp-radius-xs);
+	background: var(--fp-accent);
+	transition: width var(--fp-dur-3) var(--fp-ease-out), background-color var(--fp-dur-2) var(--fp-ease);
 }
 .fp-budget-card.fp-tone-warn .fp-budget-fill {
-	background: var(--fp-warn);
+	background: var(--fp-warn-fill);
 }
 .fp-budget-card.fp-tone-bad .fp-budget-fill {
-	background: var(--fp-bad);
+	background: var(--fp-neg-fill);
 }
 .fp-budget-card-sub {
-	margin-top: 8px;
+	margin-top: var(--fp-space-2);
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
-	font-size: var(--font-ui-smaller);
+	gap: var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
 }
 .fp-budget-remaining {
-	color: var(--text-muted);
+	color: var(--fp-ink-secondary);
 }
 .fp-budget-card.fp-tone-bad .fp-budget-remaining {
-	color: var(--fp-bad);
-	font-weight: 700;
+	color: var(--fp-neg-ink);
+	font-weight: var(--fp-fw-semibold);
 }
 .fp-budget-hint {
 	display: flex;
@@ -2220,55 +3132,1892 @@
 	justify-content: flex-start;
 }
 .fp-budget-hint-text {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
 }
 .fp-budget-suggest-btn {
-	font-size: var(--font-ui-smaller);
-	color: var(--fp-neutral);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-accent-ink);
 	gap: 6px;
 }
 
-/* ---------- Mobile-friendly layout ---------- */
-/* Scoped under .fp-mobile, added to the view root by FinanceView when Settings → "Mobile-friendly
-   layout" resolves to on (Platform.isMobile by default, or the manual override). This is a first
-   pass covering the three highest-traffic areas that break on a narrow screen — the account
-   sidebar, the KPI/stat grids, and page padding — not a full per-section mobile redesign. The
-   ledger table already scrolls horizontally via .fp-ledger-table-wrap's overflow-x: auto, so it
-   needs no override here. */
+/* ==========================================================================
+   L7 — RESPONSIVE
+   Container queries on `.fp-shell`, not device queries: the same view is
+   full-screen (1400px) and docked (340px) within one Obsidian session, and
+   `Platform.isMobile` cannot tell those apart.
+   ========================================================================== */
 
-.fp-mobile .fp-shell {
+/* --- 620–900px: labels collapse, the rail becomes an icon rail. --- */
+@container fp-shell (max-width: 900px) {
+	.fp-rail {
+		width: var(--fp-rail-w-collapsed);
+		align-items: stretch;
+	}
+	.fp-rail .fp-nav-label,
+	.fp-rail .fp-nav-item-type,
+	.fp-rail .fp-nav-balance,
+	.fp-rail .fp-nav-brand-text,
+	.fp-rail .fp-rail-section-head,
+	.fp-rail .fp-nav-drag-handle {
+		display: none;
+	}
+	.fp-rail .fp-nav-item,
+	.fp-rail .fp-nav-util,
+	.fp-rail .fp-nav-brand {
+		justify-content: center;
+		padding: 0;
+		gap: 0;
+	}
+	.fp-rail-footer {
+		flex-direction: column;
+	}
+	.fp-content {
+		padding: var(--fp-space-6) var(--fp-space-5) var(--fp-space-12);
+	}
+}
+
+/* --- < 620px: the rail becomes a horizontally scrolling top bar. --- */
+@container fp-shell (max-width: 620px) {
+	.fp-shell {
+		flex-direction: column;
+		height: auto;
+		min-height: 100%;
+	}
+	.fp-rail {
+		width: 100%;
+		flex-direction: row;
+		align-items: center;
+		gap: var(--fp-space-1);
+		padding: var(--fp-space-2);
+		border-right: none;
+		border-bottom: 1px solid var(--fp-line);
+	}
+	.fp-rail-brand {
+		border-bottom: none;
+		padding-bottom: 0;
+		flex-shrink: 0;
+	}
+	.fp-rail-body {
+		flex-direction: row;
+		align-items: center;
+		gap: var(--fp-space-2);
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+	.fp-rail-tabs,
+	.fp-rail-section {
+		flex-direction: row;
+		flex-wrap: nowrap;
+	}
+	.fp-rail-footer {
+		border-top: none;
+		padding-top: 0;
+		flex-direction: row;
+		flex-shrink: 0;
+	}
+	.fp-rail .fp-nav-item {
+		width: auto;
+		flex-shrink: 0;
+	}
+	.fp-content {
+		padding: var(--fp-space-4);
+		overflow-x: hidden;
+	}
+	.fp-stat-grid,
+	.fp-kpi-grid {
+		grid-template-columns: 1fr;
+	}
+	.fp-section-header {
+		flex-wrap: wrap;
+		gap: var(--fp-space-2);
+	}
+	.fp-ledger-summary {
+		flex-wrap: wrap;
+		gap: var(--fp-space-3);
+	}
+	.fp-tabs {
+		overflow-x: auto;
+		flex-wrap: nowrap;
+	}
+	.fp-tab {
+		flex-shrink: 0;
+	}
+	.fp-detail-row {
+		grid-template-columns: 1fr;
+		gap: 2px;
+	}
+}
+
+/* --- Bars reflow before the shell does: the track needs room before the label does. --- */
+@container fp-shell (max-width: 560px) {
+	.fp-barchart-row {
+		grid-template-columns: 1fr auto;
+		grid-template-areas: "label value" "track track";
+		row-gap: var(--fp-space-1);
+	}
+	.fp-barchart-label {
+		grid-area: label;
+	}
+	.fp-barchart-value {
+		grid-area: value;
+	}
+	.fp-barchart-track {
+		grid-area: track;
+	}
+}
+
+/* --- Manual override: Settings → "Mobile-friendly layout" = on, or Platform.isMobile.
+   Mirrors the < 620px branch at any container width so the narrow layout can be
+   previewed on desktop and forced on a phone in landscape. Higher specificity than
+   the container rules above, so it wins in both directions. --- */
+.fp-force-narrow .fp-shell {
 	flex-direction: column;
 	height: auto;
 	min-height: 100%;
 }
-.fp-mobile .fp-nav {
+.fp-force-narrow .fp-rail {
 	width: 100%;
-	max-height: 40vh;
-	overflow-y: auto;
+	flex-direction: row;
+	align-items: center;
+	gap: var(--fp-space-1);
+	padding: var(--fp-space-2);
 	border-right: none;
-	border-bottom: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--fp-line);
 }
-.fp-mobile .fp-content {
-	padding: 16px;
+.fp-force-narrow .fp-rail-brand {
+	border-bottom: none;
+	padding-bottom: 0;
+	flex-shrink: 0;
+}
+.fp-force-narrow .fp-rail-body {
+	flex-direction: row;
+	align-items: center;
+	gap: var(--fp-space-2);
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+.fp-force-narrow .fp-rail-tabs,
+.fp-force-narrow .fp-rail-section {
+	flex-direction: row;
+	flex-wrap: nowrap;
+}
+.fp-force-narrow .fp-rail-footer {
+	border-top: none;
+	padding-top: 0;
+	flex-direction: row;
+	flex-shrink: 0;
+}
+.fp-force-narrow .fp-rail .fp-nav-item {
+	width: auto;
+	flex-shrink: 0;
+}
+.fp-force-narrow .fp-rail .fp-nav-item-type,
+.fp-force-narrow .fp-rail .fp-nav-balance,
+.fp-force-narrow .fp-rail .fp-rail-section-head,
+.fp-force-narrow .fp-rail .fp-nav-drag-handle {
+	display: none;
+}
+.fp-force-narrow .fp-content {
+	padding: var(--fp-space-4);
 	overflow-x: hidden;
 }
-.fp-mobile .fp-stat-grid,
-.fp-mobile .fp-kpi-grid {
+.fp-force-narrow .fp-stat-grid,
+.fp-force-narrow .fp-kpi-grid {
 	grid-template-columns: 1fr;
 }
-.fp-mobile .fp-section-header {
+.fp-force-narrow .fp-section-header {
 	flex-wrap: wrap;
-	gap: 10px;
+	gap: var(--fp-space-2);
 }
-.fp-mobile .fp-ledger-summary {
+.fp-force-narrow .fp-ledger-summary {
 	flex-wrap: wrap;
-	gap: 14px;
+	gap: var(--fp-space-3);
 }
-.fp-mobile .fp-tabs {
+.fp-force-narrow .fp-tabs {
 	overflow-x: auto;
 	flex-wrap: nowrap;
 }
-.fp-mobile .fp-tab {
+.fp-force-narrow .fp-tab {
 	flex-shrink: 0;
+}
+/* Metric tables scroll years while the metric name stays put — essential on narrow and
+   entirely missing before. */
+.fp-force-narrow .fp-table-scroll .fp-table-metrics td:first-child,
+.fp-force-narrow .fp-table-scroll .fp-table-metrics th:first-child {
+	position: sticky;
+	left: 0;
+	background: var(--fp-bg-card);
+	z-index: 2;
+}
+
+/* ==========================================================================
+   L8 — LEGACY
+   Every rule below exists only so sections that still emit the OLD class names
+   keep rendering while they migrate. Delete with the section that emits them.
+   ========================================================================== */
+
+/* LEGACY — remove in wave 3/4: `.fp-stat-tile` / `.fp-kpi-card` markup is no longer
+   produced by ui/dom.ts (both call sites delegate to renderStat), but a section may
+   still hand-roll one. Alias them onto the new stat so nothing renders unstyled. */
+.fp-stat-tile,
+.fp-kpi-card,
+.fp-meter-card {
+	background: var(--fp-bg-card);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-md);
+	padding: var(--fp-card-pad-tight);
+	box-shadow: var(--fp-elev-1);
+}
+.fp-stat-tile,
+.fp-kpi-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-2);
+	min-width: 0;
+}
+.fp-meter-card {
+	margin-bottom: var(--fp-stack);
+}
+/* LEGACY — remove in wave 3/4: the old head/label/value/sub anatomy. */
+.fp-stat-head,
+.fp-kpi-head {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	justify-content: space-between;
+}
+.fp-kpi-label {
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-semibold);
+	text-transform: uppercase;
+	letter-spacing: var(--fp-ls-overline);
+	color: var(--fp-ink-muted);
+}
+.fp-kpi-body {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+}
+.fp-kpi-value {
+	font-size: var(--fp-fs-2xl);
+	font-weight: var(--fp-fw-semibold);
+	line-height: var(--fp-lh-tight);
+	letter-spacing: var(--fp-ls-display);
+	color: var(--fp-ink);
+}
+.fp-kpi-hero .fp-kpi-value {
+	font-size: var(--fp-fs-3xl);
+}
+.fp-kpi-spark {
+	flex-shrink: 0;
+}
+.fp-kpi-sub,
+.fp-stat-sub {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+}
+.fp-kpi-delta {
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-semibold);
+	font-variant-numeric: tabular-nums;
+}
+.fp-kpi-delta.is-good {
+	color: var(--fp-pos-ink);
+}
+.fp-kpi-delta.is-bad {
+	color: var(--fp-neg-ink);
+}
+/* LEGACY — remove in wave 3/4: `.fp-nav-items` was the single undifferentiated nav
+   column; the rail now zones it into tabs / accounts / footer. */
+.fp-nav-items {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.fp-nav-section-label {
+	margin: 0;
+}
+/* LEGACY — remove in wave 3/4: import button styling from the old nav. */
+.fp-nav-import {
+	width: 100%;
+	justify-content: center;
+	margin-bottom: var(--fp-space-3);
+}
+/* LEGACY — remove in wave 3/4: `.fp-step-desc` is used as an empty state in four
+   sections outside the wizard; it should become `.fp-empty--inline`. */
+.fp-section .fp-step-desc {
+	text-align: center;
+	padding: var(--fp-space-4) 0;
+}
+
+/* ==========================================================================
+   WAVE 3: sections
+   Everything the revamped dashboards render. Tokens only — no raw colors, no
+   raw spacing: these rules must inherit whatever the L0 layer decides, in both
+   themes, forever.
+   ========================================================================== */
+
+/* ---------- Trust bar — Row 0 of the overview ---------- */
+
+.fp-trustbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--fp-space-2);
+	margin-bottom: var(--fp-space-4);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+}
+.fp-trustbar-sep {
+	color: var(--fp-ink-muted);
+}
+.fp-trustbar-link {
+	background: none;
+	border: none;
+	padding: 0;
+	font: inherit;
+	color: var(--fp-accent-ink);
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+.fp-trustbar.is-warn .fp-trustbar-link {
+	color: var(--fp-warn-ink);
+}
+.fp-trustbar.is-bad .fp-trustbar-link {
+	color: var(--fp-neg-ink);
+	font-weight: var(--fp-fw-semibold);
+}
+
+/* ---------- Page actions ---------- */
+
+.fp-action-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-2);
+}
+.fp-action-review {
+	border-color: color-mix(in srgb, var(--fp-warn-fill) 45%, var(--fp-line));
+	color: var(--fp-warn-ink);
+}
+.fp-back-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-bottom: var(--fp-space-1);
+	padding: 0;
+	background: none;
+	border: none;
+	font-size: var(--fp-fs-xs);
+	font-family: inherit;
+	color: var(--fp-ink-secondary);
+	cursor: pointer;
+}
+.fp-back-link:hover {
+	color: var(--fp-ink);
+}
+.fp-back-link svg {
+	width: 13px;
+	height: 13px;
+}
+
+/* ---------- Card head with a subtitle + trailing slot ---------- */
+
+.fp-card-head-main {
+	min-width: 0;
+}
+.fp-card-head-main .fp-card-title {
+	margin-bottom: 0;
+}
+.fp-card-note {
+	margin-top: var(--fp-space-3);
+	font-size: var(--fp-fs-xs);
+	line-height: var(--fp-lh-body);
+	color: var(--fp-ink-secondary);
+}
+.fp-card-note.is-bad {
+	color: var(--fp-neg-ink);
+}
+.fp-card-note.is-warn {
+	color: var(--fp-warn-ink);
+}
+
+/* A banner, not a tile: a carried credit balance is a sentence, not a figure. */
+.fp-banner {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: var(--fp-card-pad-tight);
+	margin-bottom: var(--fp-stack);
+	border: 1px solid var(--fp-line);
+	border-left: 3px solid var(--fp-line-strong);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-inset);
+}
+.fp-banner.is-bad {
+	border-left-color: var(--fp-neg-fill);
+	background: var(--fp-neg-wash);
+}
+.fp-banner-title {
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+}
+.fp-banner-body {
+	font-size: var(--fp-fs-sm);
+	line-height: var(--fp-lh-body);
+	color: var(--fp-ink-secondary);
+}
+
+/* ---------- Projection meter sub-line ---------- */
+
+.fp-projection-line {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-1) var(--fp-space-4);
+}
+.fp-projection-part {
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink);
+	font-weight: var(--fp-fw-medium);
+}
+.fp-projection-part-label {
+	color: var(--fp-ink-secondary);
+	font-weight: var(--fp-fw-regular);
+}
+.fp-projection-verdict {
+	margin-top: var(--fp-space-2);
+	color: var(--fp-ink-secondary);
+}
+.fp-meter--over .fp-projection-verdict {
+	color: var(--fp-neg-ink);
+}
+
+/* ---------- Budget health strip (overview) ---------- */
+
+.fp-budget-strip {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-3);
+	margin-top: var(--fp-space-4);
+}
+.fp-budget-strip-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+	font-size: var(--fp-fs-sm);
+	margin-bottom: var(--fp-space-1);
+}
+.fp-budget-strip-name {
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fp-budget-strip-value {
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink-secondary);
+	white-space: nowrap;
+}
+.fp-budget-strip-track {
+	height: 6px;
+}
+.fp-budget-strip-foot {
+	margin-top: var(--fp-space-1);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+}
+.fp-budget-strip-row.fp-tone-warn .fp-meter-fill {
+	background: var(--fp-warn-fill);
+}
+.fp-budget-strip-row.fp-tone-bad .fp-meter-fill {
+	background: var(--fp-neg-fill);
+}
+.fp-budget-strip-row.fp-tone-bad .fp-budget-strip-foot {
+	color: var(--fp-neg-ink);
+}
+
+/* ---------- Next 30 days ---------- */
+
+.fp-next30-rel {
+	color: var(--fp-ink-muted);
+	font-size: var(--fp-fs-xs);
+}
+.fp-next30-tag {
+	margin-left: var(--fp-space-2);
+	padding: 1px var(--fp-space-2);
+	border-radius: var(--fp-radius-pill);
+	background: var(--fp-bg-track);
+	color: var(--fp-ink-muted);
+	font-size: var(--fp-fs-overline);
+	text-transform: uppercase;
+	letter-spacing: var(--fp-ls-overline);
+}
+/* The one place an outgoing amount earns negative ink: a balance that has gone under. */
+.fp-amount--alarm {
+	color: var(--fp-neg-ink);
+	font-weight: var(--fp-fw-semibold);
+}
+
+/* ---------- Category bars with a ghost average ---------- */
+
+.fp-catbars {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.fp-catbar {
+	display: grid;
+	grid-template-columns: minmax(0, 9rem) 1fr auto auto;
+	align-items: center;
+	gap: var(--fp-space-3);
+	width: 100%;
+	min-height: 32px;
+	padding: var(--fp-space-1) var(--fp-space-2);
+	border: none;
+	border-radius: var(--fp-radius-xs);
+	background: none;
+	font-family: inherit;
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink);
+	text-align: left;
+	cursor: pointer;
+	transition: background-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-catbar:hover {
+	background: var(--fp-bg-card-hover);
+}
+.fp-catbar-label {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fp-catbar-icon {
+	color: var(--fp-ink-muted);
+	flex-shrink: 0;
+}
+.fp-catbar-icon svg {
+	width: 13px;
+	height: 13px;
+}
+.fp-catbar-track {
+	position: relative;
+	height: 10px;
+	border-radius: var(--fp-radius-xs);
+	background: var(--fp-bg-track);
+}
+.fp-catbar-fill {
+	height: 100%;
+	min-width: 3px;
+	/* Square at the baseline, rounded only at the data end. */
+	border-radius: 0 var(--fp-radius-xs) var(--fp-radius-xs) 0;
+	background: var(--fp-bar-color, var(--fp-accent));
+	transition: width var(--fp-dur-3) var(--fp-ease-out);
+}
+.fp-catbar-ghost {
+	position: absolute;
+	top: -2px;
+	bottom: -2px;
+	width: 2px;
+	border-radius: 1px;
+	background: var(--fp-ink-muted);
+	opacity: 0.7;
+}
+.fp-catbar-value {
+	min-width: 5.5rem;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+.fp-catbar .fp-delta {
+	min-width: 5rem;
+	justify-content: center;
+}
+
+/* ---------- Accounts overview ---------- */
+
+.fp-account-totals {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-6);
+	margin-bottom: var(--fp-space-4);
+}
+.fp-account-total-value {
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	letter-spacing: var(--fp-ls-display);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink);
+}
+.fp-account-total-value.is-liability {
+	color: var(--fp-neg-ink);
+}
+.fp-table-group td {
+	padding-top: var(--fp-space-4);
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-semibold);
+	text-transform: uppercase;
+	letter-spacing: var(--fp-ls-overline);
+	color: var(--fp-ink-muted);
+	border-bottom: 1px solid var(--fp-line);
+}
+.fp-cell-stale {
+	color: var(--fp-warn-ink);
+}
+
+/* ---------- Chart headings inside a card ---------- */
+
+.fp-chart-heading {
+	margin: var(--fp-space-4) 0 var(--fp-space-2);
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink-secondary);
+	letter-spacing: 0;
+}
+.fp-chart-heading:first-child {
+	margin-top: 0;
+}
+
+/* ---------- Insights feed ---------- */
+
+.fp-insight-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.fp-insight {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-3);
+	border-radius: var(--fp-radius-sm);
+	transition: background-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-insight + .fp-insight {
+	box-shadow: inset 0 1px 0 var(--fp-line-hairline);
+}
+.fp-insight:hover {
+	background: var(--fp-bg-card-hover);
+}
+.fp-insight-icon {
+	display: grid;
+	place-items: center;
+	flex-shrink: 0;
+	width: 26px;
+	height: 26px;
+	border-radius: var(--fp-radius-sm);
+	background: var(--fp-bg-track);
+	color: var(--fp-ink-muted);
+}
+.fp-insight-icon svg {
+	width: 14px;
+	height: 14px;
+}
+.fp-insight--high .fp-insight-icon {
+	background: var(--fp-neg-wash);
+	color: var(--fp-neg-ink);
+}
+.fp-insight--medium .fp-insight-icon {
+	background: var(--fp-warn-wash);
+	color: var(--fp-warn-ink);
+}
+.fp-insight-body {
+	flex: 1;
+	min-width: 0;
+}
+.fp-insight-title {
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+}
+.fp-insight-detail {
+	margin-top: 1px;
+	font-size: var(--fp-fs-xs);
+	line-height: var(--fp-lh-body);
+	color: var(--fp-ink-secondary);
+}
+.fp-insight-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	flex-shrink: 0;
+}
+.fp-insight-impact {
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-semibold);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink);
+	white-space: nowrap;
+}
+.fp-insights-toggle {
+	margin-top: var(--fp-space-3);
+}
+
+/* ---------- Ledger: filter chips, uncategorized chip, footer, sort ---------- */
+
+.fp-filter-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fp-space-1);
+	padding: 2px var(--fp-space-1) 2px var(--fp-space-2);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-pill);
+	background: var(--fp-bg-card);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	max-width: 22rem;
+}
+.fp-filter-chip-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fp-filter-chip-clear {
+	display: grid;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	border: none;
+	border-radius: var(--fp-radius-pill);
+	background: none;
+	color: var(--fp-ink-muted);
+	cursor: pointer;
+}
+.fp-filter-chip-clear:hover {
+	background: var(--fp-bg-track);
+	color: var(--fp-ink);
+}
+.fp-filter-chip-clear svg {
+	width: 11px;
+	height: 11px;
+}
+.fp-filter-clear-all {
+	height: 24px;
+	padding: 0 var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+}
+.fp-uncat-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fp-space-1);
+	margin-left: var(--fp-space-3);
+	padding: 2px var(--fp-space-2);
+	border: 1px solid color-mix(in srgb, var(--fp-warn-fill) 40%, var(--fp-line));
+	border-radius: var(--fp-radius-pill);
+	background: var(--fp-warn-wash);
+	color: var(--fp-warn-ink);
+	font-family: inherit;
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	cursor: pointer;
+}
+.fp-uncat-chip svg {
+	width: 11px;
+	height: 11px;
+}
+.fp-daterange-custom-inline {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-1);
+}
+.fp-daterange-custom-inline.is-hidden {
+	display: none;
+}
+.fp-filter-date-sep {
+	color: var(--fp-ink-muted);
+	font-size: var(--fp-fs-xs);
+}
+.fp-ledger-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-3) var(--fp-space-1) 0;
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+}
+.fp-ledger-footer-count {
+	font-variant-numeric: tabular-nums;
+}
+.fp-th-sort-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+.fp-th-sort-indicator {
+	display: inline-flex;
+	width: 12px;
+}
+.fp-th-sort-indicator svg {
+	width: 12px;
+	height: 12px;
+}
+.fp-ledger-row {
+	cursor: pointer;
+}
+
+/* ---------- Multi-figure stat ---------- */
+
+.fp-stat-multi-row {
+	display: flex;
+	gap: var(--fp-space-4);
+}
+.fp-stat-multi-item {
+	min-width: 0;
+	flex: 1;
+}
+.fp-stat-multi-label {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+}
+.fp-stat-multi-value {
+	font-size: var(--fp-fs-lg);
+	font-weight: var(--fp-fw-semibold);
+	line-height: var(--fp-lh-tight);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink);
+	white-space: nowrap;
+}
+/* A stat grid nested inside a card sits on the card, so its children go inset. */
+.fp-stat-grid--inner {
+	margin-bottom: 0;
+	margin-top: var(--fp-space-4);
+}
+.fp-stat-grid--inner .fp-stat {
+	background: var(--fp-bg-inset);
+	box-shadow: none;
+}
+
+/* ---------- Inline value editing (market value, credit limit, savings goal) ---------- */
+
+.fp-inline-edit {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	margin-top: var(--fp-space-2);
+	flex-wrap: wrap;
+}
+.fp-inline-edit-trigger {
+	height: 24px;
+	padding: 0 var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+}
+.fp-inline-edit-trigger svg {
+	width: 11px;
+	height: 11px;
+}
+.fp-inline-edit-input {
+	width: 8rem;
+	height: 26px;
+}
+.fp-card-head .fp-inline-edit {
+	margin-top: 0;
+}
+/* A valuation nobody has refreshed in three months still deserves its age shown, not hidden. */
+.fp-stat--stale .fp-stat-foot {
+	color: var(--fp-warn-ink);
+}
+
+/* ---------- Cash reconciliation ---------- */
+
+.fp-reconcile {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-6);
+}
+.fp-reconcile-value {
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: var(--fp-ls-display);
+	color: var(--fp-ink);
+}
+.fp-reconcile-value.is-warn {
+	color: var(--fp-warn-ink);
+}
+
+/* ---------- Subscription detection + list rows ---------- */
+
+.fp-detect-card {
+	border-color: color-mix(in srgb, var(--fp-accent) 30%, var(--fp-line));
+}
+.fp-detect-list,
+.fp-row-list {
+	display: flex;
+	flex-direction: column;
+}
+.fp-detect-row {
+	flex-wrap: wrap;
+}
+.fp-detect-avatar,
+.fp-row-avatar {
+	flex-shrink: 0;
+	width: 30px;
+	height: 30px;
+	border-radius: var(--fp-radius-sm);
+	font-size: var(--fp-fs-sm);
+}
+.fp-row-actions.is-persistent {
+	opacity: 1;
+}
+.fp-row-date {
+	flex-shrink: 0;
+	min-width: 5.5rem;
+	font-size: var(--fp-fs-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink-secondary);
+}
+.fp-row-date-rel {
+	color: var(--fp-ink-muted);
+}
+.fp-row-date-rel.is-due {
+	color: var(--fp-warn-ink);
+	font-weight: var(--fp-fw-medium);
+}
+.fp-row-title {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+}
+.fp-row-title-plan {
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-regular);
+	color: var(--fp-ink-secondary);
+}
+.fp-row.is-inactive {
+	opacity: 0.55;
+}
+.fp-row-group-label {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+	margin: var(--fp-space-4) 0 var(--fp-space-1);
+	font-size: var(--fp-fs-xs);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink-secondary);
+}
+
+/* ---------- Budgets: month stepper, groups, suggestion chips ---------- */
+
+.fp-month-stepper {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-1);
+}
+.fp-month-stepper-label {
+	min-width: 9rem;
+	text-align: center;
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+}
+.fp-month-stepper .fp-btn[disabled] {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+.fp-group-head {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	margin: var(--fp-stack) 0 var(--fp-space-3);
+	font-size: var(--fp-fs-overline);
+	font-weight: var(--fp-fw-semibold);
+	text-transform: uppercase;
+	letter-spacing: var(--fp-ls-overline);
+	color: var(--fp-ink-muted);
+}
+.fp-group-head-count {
+	padding: 0 var(--fp-space-2);
+	border-radius: var(--fp-radius-pill);
+	background: var(--fp-bg-track);
+	color: var(--fp-ink-secondary);
+	letter-spacing: 0;
+}
+.fp-budget-projection {
+	margin-top: var(--fp-space-1);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-warn-ink);
+}
+.fp-suggest-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-2);
+}
+.fp-suggest-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	min-height: 28px;
+	padding: 0 var(--fp-space-3);
+	border: 1px solid var(--fp-line);
+	border-left: 3px solid var(--fp-chip-color, var(--fp-accent));
+	border-radius: var(--fp-radius-sm);
+	background: var(--fp-bg-card);
+	font-family: inherit;
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink);
+	cursor: pointer;
+	transition: background-color var(--fp-dur-1) var(--fp-ease), border-color var(--fp-dur-1) var(--fp-ease);
+}
+.fp-suggest-chip:hover {
+	background: var(--fp-bg-card-hover);
+	border-color: var(--fp-line-strong);
+}
+.fp-suggest-chip-value {
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink-secondary);
+}
+
+/* ---------- Narrow containers ---------- */
+
+@container fp-shell (max-width: 620px) {
+	.fp-catbar {
+		grid-template-columns: 1fr auto;
+		grid-template-areas: "label value" "track track" "delta delta";
+		row-gap: var(--fp-space-1);
+	}
+	.fp-catbar-label {
+		grid-area: label;
+	}
+	.fp-catbar-track {
+		grid-area: track;
+	}
+	.fp-catbar-value {
+		grid-area: value;
+	}
+	.fp-catbar .fp-delta {
+		grid-area: delta;
+		justify-self: start;
+	}
+	.fp-stat-multi-row {
+		gap: var(--fp-space-3);
+	}
+	.fp-account-totals,
+	.fp-reconcile {
+		gap: var(--fp-space-4);
+	}
+	.fp-detect-row .fp-row-actions {
+		flex-basis: 100%;
+		justify-content: flex-end;
+	}
+	.fp-month-stepper-label {
+		min-width: 7rem;
+		font-size: var(--fp-fs-sm);
+	}
+}
+.fp-force-narrow .fp-catbar {
+	grid-template-columns: 1fr auto;
+	grid-template-areas: "label value" "track track" "delta delta";
+	row-gap: var(--fp-space-1);
+}
+.fp-force-narrow .fp-catbar-label {
+	grid-area: label;
+}
+.fp-force-narrow .fp-catbar-track {
+	grid-area: track;
+}
+.fp-force-narrow .fp-catbar-value {
+	grid-area: value;
+}
+.fp-force-narrow .fp-catbar .fp-delta {
+	grid-area: delta;
+	justify-self: start;
+}
+/* ==========================================================================
+   WAVE 4 — smart workflows
+   --------------------------------------------------------------------------
+   Merge target: styles.css, L6 (Sections), after the existing import-wizard
+   block. Every value here is a token — no raw colors, no raw spacing.
+
+   Sections:
+     W4.1  Setup view (first run)
+     W4.2  Import wizard — zero-account blocker, merchant groups, dupes, done
+     W4.3  Review queue
+     W4.4  Month in review
+     W4.5  Budget setup
+     W4.6  Shared shims (tone-able meter fill, active chip button)
+     W4.7  Narrow-container overrides
+   ========================================================================== */
+
+/* ==========================================================================
+   W4.1 — SETUP VIEW
+   Full-tab first run. Column-constrained rather than full-bleed: a form that
+   spans a 1600px monitor reads as a spreadsheet, not a welcome.
+   ========================================================================== */
+
+.fp-setup {
+	max-width: 640px;
+	margin: 0 auto;
+	padding: var(--fp-space-8) var(--fp-space-4) var(--fp-space-12);
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-8);
+}
+
+.fp-setup-steps {
+	margin: 0;
+}
+
+.fp-setup-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-5);
+}
+
+.fp-setup-head {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: var(--fp-space-2);
+}
+
+.fp-setup-body h2 {
+	margin: 0;
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	letter-spacing: var(--fp-ls-display);
+	color: var(--fp-ink);
+}
+
+.fp-setup-lede {
+	margin: 0;
+	font-size: var(--fp-fs-md);
+	line-height: var(--fp-lh-body);
+	color: var(--fp-ink-secondary);
+}
+
+.fp-setup-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-5);
+}
+
+.fp-setup-form .fp-form-row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-2);
+}
+
+.fp-setup-form .fp-form-row > label {
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+}
+
+.fp-setup-form .fp-input {
+	width: 100%;
+}
+
+/* The explainer is the point of A3: IBAN and opening balance are unexplained
+   fields everywhere else in the app, and a wrong opening balance silently
+   shifts every net-worth figure. */
+.fp-setup-explainer {
+	font-size: var(--fp-fs-xs);
+	line-height: var(--fp-lh-snug);
+	color: var(--fp-ink-muted);
+	padding-left: var(--fp-space-3);
+	border-left: 2px solid var(--fp-line);
+}
+
+.fp-setup-choices {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-3);
+}
+
+.fp-setup-choice {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--fp-space-3);
+	padding: var(--fp-card-pad-tight);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-card);
+	cursor: pointer;
+	transition: border-color var(--fp-dur-2) var(--fp-ease), background-color var(--fp-dur-2) var(--fp-ease);
+}
+
+.fp-setup-choice:hover {
+	background: var(--fp-bg-card-hover);
+}
+
+.fp-setup-choice.is-active {
+	border-color: var(--fp-accent);
+	background: var(--fp-accent-wash);
+}
+
+.fp-setup-choice input {
+	margin-top: 2px;
+}
+
+.fp-setup-choice-title {
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+}
+
+.fp-setup-choice-desc {
+	font-size: var(--fp-fs-xs);
+	line-height: var(--fp-lh-snug);
+	color: var(--fp-ink-secondary);
+}
+
+.fp-setup-type-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-2);
+}
+
+.fp-setup-added {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-2);
+	padding: var(--fp-card-pad-tight);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-inset);
+}
+
+.fp-setup-added-row {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink);
+}
+
+.fp-setup-added-row .fp-icon {
+	color: var(--fp-pos-ink);
+}
+
+.fp-setup-import {
+	display: flex;
+	flex-direction: column;
+}
+
+/* The launcher is a button wearing the dropzone's clothes — same affordance as
+   the wizard's own drop target, so the two never look like different things. */
+.fp-setup-dropzone {
+	width: 100%;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+
+.fp-setup-summary {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-3);
+	padding: var(--fp-card-pad);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-card);
+}
+
+.fp-setup-summary-row {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-3);
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink);
+}
+
+.fp-setup-summary-row .fp-icon {
+	color: var(--fp-accent-ink);
+}
+
+/* ==========================================================================
+   W4.2 — IMPORT WIZARD
+   ========================================================================== */
+
+/* B1 — zero accounts is fixable in place, not a reason to close the wizard. */
+.fp-import-blocker {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--fp-space-2);
+	margin-bottom: var(--fp-space-4);
+	border-color: var(--fp-warn);
+	background: var(--fp-warn-wash);
+}
+
+.fp-import-blocker-title {
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+}
+
+/* B3 — merchant groups. 23 cards instead of 312 rows. */
+.fp-merchant-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-3);
+	max-height: 46vh;
+	overflow-y: auto;
+	padding-right: var(--fp-space-1);
+}
+
+.fp-merchant-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-2);
+}
+
+.fp-merchant-top {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+}
+
+.fp-merchant-name {
+	font-size: var(--fp-fs-md);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+	overflow-wrap: anywhere;
+}
+
+.fp-merchant-stats {
+	flex: none;
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-merchant-range {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-merchant-controls {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-3);
+	flex-wrap: wrap;
+}
+
+.fp-merchant-controls .fp-select {
+	min-width: 200px;
+}
+
+.fp-merchant-rule {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	cursor: pointer;
+}
+
+.fp-merchant-rule input[disabled] + span {
+	color: var(--fp-ink-muted);
+}
+
+.fp-merchant-skip {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: var(--fp-space-2);
+}
+
+/* B4 — the duplicate list, collapsed by default. */
+.fp-dupe-details {
+	margin-top: var(--fp-space-4);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-md);
+	padding: var(--fp-space-3);
+	background: var(--fp-bg-inset);
+}
+
+.fp-dupe-details > summary {
+	cursor: pointer;
+	font-size: var(--fp-fs-sm);
+	font-weight: var(--fp-fw-medium);
+	color: var(--fp-ink);
+}
+
+.fp-dupe-details .fp-table-scroll {
+	max-height: 240px;
+	overflow-y: auto;
+}
+
+/* B5 — the done screen's figure row. */
+.fp-done-stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fp-space-6);
+	padding: var(--fp-card-pad) 0;
+	border-bottom: 1px solid var(--fp-line);
+	margin-bottom: var(--fp-space-4);
+}
+
+.fp-done-stat-value {
+	font-size: var(--fp-fs-2xl);
+	font-weight: var(--fp-fw-semibold);
+	line-height: var(--fp-lh-tight);
+	color: var(--fp-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-done-stat.fp-tone-warn .fp-done-stat-value {
+	color: var(--fp-warn-ink);
+}
+
+.fp-done-stat.fp-tone-good .fp-done-stat-value {
+	color: var(--fp-pos-ink);
+}
+
+.fp-done-stat-label {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	max-width: 90px;
+	line-height: var(--fp-lh-snug);
+}
+
+/* ==========================================================================
+   W4.3 — REVIEW QUEUE
+   One merchant at a time. The numbered keys are the primary interface, so
+   they get the visual weight; the mouse targets are the same elements.
+   ========================================================================== */
+
+.fp-review-modal {
+	width: min(680px, 90vw);
+}
+
+.fp-review-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-4);
+	padding: var(--fp-space-2) 0;
+}
+
+.fp-review-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--fp-space-3);
+}
+
+.fp-review-title {
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	letter-spacing: var(--fp-ls-display);
+	color: var(--fp-ink);
+}
+
+.fp-review-progress-label {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-review-track {
+	height: 4px;
+	border-radius: var(--fp-radius-pill);
+	background: var(--fp-bg-track);
+	overflow: hidden;
+}
+
+.fp-review-track-fill {
+	height: 100%;
+	background: var(--fp-accent);
+	transition: width var(--fp-dur-3) var(--fp-ease-out);
+}
+
+.fp-review-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-4);
+}
+
+.fp-review-merchant-name {
+	font-size: var(--fp-fs-lg);
+	font-weight: var(--fp-fw-semibold);
+	color: var(--fp-ink);
+	overflow-wrap: anywhere;
+}
+
+.fp-review-merchant-meta {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-review-tx-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-1);
+	padding: var(--fp-space-3);
+	border-radius: var(--fp-radius-sm);
+	background: var(--fp-bg-inset);
+}
+
+.fp-review-tx {
+	display: grid;
+	grid-template-columns: 92px 1fr auto;
+	gap: var(--fp-space-3);
+	align-items: baseline;
+	font-size: var(--fp-fs-sm);
+}
+
+.fp-review-tx-date {
+	color: var(--fp-ink-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-review-tx-desc {
+	color: var(--fp-ink-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fp-review-tx-amount {
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+.fp-review-tx-more {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	padding-top: var(--fp-space-1);
+}
+
+.fp-review-keys {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: var(--fp-space-2);
+}
+
+.fp-review-key {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	padding: var(--fp-space-2) var(--fp-space-3);
+	border: 1px solid var(--fp-line);
+	border-radius: var(--fp-radius-sm);
+	background: var(--fp-bg-card);
+	color: var(--fp-ink);
+	font-size: var(--fp-fs-sm);
+	text-align: left;
+	cursor: pointer;
+	transition: border-color var(--fp-dur-1) var(--fp-ease), background-color var(--fp-dur-1) var(--fp-ease);
+}
+
+.fp-review-key:hover {
+	border-color: var(--fp-accent);
+	background: var(--fp-accent-wash);
+}
+
+/* The key cap is the whole point: it teaches the shortcut while the mouse is
+   still doing the work. */
+.fp-review-key-num,
+.fp-review-kbd,
+.fp-review-rule-key {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 20px;
+	height: 20px;
+	padding: 0 var(--fp-space-1);
+	border: 1px solid var(--fp-line-strong);
+	border-bottom-width: 2px;
+	border-radius: var(--fp-radius-xs);
+	background: var(--fp-bg-inset);
+	font-family: var(--fp-font-mono);
+	font-size: var(--fp-fs-micro);
+	color: var(--fp-ink-secondary);
+}
+
+.fp-review-key--search {
+	color: var(--fp-ink-secondary);
+	font-style: italic;
+}
+
+.fp-review-rule {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-2);
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	cursor: pointer;
+}
+
+.fp-review-footer {
+	border-top: 1px solid var(--fp-line);
+	padding-top: var(--fp-space-3);
+}
+
+.fp-review-footer .fp-btn {
+	gap: var(--fp-space-2);
+}
+
+.fp-review-hint {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	text-align: center;
+}
+
+.fp-review-done {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-3);
+	align-items: center;
+	text-align: center;
+	padding: var(--fp-space-8) 0 0;
+}
+
+.fp-review-done-head {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--fp-space-2);
+}
+
+.fp-review-done-icon {
+	color: var(--fp-pos-ink);
+	font-size: 28px;
+}
+
+.fp-review-done .fp-wizard-footer {
+	width: 100%;
+}
+
+/* ==========================================================================
+   W4.4 — MONTH IN REVIEW
+   ========================================================================== */
+
+.fp-month-review .fp-tab-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fp-space-4);
+	padding-top: var(--fp-space-4);
+}
+
+.fp-month-nav {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--fp-space-4);
+}
+
+.fp-month-nav-label {
+	min-width: 180px;
+	text-align: center;
+	font-size: var(--fp-fs-xl);
+	font-weight: var(--fp-fw-semibold);
+	letter-spacing: var(--fp-ls-display);
+	color: var(--fp-ink);
+}
+
+.fp-month-new-merchants {
+	font-size: var(--fp-fs-sm);
+	line-height: var(--fp-lh-snug);
+	color: var(--fp-ink-secondary);
+}
+
+/* The one call to action on the page — an uncategorized count with a way to
+   fix it, instead of a count on its own. */
+.fp-month-warn {
+	display: flex;
+	align-items: center;
+	gap: var(--fp-space-3);
+	border-color: var(--fp-warn);
+	background: var(--fp-warn-wash);
+}
+
+.fp-month-warn .fp-icon {
+	color: var(--fp-warn-ink);
+}
+
+.fp-month-warn-text {
+	flex: 1;
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink);
+}
+
+.fp-month-budget-row {
+	display: grid;
+	grid-template-columns: minmax(120px, 1fr) auto minmax(80px, 140px) auto;
+	align-items: center;
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-2) 0;
+	border-bottom: 1px solid var(--fp-line-hairline);
+}
+
+.fp-month-budget-row:last-child {
+	border-bottom: none;
+}
+
+.fp-month-budget-figures,
+.fp-month-budget-verdict {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.fp-month-budget-verdict.fp-tone-bad {
+	color: var(--fp-neg-ink);
+}
+
+.fp-month-budget-verdict.fp-tone-warn {
+	color: var(--fp-warn-ink);
+}
+
+/* ==========================================================================
+   W4.5 — BUDGET SETUP
+   ========================================================================== */
+
+.fp-budget-setup-modal {
+	width: min(620px, 92vw);
+}
+
+.fp-budget-setup-list {
+	display: flex;
+	flex-direction: column;
+	max-height: 46vh;
+	overflow-y: auto;
+	margin: var(--fp-space-4) 0;
+}
+
+.fp-budget-setup-row {
+	display: grid;
+	grid-template-columns: auto minmax(120px, 1fr) auto 120px;
+	align-items: center;
+	gap: var(--fp-space-3);
+	padding: var(--fp-space-2) var(--fp-space-1);
+	border-bottom: 1px solid var(--fp-line-hairline);
+	opacity: 0.55;
+	transition: opacity var(--fp-dur-2) var(--fp-ease);
+}
+
+.fp-budget-setup-row.is-checked {
+	opacity: 1;
+}
+
+.fp-budget-setup-avg {
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.fp-budget-setup-existing {
+	color: var(--fp-ink-muted);
+}
+
+/* The honest framing: a budget set that silently totals more than you spend is
+   worse than no budget, and that is invisible one card at a time. */
+.fp-budget-setup-summary {
+	padding: var(--fp-card-pad-tight);
+	border-radius: var(--fp-radius-md);
+	background: var(--fp-bg-inset);
+	margin-bottom: var(--fp-space-4);
+}
+
+.fp-budget-setup-total {
+	font-size: var(--fp-fs-md);
+	color: var(--fp-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-budget-setup-verdict {
+	font-size: var(--fp-fs-sm);
+	color: var(--fp-ink-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.fp-budget-setup-verdict.fp-tone-good {
+	color: var(--fp-pos-ink);
+}
+
+.fp-budget-setup-verdict.fp-tone-warn {
+	color: var(--fp-warn-ink);
+}
+
+/* ==========================================================================
+   W4.6 — SHARED SHIMS
+   Two small gaps in the design system these flows ran into. Both belong with
+   their primitives at merge time, not in a section block.
+   ========================================================================== */
+
+/* A meter fill that carries its own tone, for meters rendered in a list where
+   the card-level `.fp-meter--warn` / `--over` modifiers have no card. */
+.fp-meter-fill.fp-tone-warn {
+	background: var(--fp-warn-fill);
+}
+
+.fp-meter-fill.fp-tone-bad {
+	background: var(--fp-neg-fill);
+}
+
+.fp-meter-fill.fp-tone-good {
+	background: var(--fp-pos-fill);
+}
+
+/* Selected state for the chip button — used by the account-type picker. */
+.fp-btn--chip.is-active,
+.fp-btn-chip.is-active {
+	border-color: var(--fp-accent);
+	background: var(--fp-accent-wash);
+	color: var(--fp-accent-ink);
+}
+
+/* ==========================================================================
+   W4.7 — NARROW CONTAINERS
+   The setup view lives inside `.fp-shell`, so it follows the container query;
+   the modals follow the viewport, since a modal is not in the shell.
+   ========================================================================== */
+
+@container fp-shell (max-width: 640px) {
+	.fp-setup {
+		padding: var(--fp-space-5) var(--fp-space-3) var(--fp-space-10);
+		gap: var(--fp-space-6);
+	}
+	.fp-setup-steps .fp-wizard-step-label {
+		display: none;
+	}
+}
+
+.fp-force-narrow .fp-setup-steps .fp-wizard-step-label {
+	display: none;
+}
+
+@media (max-width: 600px) {
+	.fp-review-tx {
+		grid-template-columns: 1fr auto;
+	}
+	.fp-review-tx-date {
+		display: none;
+	}
+	.fp-review-keys {
+		grid-template-columns: 1fr;
+	}
+	.fp-budget-setup-row {
+		grid-template-columns: auto 1fr;
+		row-gap: var(--fp-space-1);
+	}
+	.fp-month-budget-row {
+		grid-template-columns: 1fr auto;
+	}
+	.fp-done-stats {
+		gap: var(--fp-space-4);
+	}
 }
