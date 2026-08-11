@@ -1781,7 +1781,8 @@
 /* The tail holds the balance and the drag grip in one slot — the grip fades in over
    the balance on hover, so the most-used surface isn't permanently cluttered. */
 .fp-nav-tail {
-	position: relative;
+	/* NOT position:relative — the drag handle inside is positioned against the row itself (which is
+	   relative for its active-state bar), so it can overlay the row's leading icon. */
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
@@ -1799,13 +1800,18 @@
 .fp-nav-item.is-active .fp-nav-balance {
 	color: var(--fp-ink);
 }
+/* The grip swaps in over the LEADING (account-type) icon on hover, not over the balance: the icon is
+   decorative, the balance is the number you're looking at while deciding where to drag the row.
+   The old version crossfaded grip and balance in the same right-hand spot — at 90ms each way, any
+   hover caught them mid-fade stacked on top of each other ("€3⋮0"). */
 .fp-nav-drag-handle {
 	position: absolute;
-	right: 0;
+	left: var(--fp-space-3);
 	color: var(--fp-ink-muted);
 	opacity: 0;
 	cursor: grab;
 	transition: opacity var(--fp-dur-1) var(--fp-ease);
+	pointer-events: none;
 }
 .fp-nav-drag-handle svg {
 	width: 15px;
@@ -1816,8 +1822,11 @@
 .fp-nav-item-draggable:focus-within .fp-nav-drag-handle {
 	opacity: 1;
 }
-.fp-nav-item-draggable:hover .fp-nav-balance {
+.fp-rail-tabs:hover .fp-nav-item-draggable:hover > .fp-nav-icon,
+.fp-rail-section:hover .fp-nav-item-draggable:hover > .fp-nav-icon,
+.fp-nav-item-draggable:focus-within > .fp-nav-icon {
 	opacity: 0;
+	transition: opacity var(--fp-dur-1) var(--fp-ease);
 }
 .fp-nav-item-draggable.is-dragging {
 	opacity: 0.4;
