@@ -78,7 +78,7 @@ export class AddTransactionModal extends Modal {
 		const amountWrap = amountRow.createDiv({ cls: "fp-manual-amount" });
 		// Direction as an explicit toggle instead of a sign convention: nobody should have to
 		// remember that expenses are negative in a form field.
-		const dirWrap = amountWrap.createDiv({ cls: "fp-manual-direction", attr: { role: "group", "aria-label": "Direction" } });
+		const dirWrap = amountWrap.createDiv({ cls: "fp-pill-toggle", attr: { role: "group", "aria-label": "Direction" } });
 		const expenseBtn = dirWrap.createEl("button", { text: "Expense", attr: { type: "button", "aria-pressed": "true" } });
 		const incomeBtn = dirWrap.createEl("button", { text: "Income", attr: { type: "button", "aria-pressed": "false" } });
 		const setDirection = (d: "expense" | "income") => {

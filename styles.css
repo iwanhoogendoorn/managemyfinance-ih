@@ -4081,8 +4081,9 @@
 	margin-top: 0;
 }
 /* .fp-card-head is align-items:baseline (right for a title), which has no meaningful baseline for
-   a <select> — center it against the title instead so it doesn't float or sink oddly. */
-.fp-card-head .fp-select--sm {
+   a <select> or a pill group — center them against the title instead so they don't float or sink oddly. */
+.fp-card-head .fp-select--sm,
+.fp-card-head .fp-pill-toggle {
 	align-self: center;
 }
 /* A valuation nobody has refreshed in three months still deserves its age shown, not hidden. */
@@ -5090,13 +5091,18 @@
 	flex: 1;
 	min-width: 0;
 }
-.fp-manual-direction {
+/* A segmented pill toggle — the Expense/Income switch on manual entry, the Active/All switch on
+   "Spending by category", anywhere else a small mutually-exclusive choice needs a home. */
+.fp-pill-toggle {
 	display: inline-flex;
 	border: 1px solid var(--fp-line);
-	border-radius: var(--fp-radius-sm);
+	border-radius: var(--fp-radius-pill);
 	overflow: hidden;
 }
-.fp-manual-direction button {
+.fp-pill-toggle button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fp-space-1);
 	border: none;
 	background: transparent;
 	font: inherit;
@@ -5106,13 +5112,22 @@
 	cursor: pointer;
 	transition: background-color var(--fp-dur-1) var(--fp-ease), color var(--fp-dur-1) var(--fp-ease);
 }
-.fp-manual-direction button + button {
+.fp-pill-toggle button + button {
 	border-left: 1px solid var(--fp-line);
 }
-.fp-manual-direction button.is-active {
+.fp-pill-toggle button.is-active {
 	background: var(--fp-accent-wash);
 	color: var(--fp-ink);
 	font-weight: var(--fp-fw-semibold);
+}
+/* The count riding along in each pill — muted so the label reads first, the number second. */
+.fp-pill-toggle-count {
+	font-variant-numeric: tabular-nums;
+	color: var(--fp-ink-muted);
+	font-weight: var(--fp-fw-regular);
+}
+.fp-pill-toggle button.is-active .fp-pill-toggle-count {
+	color: var(--fp-ink-secondary);
 }
 .fp-filterbar-add {
 	white-space: nowrap;
