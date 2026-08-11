@@ -2,6 +2,7 @@ import { App, Platform, PluginSettingTab, Setting } from "obsidian";
 import { ACCOUNT_TYPE_META } from "../constants";
 import type FinancePlugin from "../main";
 import type { AccountType } from "../types";
+import { restartSetup } from "../views/SetupView";
 import { openImportWizard } from "../wizards/ImportWizard";
 
 export class FinanceSettingTab extends PluginSettingTab {
@@ -17,6 +18,11 @@ export class FinanceSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Import transactions").setDesc("Bring in a bank or broker CSV export.").addButton((b) =>
 			b.setButtonText("Import").onClick(() => openImportWizard(this.plugin))
 		);
+
+		new Setting(containerEl)
+			.setName("First-run setup")
+			.setDesc("Walk through the guided setup again: portfolio name, standard categories, accounts, first import. Nothing you already have is removed.")
+			.addButton((b) => b.setButtonText("Restart setup").onClick(() => void restartSetup(this.plugin)));
 
 		new Setting(containerEl)
 			.setName("Mobile-friendly layout")
