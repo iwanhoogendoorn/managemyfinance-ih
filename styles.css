@@ -4083,8 +4083,21 @@
 /* .fp-card-head is align-items:baseline (right for a title), which has no meaningful baseline for
    a <select> or a pill group — center them against the title instead so they don't float or sink oddly. */
 .fp-card-head .fp-select--sm,
-.fp-card-head .fp-pill-toggle {
+.fp-card-head .fp-pill-toggle,
+.fp-card-head-controls {
 	align-self: center;
+}
+/* More than one control in a card header (period select + filter pills) — keep them on one line,
+   wrapping to the next only when the card is genuinely too narrow. */
+.fp-card-head-controls {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--fp-space-2);
+}
+.fp-pill-toggle.is-hidden {
+	display: none;
 }
 /* A valuation nobody has refreshed in three months still deserves its age shown, not hidden. */
 .fp-stat--stale .fp-stat-foot {
