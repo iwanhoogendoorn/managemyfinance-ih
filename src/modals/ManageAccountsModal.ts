@@ -56,7 +56,21 @@ export class ManageAccountsModal extends Modal {
 					text: `${ACCOUNT_TYPE_META[acc.type].label}${acc.iban ? " · " + acc.iban : ""} · ${stats.count} transaction${stats.count === 1 ? "" : "s"}`,
 				});
 				row.createDiv({ cls: "fp-account-row-balance fp-money", text: formatEUR(stats.netWorth) });
-				const removeBtn = row.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+				const editBtn = row.createEl("button", {
+					cls: "fp-btn fp-btn-ghost fp-btn-icon",
+					attr: { "aria-label": `Edit ${acc.name}`, title: "Edit — name, type, IBAN, opening balance" },
+				});
+				icon(editBtn, "pencil");
+				editBtn.addEventListener("click", () => {
+					new CreateAccountModal(this.app, this.plugin, () => {
+						this.render();
+						this.onChange?.();
+					}, acc).open();
+				});
+				const removeBtn = row.createEl("button", {
+					cls: "fp-btn fp-btn-ghost fp-btn-icon",
+					attr: { "aria-label": `Remove ${acc.name}` },
+				});
 				icon(removeBtn, "x");
 				removeBtn.addEventListener("click", () => void this.remove(acc.id, acc.name));
 			});

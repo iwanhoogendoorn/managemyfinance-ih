@@ -383,6 +383,23 @@ export class FinanceView extends ItemView {
 			textCol.createDiv({ cls: "fp-nav-item-type", text: ACCOUNT_TYPE_META[acc.type].label });
 			this.navTail(item, true, formatEUR(netWorth(this.plugin.store, acc.id)));
 			item.addEventListener("click", () => void this.selectAccount(acc.id));
+			// Right-click → edit: the only other route to "change this account's type" is buried in
+			// Manage accounts, and a mis-typed account is the most common thing to want to fix.
+			item.addEventListener("contextmenu", (ev) => {
+				ev.preventDefault();
+				const menu = new Menu();
+				menu.addItem((mi) =>
+					mi.setTitle(`Edit "${acc.name}"…`).setIcon("pencil").onClick(() => {
+						new CreateAccountModal(this.app, this.plugin, () => this.refresh(), acc).open();
+					})
+				);
+				menu.addItem((mi) =>
+					mi.setTitle("Manage accounts…").setIcon("settings").onClick(() => {
+						new ManageAccountsModal(this.app, this.plugin, () => this.refresh()).open();
+					})
+				);
+				menu.showAtMouseEvent(ev);
+			});
 			this.wireDrag(item, acc.id, (draggedId, targetId) => void this.reorderAccounts(draggedId, targetId));
 		});
 

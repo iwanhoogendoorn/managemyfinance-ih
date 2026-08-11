@@ -5,15 +5,31 @@ import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Account, AccountType } from "../types";
 import { icon } from "../ui/dom";
 
-/** Quick "add a container" flow — a new account starts empty; its transactions arrive via the next import. */
+/**
+ * Create-or-edit for one account. Creating adds an empty container whose transactions arrive via the
+ * next import; editing (pass `existing`) changes the container's own fields in place. Type is freely
+ * editable after creation — transactions reference the account by id only, so switching e.g. a
+ * mis-created Debit to Saving just reroutes which dashboard renders it.
+ */
 export class CreateAccountModal extends Modal {
 	private name = "";
 	private type: AccountType = "debit";
 	private iban = "";
 	private openingBalance = "0";
 
-	constructor(app: App, private plugin: FinancePlugin, private onCreated?: (account: Account) => void) {
+	constructor(
+		app: App,
+		private plugin: FinancePlugin,
+		private onCreated?: (account: Account) => void,
+		private existing?: Account
+	) {
 		super(app);
+		if (existing) {
+			this.name = existing.name;
+			this.type = existing.type;
+			this.iban = existing.iban ?? "";
+			this.openingBalance = String(existing.openingBalance ?? 0);
+		}
 	}
 
 	onOpen(): void {
@@ -23,10 +39,12 @@ export class CreateAccountModal extends Modal {
 		const c = this.contentEl;
 		c.addClass("fp-account-modal");
 
-		c.createEl("h3", { text: "Create account" });
+		c.createEl("h3", { text: this.existing ? "Edit account" : "Create account" });
 		c.createEl("p", {
 			cls: "fp-step-desc",
-			text: "A separate container for this account's transactions and totals — e.g. one per card or bank.",
+			text: this.existing
+				? "Change this account's details — its transactions stay attached either way."
+				: "A separate container for this account's transactions and totals — e.g. one per card or bank.",
 		});
 
 		const form = c.createDiv({ cls: "fp-form" });
@@ -34,6 +52,7 @@ export class CreateAccountModal extends Modal {
 		const nameRow = form.createDiv({ cls: "fp-form-row" });
 		nameRow.createEl("label", { text: "Name" });
 		const nameInput = nameRow.createEl("input", { type: "text", attr: { placeholder: "e.g. Amex Gold" } });
+		nameInput.value = this.name;
 		nameInput.addEventListener("input", () => (this.name = nameInput.value));
 
 		const typeRow = form.createDiv({ cls: "fp-form-row" });
@@ -46,6 +65,7 @@ export class CreateAccountModal extends Modal {
 		const ibanRow = form.createDiv({ cls: "fp-form-row" });
 		ibanRow.createEl("label", { text: "IBAN (optional)" });
 		const ibanInput = ibanRow.createEl("input", { type: "text", attr: { placeholder: "Auto-matches combined CSV/Excel exports" } });
+		ibanInput.value = this.iban;
 		ibanInput.addEventListener("input", () => (this.iban = ibanInput.value));
 
 		const balRow = form.createDiv({ cls: "fp-form-row" });
@@ -61,8 +81,8 @@ export class CreateAccountModal extends Modal {
 
 		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
 		const create = right.createEl("button", { cls: "fp-btn fp-btn-primary" });
-		icon(create, "plus");
-		create.createSpan({ text: "Create account" });
+		icon(create, this.existing ? "check" : "plus");
+		create.createSpan({ text: this.existing ? "Save changes" : "Create account" });
 		create.addEventListener("click", () => void this.submit());
 
 		nameInput.focus();
@@ -71,6 +91,21 @@ export class CreateAccountModal extends Modal {
 	private async submit(): Promise<void> {
 		if (!this.name.trim()) {
 			new Notice("Give the account a name first");
+			return;
+		}
+		if (this.existing) {
+			// Mutating the account object in place is deliberate: transactions reference the id, and
+			// none of the fields edited here feed the transfer-pair memoisation (which keys on the
+			// transactions array, not accounts).
+			this.existing.name = this.name.trim();
+			this.existing.type = this.type;
+			this.existing.openingBalance = parseFloat(this.openingBalance) || 0;
+			this.existing.iban = this.iban.trim() || undefined;
+			await this.plugin.store.saveAccounts();
+			new Notice(`Updated "${this.existing.name}"`);
+			this.onCreated?.(this.existing);
+			this.plugin.refreshViews();
+			this.close();
 			return;
 		}
 		const account: Account = {
