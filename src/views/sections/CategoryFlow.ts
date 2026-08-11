@@ -1,5 +1,15 @@
 import { elapsedFraction } from "../../budgets";
-import { categorySpend, firstDayOf, lastDayOf, monthOf, shiftMonth, todayIso, type SpendWindow } from "../../kpi";
+import {
+	categorySpend,
+	firstDayOf,
+	lastDayOf,
+	monthOf,
+	rollUpCategorySpend,
+	shiftMonth,
+	todayIso,
+	topLevelCategories,
+	type SpendWindow,
+} from "../../kpi";
 import type FinancePlugin from "../../main";
 import { icon } from "../../ui/dom";
 import { goToLedger, UNCATEGORIZED } from "./LedgerSection";
@@ -128,8 +138,12 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 	const periods = buildPeriods(years, today);
 
 	const categoryById = new Map(store.categories.map((c) => [c.id, c]));
+	// Headings only: with subcategories rolled into their parent, also listing each child would
+	// double-count on screen and turn a 4-bar card into a 20-bar one.
 	const spendableIds = new Set<string>(
-		store.categories.filter((c) => !c.archived && !NON_SPEND_CATEGORY_NAMES.has(c.name.trim().toLowerCase())).map((c) => c.id)
+		topLevelCategories(store.categories)
+			.filter((c) => !c.archived && !NON_SPEND_CATEGORY_NAMES.has(c.name.trim().toLowerCase()))
+			.map((c) => c.id)
 	);
 	if (spendableIds.size === 0) return;
 
@@ -152,13 +166,15 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 		const period = periods.find((p) => p.key === periodSelect.value) ?? periods[0];
 		subEl.setText(period.sub);
 
-		const current = categorySpend(store, period.window, opts.accountIds);
+		// Rolled up: a heading's bar has to mean everything filed under it, subcategories included,
+		// or the totals silently stop adding up to what the account actually spent.
+		const current = rollUpCategorySpend(categorySpend(store, period.window, opts.accountIds), store.categories);
 
 		// The trailing-average comparison only exists for the in-progress month.
 		const priorTotals = new Map<string, number>();
 		if (period.compare) {
 			for (let i = 1; i <= COMPARISON_MONTHS; i++) {
-				categorySpend(store, shiftMonth(month, -i), opts.accountIds).forEach((value, key) =>
+				rollUpCategorySpend(categorySpend(store, shiftMonth(month, -i), opts.accountIds), store.categories).forEach((value, key) =>
 					priorTotals.set(key, (priorTotals.get(key) ?? 0) + value)
 				);
 			}

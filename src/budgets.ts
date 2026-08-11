@@ -1,4 +1,15 @@
-import { categorySpend, daysInMonth, monthOf, shiftMonth, todayIso, windowSummary, firstDayOf, lastDayOf, type KpiStore } from "./kpi";
+import {
+	categorySpend,
+	daysInMonth,
+	monthOf,
+	rollUpCategorySpend,
+	shiftMonth,
+	todayIso,
+	windowSummary,
+	firstDayOf,
+	lastDayOf,
+	type KpiStore,
+} from "./kpi";
 
 /** "YYYY-MM" for the current calendar month — budgets are simple and monthly, no rollover. */
 export function currentMonth(): string {
@@ -25,7 +36,9 @@ export function suggestedBudget(store: KpiStore, categoryId: string, referenceMo
 	for (let i = 1; i <= lookbackMonths; i++) {
 		const month = shiftMonth(referenceMonth, -i);
 		if (month < earliestMonth) continue;
-		amounts.push(categorySpend(store, month).get(categoryId) ?? 0);
+		// Rolled up so a suggestion for a heading reflects everything filed under it, matching what
+		// `budgetStatuses` will then measure that budget against.
+		amounts.push(rollUpCategorySpend(categorySpend(store, month), store.categories).get(categoryId) ?? 0);
 	}
 	if (amounts.length === 0) return undefined;
 
@@ -83,7 +96,9 @@ export function budgetStatuses(
 	month: string,
 	today: Date = new Date()
 ): CategoryBudgetStatus[] {
-	const spend = categorySpend(store, month);
+	// A budget on a parent has to count its subcategories' spend too — otherwise setting a €700
+	// Food budget and then filing everything under Food › Groceries would read as €0 spent forever.
+	const spend = rollUpCategorySpend(categorySpend(store, month), store.categories);
 	const elapsed = elapsedFraction(month, today);
 	return categories
 		.filter((c) => (c.budget ?? 0) > 0)

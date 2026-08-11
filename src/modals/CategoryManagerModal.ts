@@ -78,7 +78,19 @@ export class CategoryManagerModal extends Modal {
 		if (active.length === 0) {
 			list.createDiv({ cls: "fp-step-desc", text: "No categories yet — add one above." });
 		}
-		active.forEach((cat) => this.renderRow(list, cat));
+		const childrenOf = new Map<string, Category[]>();
+		active.forEach((cat) => {
+			if (!cat.parentId) return;
+			const bucket = childrenOf.get(cat.parentId);
+			if (bucket) bucket.push(cat);
+			else childrenOf.set(cat.parentId, [cat]);
+		});
+		active
+			.filter((cat) => !cat.parentId || !active.some((x) => x.id === cat.parentId))
+			.forEach((cat) => {
+				this.renderRow(list, cat, { children: childrenOf.get(cat.id) ?? [] });
+				(childrenOf.get(cat.id) ?? []).forEach((kid) => this.renderRow(list, kid, { child: true }));
+			});
 
 		if (archived.length > 0) {
 			c.createDiv({ cls: "fp-category-archived-head", text: `Archived (${archived.length}) — hidden from pickers, existing transactions keep them` });
@@ -94,18 +106,39 @@ export class CategoryManagerModal extends Modal {
 		done.addEventListener("click", () => this.close());
 	}
 
-	private renderRow(parent: HTMLElement, cat: Category, opts: { archived?: boolean } = {}): void {
+	private renderRow(
+		parent: HTMLElement,
+		cat: Category,
+		opts: { archived?: boolean; child?: boolean; children?: Category[] } = {}
+	): void {
 		const used = this.usageOf(cat.id);
-		const row = parent.createDiv({ cls: "fp-category-row" });
+		const children = opts.children ?? [];
+		// A parent's count is its own rows plus everything filed under its subcategories — the number
+		// you'd lose if you deleted it, which is the only number that matters next to a delete button.
+		const familyUsed = used + children.reduce((sum, kid) => sum + this.usageOf(kid.id), 0);
+		const row = parent.createDiv({ cls: "fp-category-row" + (opts.child ? " fp-category-row--child" : "") });
 
 		const main = row.createDiv({ cls: "fp-category-row-main" });
 		categoryChip(main, cat.name, cat.color, cat.icon);
-		main.createSpan({
-			cls: "fp-category-row-meta",
-			text: used === 0 ? "unused" : `${used.toLocaleString("en-IE")} transaction${used === 1 ? "" : "s"}`,
-		});
+		const meta =
+			children.length > 0
+				? `${familyUsed.toLocaleString("en-IE")} across ${children.length} subcategor${children.length === 1 ? "y" : "ies"}` +
+				  (used > 0 ? ` · ${used.toLocaleString("en-IE")} direct` : "")
+				: used === 0
+				? "unused"
+				: `${used.toLocaleString("en-IE")} transaction${used === 1 ? "" : "s"}`;
+		main.createSpan({ cls: "fp-category-row-meta", text: meta });
 
 		const actions = row.createDiv({ cls: "fp-category-row-actions" });
+
+		if (!opts.child && !opts.archived) {
+			const addSub = actions.createEl("button", {
+				cls: "fp-btn fp-btn-ghost fp-btn--icon",
+				attr: { type: "button", "aria-label": `Add a subcategory under ${cat.name}`, title: `Add a subcategory under ${cat.name}` },
+			});
+			icon(addSub, "corner-down-right");
+			addSub.addEventListener("click", () => this.renderEditor(undefined, cat.id));
+		}
 
 		const edit = actions.createEl("button", {
 			cls: "fp-btn fp-btn-ghost fp-btn--icon",
@@ -142,7 +175,7 @@ export class CategoryManagerModal extends Modal {
 	}
 
 	/** New-category and edit-category share one form — the only difference is whether it starts blank. */
-	private renderEditor(existing?: Category): void {
+	private renderEditor(existing?: Category, preselectParent?: string): void {
 		const c = this.contentEl;
 		c.empty();
 
@@ -152,8 +185,28 @@ export class CategoryManagerModal extends Modal {
 		let name = existing?.name ?? "";
 		let color = existing?.color ?? PALETTE[store.categories.length % PALETTE.length];
 		let iconName = existing?.icon ?? "tag";
+		let parentId = existing?.parentId ?? preselectParent ?? "";
 
 		const form = c.createDiv({ cls: "fp-form" });
+
+		// Only a category with no children of its own may become a subcategory — two levels, no deeper.
+		const hasChildren = existing ? store.categories.some((x) => x.parentId === existing.id) : false;
+		const parentRow = form.createDiv({ cls: "fp-form-row" });
+		parentRow.createEl("label", { text: "Type" });
+		const parentSelect = parentRow.createEl("select", { cls: "fp-select" });
+		parentSelect.createEl("option", { text: "Top-level category", value: "" });
+		store.categories
+			.filter((x) => !x.archived && !x.parentId && x.id !== existing?.id)
+			.forEach((x) => parentSelect.createEl("option", { text: `Subcategory of ${x.name}`, value: x.id }));
+		parentSelect.value = parentId;
+		parentSelect.disabled = hasChildren;
+		parentSelect.addEventListener("change", () => (parentId = parentSelect.value));
+		if (hasChildren) {
+			parentRow.createDiv({
+				cls: "fp-form-hint",
+				text: "This category has subcategories of its own, so it has to stay top-level. Move or delete them first.",
+			});
+		}
 
 		const preview = c.createDiv({ cls: "fp-category-preview" });
 		const drawPreview = () => {
@@ -213,11 +266,16 @@ export class CategoryManagerModal extends Modal {
 					new Notice("Give the category a name first");
 					return;
 				}
+				// Scoped to siblings: "Food › Coffee" and "Social › Coffee" are both perfectly sensible,
+				// and refusing the second because the name is taken somewhere else would be nonsense.
 				const clash = store.categories.find(
-					(x) => x.id !== existing?.id && x.name.trim().toLowerCase() === trimmed.toLowerCase()
+					(x) =>
+						x.id !== existing?.id &&
+						(x.parentId ?? "") === (parentId || "") &&
+						x.name.trim().toLowerCase() === trimmed.toLowerCase()
 				);
 				if (clash) {
-					new Notice(`"${clash.name}" already exists`);
+					new Notice(parentId ? `"${clash.name}" already exists under that category` : `"${clash.name}" already exists`);
 					return;
 				}
 
@@ -227,6 +285,7 @@ export class CategoryManagerModal extends Modal {
 					target.name = trimmed;
 					target.color = color;
 					target.icon = iconName;
+					target.parentId = parentId || undefined;
 				} else {
 					store.categories.push({
 						id: `cat-user-${slugify(trimmed)}-${Math.random().toString(36).slice(2, 6)}`,
@@ -234,6 +293,7 @@ export class CategoryManagerModal extends Modal {
 						color,
 						icon: iconName,
 						aliases: [],
+						parentId: parentId || undefined,
 					});
 				}
 				await this.persist();
@@ -248,8 +308,18 @@ export class CategoryManagerModal extends Modal {
 	private confirmDelete(cat: Category, used: number): void {
 		const c = this.contentEl;
 		c.empty();
+		const children = this.plugin.store.categories.filter((x) => x.parentId === cat.id);
 
 		c.createEl("h3", { text: `Delete "${cat.name}"?` });
+
+		if (children.length > 0) {
+			c.createEl("p", {
+				cls: "fp-step-desc",
+				text: `${children.length} subcategor${children.length === 1 ? "y" : "ies"} (${children
+					.map((x) => x.name)
+					.join(", ")}) sit under this one. They'll be kept and promoted to top-level categories — their transactions are not touched.`,
+			});
+		}
 
 		if (used === 0) {
 			c.createEl("p", { cls: "fp-step-desc", text: "Nothing uses this category, so deleting it changes no transactions." });
@@ -308,6 +378,12 @@ export class CategoryManagerModal extends Modal {
 					store.rules = store.rules.filter((r) => r.categoryId !== cat.id);
 					await store.saveRules();
 				}
+				// Promote any children rather than leaving them pointing at a category that no longer
+				// exists. The read helpers already tolerate an orphan by treating it as top-level, but
+				// persisting a dangling reference is how "tolerated" quietly becomes "relied upon".
+				store.categories.forEach((x) => {
+					if (x.parentId === cat.id) x.parentId = undefined;
+				});
 				store.categories = store.categories.filter((x) => x.id !== cat.id);
 				await this.persist();
 				new Notice(

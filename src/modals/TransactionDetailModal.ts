@@ -2,7 +2,7 @@ import { App, FuzzySuggestModal, Modal, Notice, TFile } from "obsidian";
 import type FinancePlugin from "../main";
 import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Transaction } from "../types";
-import { categoryChip, icon } from "../ui/dom";
+import { categoryChip, categoryPathLabel, fillCategorySelect, icon } from "../ui/dom";
 
 function formatAmount(tx: Transaction): string {
 	return new Intl.NumberFormat("en-IE", { style: "currency", currency: tx.currency || "EUR" }).format(tx.amount);
@@ -118,13 +118,13 @@ export class TransactionDetailModal extends Modal {
 		const store = this.plugin.store;
 		const category = this.tx.categoryId ? store.categories.find((cat) => cat.id === this.tx.categoryId) : undefined;
 
-		if (category) categoryChip(container, category.name, category.color, category.icon);
+		// Full "Food › Restaurants" path on the chip: a subcategory's own name loses its heading, and
+		// "Restaurants" alone doesn't tell you which parent's budget it lands in.
+		if (category) categoryChip(container, categoryPathLabel(store.categories, category.id) ?? category.name, category.color, category.icon);
 		const select = container.createEl("select", { cls: "fp-setup-select" });
 		select.createEl("option", { text: category ? "Change category…" : "Set category…", value: "" });
-		store.categories.forEach((cat) => {
-			const opt = select.createEl("option", { text: cat.name, value: cat.id });
-			if (cat.id === this.tx.categoryId) opt.selected = true;
-		});
+		fillCategorySelect(select, store.categories);
+		if (this.tx.categoryId) select.value = this.tx.categoryId;
 		select.addEventListener("change", async () => {
 			if (!select.value) return;
 			await store.updateTransaction(this.tx.id, { categoryId: select.value });

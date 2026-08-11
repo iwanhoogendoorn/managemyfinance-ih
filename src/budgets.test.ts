@@ -191,3 +191,54 @@ describe("budgetSummary", () => {
 		expect(summary.unbudgetedSpend).toBe(100);
 	});
 });
+
+describe("budgets with subcategories", () => {
+	const CAT_GROCERIES = "cat-groceries";
+	const CAT_RESTAURANTS = "cat-restaurants";
+
+	/** Food, with two subcategories under it. */
+	function nestedStore(transactions: Transaction[]): KpiStore {
+		return {
+			accounts: [{ id: ACCOUNT_ID, name: "Checking", type: "debit", currency: "EUR" }],
+			categories: [
+				{ id: CAT_FOOD, name: "Food", color: "#000", icon: "utensils", aliases: [] },
+				{ id: CAT_GROCERIES, name: "Groceries", color: "#000", icon: "cart", aliases: [], parentId: CAT_FOOD },
+				{ id: CAT_RESTAURANTS, name: "Restaurants", color: "#000", icon: "utensils", aliases: [], parentId: CAT_FOOD },
+			],
+			transactions,
+		};
+	}
+
+	it("counts subcategory spend against the parent's budget", () => {
+		// The trap this pins: set a €700 Food budget, then file everything under Food › Groceries, and
+		// a non-rolling-up implementation reports €0 spent forever while you sail past the limit.
+		const s = nestedStore([
+			tx("2026-03-04", -200, CAT_GROCERIES),
+			tx("2026-03-11", -150, CAT_RESTAURANTS),
+			tx("2026-03-18", -50, CAT_FOOD),
+		]);
+		const [status] = budgetStatuses(s, [{ id: CAT_FOOD, budget: 700 }], "2026-03", new Date("2026-03-31T12:00:00"));
+		expect(status.spent).toBe(400);
+		expect(status.pct).toBeCloseTo(400 / 700, 6);
+	});
+
+	it("still measures a subcategory's own budget against only its own spend", () => {
+		const s = nestedStore([
+			tx("2026-03-04", -200, CAT_GROCERIES),
+			tx("2026-03-11", -150, CAT_RESTAURANTS),
+		]);
+		const [status] = budgetStatuses(s, [{ id: CAT_GROCERIES, budget: 300 }], "2026-03", new Date("2026-03-31T12:00:00"));
+		expect(status.spent).toBe(200);
+	});
+
+	it("suggests a parent budget from the whole family's history, matching what it'll be measured against", () => {
+		const s = nestedStore([
+			tx("2026-01-10", -100, CAT_GROCERIES),
+			tx("2026-01-20", -100, CAT_RESTAURANTS),
+			tx("2026-02-10", -100, CAT_GROCERIES),
+			tx("2026-02-20", -100, CAT_RESTAURANTS),
+		]);
+		// Two complete months at €200 each → €200, rounded to the nearest €5.
+		expect(suggestedBudget(s, CAT_FOOD, "2026-03", 3)).toBe(200);
+	});
+});

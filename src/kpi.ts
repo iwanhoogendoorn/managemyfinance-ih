@@ -651,6 +651,58 @@ export function burnRate(store: KpiStore, accountIds?: string[], months = 6, tod
 /** A "YYYY" / "YYYY-MM" date prefix, or an explicit inclusive date range. */
 export type SpendWindow = string | { from: string; to: string };
 
+/* ---------- category hierarchy ----------
+   Exactly two levels: top-level categories, each with zero or more subcategories. A transaction may
+   sit on either level, so every total has two legitimate readings — the category's own rows, and its
+   rows plus its children's. Storage stays exact (`categorySpend` never rolls anything up); rolling up
+   is a display decision each surface makes for itself. */
+
+/** Children by parent id, in the order they appear in `categories`. Categories whose `parentId`
+ *  points at something that no longer exists are treated as top-level rather than dropped — an
+ *  orphaned subcategory should degrade to visible, not invisible. */
+export function categoryChildren(categories: Category[]): Map<string, Category[]> {
+	const byId = new Set(categories.map((c) => c.id));
+	const children = new Map<string, Category[]>();
+	for (const cat of categories) {
+		if (!cat.parentId || !byId.has(cat.parentId)) continue;
+		const bucket = children.get(cat.parentId);
+		if (bucket) bucket.push(cat);
+		else children.set(cat.parentId, [cat]);
+	}
+	return children;
+}
+
+/** Top-level categories — no parent, or a parent that no longer exists. */
+export function topLevelCategories(categories: Category[]): Category[] {
+	const byId = new Set(categories.map((c) => c.id));
+	return categories.filter((c) => !c.parentId || !byId.has(c.parentId));
+}
+
+/**
+ * Every id whose spend belongs under `categoryId` — itself plus its children. What "show me Food"
+ * has to mean once Food has subcategories, everywhere from a ledger filter to a budget.
+ */
+export function categoryFamily(categories: Category[], categoryId: string): string[] {
+	const children = categoryChildren(categories).get(categoryId) ?? [];
+	return [categoryId, ...children.map((c) => c.id)];
+}
+
+/**
+ * Folds each subcategory's total into its parent, so a parent's figure reads as "everything under
+ * this heading". Subcategory entries are kept alongside — a caller that wants the breakdown already
+ * has it, and one that only wants headings can read the top-level ids.
+ */
+export function rollUpCategorySpend(spend: Map<string, number>, categories: Category[]): Map<string, number> {
+	const rolled = new Map(spend);
+	for (const cat of categories) {
+		if (!cat.parentId) continue;
+		const own = spend.get(cat.id);
+		if (!own) continue;
+		rolled.set(cat.parentId, (rolled.get(cat.parentId) ?? 0) + own);
+	}
+	return rolled;
+}
+
 /**
  * Expenses grouped by category id over an arbitrary window, with transfers and income excluded.
  * Uncategorized spend is bucketed under `"uncategorized"` so it stays visible rather than vanishing

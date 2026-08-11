@@ -1,4 +1,5 @@
 import {
+	categoryFamily,
 	firstDayOf,
 	isoWeekOf,
 	isoWeekRange,
@@ -15,7 +16,7 @@ import type FinancePlugin from "../../main";
 import { AddTransactionModal } from "../../modals/AddTransactionModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import type { Transaction } from "../../types";
-import { badge, categoryChip, emptyState, icon } from "../../ui/dom";
+import { badge, categoryChip, emptyState, fillCategorySelect, icon } from "../../ui/dom";
 import { openImportWizard } from "../../wizards/ImportWizard";
 import { money, portfolioCurrency } from "./shared";
 
@@ -276,7 +277,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 	const categorySelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by category" } });
 	categorySelect.createEl("option", { text: "All categories", value: "" });
 	categorySelect.createEl("option", { text: "Uncategorized", value: UNCATEGORIZED });
-	store.categories.forEach((c) => categorySelect.createEl("option", { text: c.name, value: c.id }));
+	fillCategorySelect(categorySelect, store.categories, { includeArchived: true });
 	categorySelect.value = filterState.categoryId === UNCATEGORIZED || categoryById.has(filterState.categoryId) ? filterState.categoryId : "";
 
 	const presetSelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by date range" } });
@@ -525,6 +526,9 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 		filterState.dateTo = dateTo.value;
 		filterState.preset = preset;
 
+		const categoryFamilyIds = new Set(
+			filterState.categoryId && filterState.categoryId !== UNCATEGORIZED ? categoryFamily(store.categories, filterState.categoryId) : []
+		);
 		const needle = filterState.search.toLowerCase();
 		const { accountId: accountFilter, categoryId: categoryFilter, dateFrom: from, dateTo: to } = filterState;
 
@@ -534,7 +538,9 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 			.filter((t) => {
 				if (!categoryFilter) return true;
 				if (categoryFilter === UNCATEGORIZED) return !t.categoryId;
-				return t.categoryId === categoryFilter;
+				// Filtering by a parent has to include everything filed under its subcategories —
+				// "show me Food" meaning "Food but not Food › Groceries" would be a trap.
+				return categoryFamilyIds.has(t.categoryId ?? "");
 			})
 			.filter((t) => !from || t.date >= from)
 			.filter((t) => !to || t.date <= to)

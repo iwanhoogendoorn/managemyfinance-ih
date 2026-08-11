@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import type { Category } from "../types";
 import { sparkline } from "./charts";
 
 export type Tone = "good" | "warn" | "bad" | "neutral";
@@ -233,4 +234,52 @@ export function emptyState(parent: HTMLElement, opts: EmptyStateOpts): HTMLEleme
 		btn.addEventListener("click", opts.onAction);
 	}
 	return wrap;
+}
+
+/**
+ * Fills a `<select>` with every category, subcategories nested under their parent as `<optgroup>`
+ * entries. One helper because a dozen surfaces build this same picker, and a hierarchy that renders
+ * differently in each of them is worse than no hierarchy at all.
+ *
+ * A parent that has children is still selectable — filed under the heading without picking a
+ * subcategory is a legitimate answer, and forcing a choice would strand every transaction that was
+ * categorized before the subcategory existed. `<optgroup>` labels aren't selectable in HTML, so the
+ * parent is emitted as the group's own first option, marked to read as the general case.
+ */
+export function fillCategorySelect(
+	select: HTMLSelectElement,
+	categories: Category[],
+	opts: { includeArchived?: boolean } = {}
+): void {
+	const visible = opts.includeArchived ? categories : categories.filter((c) => !c.archived);
+	const byId = new Set(visible.map((c) => c.id));
+	const children = new Map<string, Category[]>();
+	for (const cat of visible) {
+		if (!cat.parentId || !byId.has(cat.parentId)) continue;
+		const bucket = children.get(cat.parentId);
+		if (bucket) bucket.push(cat);
+		else children.set(cat.parentId, [cat]);
+	}
+
+	for (const cat of visible) {
+		// Subcategories are emitted under their parent, never again at the top level.
+		if (cat.parentId && byId.has(cat.parentId)) continue;
+		const kids = children.get(cat.id);
+		if (!kids || kids.length === 0) {
+			select.createEl("option", { text: cat.name, value: cat.id });
+			continue;
+		}
+		const group = select.createEl("optgroup", { attr: { label: cat.name } });
+		group.createEl("option", { text: `${cat.name} (general)`, value: cat.id });
+		kids.forEach((kid) => group.createEl("option", { text: kid.name, value: kid.id }));
+	}
+}
+
+/** "Food › Restaurants" for a subcategory, plain name for a top-level one — for the places that show
+ *  a category as text rather than as a picker, where the child's name alone loses its context. */
+export function categoryPathLabel(categories: Category[], categoryId: string | undefined): string | undefined {
+	const cat = categories.find((c) => c.id === categoryId);
+	if (!cat) return undefined;
+	const parent = cat.parentId ? categories.find((c) => c.id === cat.parentId) : undefined;
+	return parent ? `${parent.name} › ${cat.name}` : cat.name;
 }

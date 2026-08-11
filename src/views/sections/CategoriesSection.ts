@@ -4,7 +4,7 @@ import { openCategoryManager } from "../../modals/CategoryManagerModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import { buildUserRule, deriveRulePattern, groupByMerchant, ruleReach, type MerchantGroup } from "../../reviewQueue";
 import type { Transaction } from "../../types";
-import { badge, categoryChip, emptyState, icon } from "../../ui/dom";
+import { badge, categoryChip, emptyState, fillCategorySelect, icon } from "../../ui/dom";
 import { openImportWizard } from "../../wizards/ImportWizard";
 import { money, portfolioCurrency } from "./shared";
 
@@ -105,7 +105,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 	const categorySelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by category" } });
 	categorySelect.createEl("option", { text: "All categories", value: "" });
 	categorySelect.createEl("option", { text: "Uncategorized only", value: FILTER_UNCATEGORIZED });
-	store.categories.filter((c) => !c.archived).forEach((c) => categorySelect.createEl("option", { text: c.name, value: c.id }));
+	fillCategorySelect(categorySelect, store.categories);
 
 	const periodSelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by period" } });
 	periods.forEach((p) => periodSelect.createEl("option", { text: p.label, value: p.key }));
@@ -167,9 +167,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 	function categoryPicker(parent: HTMLElement, currentId: string | undefined, onPick: (id: string | undefined) => void): HTMLSelectElement {
 		const select = parent.createEl("select", { cls: "fp-select fp-select--sm fp-cat-review-picker", attr: { "aria-label": "Category" } });
 		select.createEl("option", { text: "— Uncategorized —", value: CLEAR });
-		store.categories
-			.filter((c) => !c.archived)
-			.forEach((c) => select.createEl("option", { text: c.name, value: c.id }));
+		fillCategorySelect(select, store.categories);
 		select.value = currentId ?? CLEAR;
 		select.addEventListener("change", () => onPick(select.value === CLEAR ? undefined : select.value));
 		return select;

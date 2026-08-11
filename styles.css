@@ -5331,3 +5331,20 @@
 	color: var(--fp-ink-muted);
 	margin-top: var(--fp-space-1);
 }
+
+/* Subcategory rows in the manager — indented under their parent, with a connector rule so the
+   nesting reads structurally rather than as a slightly-off-alignment accident. */
+.fp-category-row--child {
+	padding-left: var(--fp-space-8);
+	position: relative;
+	background: var(--fp-bg-inset);
+}
+.fp-category-row--child::before {
+	content: "";
+	position: absolute;
+	left: var(--fp-space-5);
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: var(--fp-line);
+}

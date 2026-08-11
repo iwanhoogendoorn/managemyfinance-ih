@@ -41,6 +41,19 @@ export interface Category {
 	aliases: string[];
 	budget?: number;
 	archived?: boolean;
+	/**
+	 * The top-level category this one refines, e.g. "Groceries" under "Food". Absent means this IS a
+	 * top-level category — which every category was before subcategories existed, so old data and any
+	 * code that ignores this field keep working unchanged.
+	 *
+	 * Exactly two levels: a category with a parent can never itself be a parent (enforced in the
+	 * category manager). Deeper trees make every roll-up ambiguous and every picker unreadable, for a
+	 * granularity nobody managing a household budget has ever actually wanted.
+	 *
+	 * A transaction may point at either level. Assigning to "Food" directly still means "food,
+	 * unspecified" — subcategories refine, they don't force a choice.
+	 */
+	parentId?: string;
 }
 
 export interface CategoryRule {

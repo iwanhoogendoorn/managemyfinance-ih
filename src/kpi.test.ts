@@ -17,6 +17,10 @@ import {
 	balanceSeries,
 	windowSummary,
 	burnRate,
+	categoryChildren,
+	topLevelCategories,
+	categoryFamily,
+	rollUpCategorySpend,
 	quarterOf,
 	shiftQuarter,
 	quarterRange,
@@ -1090,5 +1094,64 @@ describe("isoWeekOf / shiftIsoWeek / isoWeekRange", () => {
 			expect(isoWeekOf(from)).toBe(week);
 			expect(isoWeekOf(to)).toBe(week);
 		}
+	});
+});
+
+describe("category hierarchy", () => {
+	const cats = [
+		{ id: "food", name: "Food", color: "#f00", icon: "utensils", aliases: [] },
+		{ id: "groceries", name: "Groceries", color: "#f00", icon: "shopping-cart", aliases: [], parentId: "food" },
+		{ id: "restaurants", name: "Restaurants", color: "#f00", icon: "utensils", aliases: [], parentId: "food" },
+		{ id: "transport", name: "Transport", color: "#00f", icon: "car", aliases: [] },
+		{ id: "orphan", name: "Orphan", color: "#0f0", icon: "tag", aliases: [], parentId: "deleted-parent" },
+	];
+
+	it("groups children under their parent", () => {
+		const children = categoryChildren(cats);
+		expect(children.get("food")?.map((c) => c.id)).toEqual(["groceries", "restaurants"]);
+		expect(children.has("transport")).toBe(false);
+	});
+
+	it("treats a subcategory whose parent no longer exists as top-level, not invisible", () => {
+		expect(categoryChildren(cats).has("deleted-parent")).toBe(false);
+		expect(topLevelCategories(cats).map((c) => c.id)).toEqual(["food", "transport", "orphan"]);
+	});
+
+	it("expands a parent to itself plus its children, and a leaf to just itself", () => {
+		expect(categoryFamily(cats, "food")).toEqual(["food", "groceries", "restaurants"]);
+		expect(categoryFamily(cats, "groceries")).toEqual(["groceries"]);
+		expect(categoryFamily(cats, "transport")).toEqual(["transport"]);
+	});
+
+	it("folds child spend into the parent while keeping the breakdown", () => {
+		const spend = new Map([["food", 10], ["groceries", 100], ["restaurants", 25], ["transport", 40]]);
+		const rolled = rollUpCategorySpend(spend, cats);
+		// Food keeps its own 10 (rows filed straight under the heading) plus both children.
+		expect(rolled.get("food")).toBe(135);
+		expect(rolled.get("groceries")).toBe(100);
+		expect(rolled.get("restaurants")).toBe(25);
+		expect(rolled.get("transport")).toBe(40);
+	});
+
+	it("gives a parent with no spend of its own the sum of its children", () => {
+		const rolled = rollUpCategorySpend(new Map([["groceries", 60]]), cats);
+		expect(rolled.get("food")).toBe(60);
+	});
+
+	it("leaves the input map untouched", () => {
+		const spend = new Map([["groceries", 100]]);
+		rollUpCategorySpend(spend, cats);
+		expect(spend.has("food")).toBe(false);
+		expect(spend.get("groceries")).toBe(100);
+	});
+
+	it("is a no-op on a flat category set — the pre-subcategory world still behaves identically", () => {
+		const flat = [
+			{ id: "a", name: "A", color: "#000", icon: "tag", aliases: [] },
+			{ id: "b", name: "B", color: "#000", icon: "tag", aliases: [] },
+		];
+		const spend = new Map([["a", 5], ["b", 7]]);
+		expect([...rollUpCategorySpend(spend, flat).entries()].sort()).toEqual([["a", 5], ["b", 7]]);
+		expect(topLevelCategories(flat)).toHaveLength(2);
 	});
 });

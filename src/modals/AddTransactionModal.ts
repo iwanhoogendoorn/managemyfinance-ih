@@ -5,7 +5,7 @@ import { todayIso } from "../kpi";
 import type FinancePlugin from "../main";
 import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Transaction } from "../types";
-import { icon } from "../ui/dom";
+import { fillCategorySelect, icon } from "../ui/dom";
 
 /**
  * Manual transaction entry — the one way a row gets into the ledger without a bank export. Cash
@@ -101,9 +101,7 @@ export class AddTransactionModal extends Modal {
 		catRow.createEl("label", { text: "Category" });
 		const catSelect = catRow.createEl("select");
 		catSelect.createEl("option", { text: "Auto (from your rules) / none", value: "" });
-		store.categories
-			.filter((cat) => !cat.archived)
-			.forEach((cat) => catSelect.createEl("option", { text: cat.name, value: cat.id }));
+		fillCategorySelect(catSelect, store.categories);
 		catSelect.addEventListener("change", () => (this.categoryId = catSelect.value));
 
 		const notesRow = form.createDiv({ cls: "fp-form-row" });
