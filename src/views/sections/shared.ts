@@ -1,4 +1,4 @@
-import { formatMoney, formatPct, formatSignedPct } from "../../format";
+import { formatMoney, formatPct, formatSignedPct, parseAmount } from "../../format";
 import {
 	firstDayOf,
 	isPassiveIncome,
@@ -619,9 +619,9 @@ export function editableAmount(parent: HTMLElement, opts: EditableAmountOpts): H
 		wrap.empty();
 		const input = wrap.createEl("input", {
 			cls: "fp-input fp-inline-edit-input",
-			type: "number",
+			type: "text",
 			attr: {
-				step: "0.01",
+				inputmode: "decimal",
 				min: String(opts.min ?? 0),
 				placeholder: opts.placeholder ?? "0.00",
 				"aria-label": opts.emptyLabel,
@@ -630,8 +630,8 @@ export function editableAmount(parent: HTMLElement, opts: EditableAmountOpts): H
 		input.value = opts.value === undefined ? "" : String(opts.value);
 
 		const commit = async () => {
-			const parsed = parseFloat(input.value);
-			await opts.onSave(Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined);
+			const parsed = parseAmount(input.value);
+			await opts.onSave(parsed !== undefined && parsed >= 0 ? parsed : undefined);
 		};
 
 		const save = wrap.createEl("button", { cls: "fp-btn fp-btn--primary", text: "Save", attr: { type: "button" } });

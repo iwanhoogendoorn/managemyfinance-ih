@@ -91,3 +91,45 @@ export function formatCompact(n: number, currency = "EUR", opts: { locale?: stri
 		maximumFractionDigits: 1,
 	}).format(n === 0 ? 0 : n);
 }
+
+/**
+ * Parses a user-typed amount, tolerant of both decimal conventions: "30,27" and "30.27" both come
+ * back as 30.27, "1.234,56" and "1,234.56" both as 1234.56. Needed because `parseFloat("30,27")`
+ * silently returns 30 — a Dutch user typing their comma decimal into a bare parseFloat loses the
+ * cents with no error, which is exactly how an opening balance of €30.27 became €30.
+ *
+ * Disambiguation when only ONE separator is present: a dot is always decimal (the app renders dot
+ * decimals, so a pasted-back value round-trips); a comma is decimal when followed by 1–2 digits and
+ * a thousands separator when followed by exactly 3 ("1,234" → 1234). When both are present, the
+ * last one wins as the decimal separator. Returns undefined for input with no parseable number.
+ */
+export function parseAmount(raw: string): number | undefined {
+	// Strip currency symbols, spaces (incl. narrow no-break used by some locales), and sign noise.
+	let s = raw.replace(/[^\d.,\-]/g, "").trim();
+	if (!s || s === "-" || s === "." || s === ",") return undefined;
+
+	const lastDot = s.lastIndexOf(".");
+	const lastComma = s.lastIndexOf(",");
+	if (lastDot !== -1 && lastComma !== -1) {
+		// Both present: the later one is the decimal separator, the other is grouping.
+		const dec = Math.max(lastDot, lastComma);
+		const decChar = s[dec];
+		const groupChar = decChar === "." ? "," : ".";
+		s = s.split(groupChar).join("");
+		// A decimal separator that appears more than once (e.g. "1.2.3,4,5") is garbage, not grouping.
+		if (s.split(decChar).length > 2) return undefined;
+		s = s.replace(decChar, ".");
+	} else if (lastComma !== -1) {
+		const after = s.length - lastComma - 1;
+		const commas = (s.match(/,/g) ?? []).length;
+		if (commas === 1 && after !== 3) s = s.replace(",", ".");
+		else s = s.split(",").join(""); // "1,234" / "1,234,567" — grouping
+	}
+	// Dot-only input is already canonical; multiple dots ("1.234.567") are EU grouping.
+	else if (lastDot !== -1 && (s.match(/\./g) ?? []).length > 1) {
+		s = s.split(".").join("");
+	}
+
+	const n = parseFloat(s);
+	return Number.isFinite(n) ? n : undefined;
+}

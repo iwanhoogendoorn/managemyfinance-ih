@@ -85,3 +85,36 @@ describe("formatCompact", () => {
 		expect(formatCompact(NaN)).toBe("—");
 	});
 });
+
+import { parseAmount } from "./format";
+
+describe("parseAmount", () => {
+	it("reads both decimal conventions", () => {
+		expect(parseAmount("30,27")).toBe(30.27);
+		expect(parseAmount("30.27")).toBe(30.27);
+		expect(parseAmount("0,5")).toBe(0.5);
+		expect(parseAmount("-12,5")).toBe(-12.5);
+	});
+	it("reads grouped thousands in either convention", () => {
+		expect(parseAmount("1.234,56")).toBe(1234.56);
+		expect(parseAmount("1,234.56")).toBe(1234.56);
+		expect(parseAmount("1.234.567")).toBe(1234567);
+		expect(parseAmount("1,234")).toBe(1234);
+		expect(parseAmount("1,234,567")).toBe(1234567);
+	});
+	it("strips currency symbols and spaces", () => {
+		expect(parseAmount("€ 1.234,56")).toBe(1234.56);
+		expect(parseAmount("$1,234.56")).toBe(1234.56);
+		expect(parseAmount(" 30,27 ")).toBe(30.27);
+	});
+	it("keeps a lone dot decimal as typed (round-trips the app's own rendering)", () => {
+		expect(parseAmount("1.234")).toBe(1.234);
+		expect(parseAmount("30.2")).toBe(30.2);
+	});
+	it("rejects garbage", () => {
+		expect(parseAmount("")).toBeUndefined();
+		expect(parseAmount("abc")).toBeUndefined();
+		expect(parseAmount("-")).toBeUndefined();
+		expect(parseAmount("1.2.3,4,5")).toBeUndefined();
+	});
+});

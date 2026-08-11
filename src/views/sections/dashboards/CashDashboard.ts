@@ -32,7 +32,7 @@ export function renderCashDashboard(container: HTMLElement, plugin: FinancePlugi
 
 	const grid = container.createDiv({ cls: "fp-stat-grid" });
 
-	renderStat(grid, { label: "Current balance", value: money(balance, currency), size: "hero", iconName: "banknote" });
+	renderStat(grid, { label: "Current balance", value: money(balance, currency, 2), size: "hero", iconName: "banknote" });
 
 	const netCard = renderStat(grid, {
 		label: `Net this month`,

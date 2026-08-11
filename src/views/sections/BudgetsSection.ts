@@ -1,6 +1,7 @@
 import { Notice } from "obsidian";
 import { budgetStatuses, budgetSummary, currentMonth, suggestedBudget, type CategoryBudgetStatus } from "../../budgets";
 import { monthOf, shiftMonth, todayIso } from "../../kpi";
+import { parseAmount } from "../../format";
 import type FinancePlugin from "../../main";
 import type { Category } from "../../types";
 import { categoryChip, emptyState, icon, renderStat } from "../../ui/dom";
@@ -266,9 +267,10 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		const inputWrap = top.createDiv({ cls: "fp-budget-input-wrap" });
 		inputWrap.createSpan({ cls: "fp-budget-input-prefix", text: "€" });
 		const input = inputWrap.createEl("input", {
-			type: "number",
+			// Text, not number: a number input rejects the Dutch comma decimal outright in an en locale.
+			type: "text",
 			cls: "fp-budget-input",
-			attr: { min: "0", step: "1", placeholder: "0", inputmode: "decimal", "aria-label": `Monthly budget for ${category.name}` },
+			attr: { placeholder: "0", inputmode: "decimal", "aria-label": `Monthly budget for ${category.name}` },
 		});
 		input.value = category.budget ? String(category.budget) : "";
 		if (editable) {
@@ -326,8 +328,8 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 	 * own tone already contradicts on screen.
 	 */
 	async function saveBudget(category: Category, rawValue: string, opts: { structural?: boolean } = {}): Promise<void> {
-		const parsed = parseFloat(rawValue);
-		const amount = isFinite(parsed) && parsed > 0 ? parsed : undefined;
+		const parsed = parseAmount(rawValue);
+		const amount = parsed !== undefined && parsed > 0 ? parsed : undefined;
 		if (category.budget === amount) return;
 		const target = store.categories.find((c) => c.id === category.id);
 		if (!target) return;

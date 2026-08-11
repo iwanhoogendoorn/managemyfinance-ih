@@ -67,7 +67,7 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 
 	renderStat(grid, {
 		label: "Current balance",
-		value: money(balance, currency),
+		value: money(balance, currency, 2),
 		size: "hero",
 		iconName: "piggy-bank",
 		sparklineValues: balances.slice(-24).map((b) => b.balance),

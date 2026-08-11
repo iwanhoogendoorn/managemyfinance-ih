@@ -145,7 +145,7 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 
 	const owedCard = renderStat(grid, {
 		label: "Amount owed",
-		value: money(owed, currency),
+		value: money(owed, currency, 2),
 		size: "hero",
 		iconName: "credit-card",
 		// Owing money on a credit card is normal; paying interest on it is not. The alarm lives in

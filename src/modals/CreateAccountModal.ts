@@ -1,5 +1,6 @@
 import { App, Modal, Notice } from "obsidian";
 import { ACCOUNT_TYPE_META } from "../constants";
+import { parseAmount } from "../format";
 import type FinancePlugin from "../main";
 import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Account, AccountType } from "../types";
@@ -70,7 +71,10 @@ export class CreateAccountModal extends Modal {
 
 		const balRow = form.createDiv({ cls: "fp-form-row" });
 		balRow.createEl("label", { text: "Opening balance" });
-		const balInput = balRow.createEl("input", { type: "number", attr: { step: "0.01" } });
+		// Text + inputmode, not type="number": a number input either rejects a Dutch "30,27" outright
+		// (en locale → field goes empty → balance silently saved as 0) or re-localizes it invisibly.
+		// parseAmount reads both decimal conventions explicitly.
+		const balInput = balRow.createEl("input", { type: "text", attr: { inputmode: "decimal", placeholder: "0,00 or 0.00" } });
 		balInput.value = this.openingBalance;
 		balInput.addEventListener("input", () => (this.openingBalance = balInput.value));
 
@@ -99,7 +103,7 @@ export class CreateAccountModal extends Modal {
 			// transactions array, not accounts).
 			this.existing.name = this.name.trim();
 			this.existing.type = this.type;
-			this.existing.openingBalance = parseFloat(this.openingBalance) || 0;
+			this.existing.openingBalance = parseAmount(this.openingBalance) ?? 0;
 			this.existing.iban = this.iban.trim() || undefined;
 			await this.plugin.store.saveAccounts();
 			new Notice(`Updated "${this.existing.name}"`);
@@ -113,7 +117,7 @@ export class CreateAccountModal extends Modal {
 			name: this.name.trim(),
 			type: this.type,
 			currency: "EUR",
-			openingBalance: parseFloat(this.openingBalance) || 0,
+			openingBalance: parseAmount(this.openingBalance) ?? 0,
 			iban: this.iban.trim() || undefined,
 		};
 		this.plugin.store.accounts.push(account);

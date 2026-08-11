@@ -70,7 +70,7 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 
 	renderStat(grid, {
 		label: "Current balance",
-		value: money(balance, currency),
+		value: money(balance, currency, 2),
 		size: "hero",
 		iconName: "landmark",
 		sparklineValues: balances.map((b) => b.balance),

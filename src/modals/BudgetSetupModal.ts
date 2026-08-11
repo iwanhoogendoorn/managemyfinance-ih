@@ -1,6 +1,6 @@
 import { App, Modal, Notice } from "obsidian";
 import { currentMonth, suggestedBudget } from "../budgets";
-import { formatMoney } from "../format";
+import { formatMoney, parseAmount } from "../format";
 import type FinancePlugin from "../main";
 import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Category } from "../types";
@@ -143,11 +143,11 @@ export class BudgetSetupModal extends Modal {
 
 		const inputWrap = el.createDiv({ cls: "fp-budget-input-wrap" });
 		inputWrap.createSpan({ cls: "fp-budget-input-prefix", text: "€" });
-		const input = inputWrap.createEl("input", { cls: "fp-budget-input", type: "number", attr: { step: "5", min: "0" } });
+		const input = inputWrap.createEl("input", { cls: "fp-budget-input", type: "text", attr: { inputmode: "decimal" } });
 		input.value = String(row.value);
 		input.disabled = !row.checked;
 		input.addEventListener("input", () => {
-			row.value = Math.max(0, parseFloat(input.value) || 0);
+			row.value = Math.max(0, parseAmount(input.value) ?? 0);
 		});
 		// Live totals only need to settle when the user stops typing — re-rendering per keystroke would
 		// steal focus out of the field they are still in.
