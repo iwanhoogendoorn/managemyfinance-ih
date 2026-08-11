@@ -1,5 +1,16 @@
 import { formatMoney, formatPct, formatSignedPct } from "../../format";
-import { firstDayOf, lastDayOf, monthOf, netWorth, shiftMonth, todayIso, windowSummary, type KpiStore } from "../../kpi";
+import {
+	firstDayOf,
+	isPassiveIncome,
+	lastDayOf,
+	monthOf,
+	netWorth,
+	shiftMonth,
+	todayIso,
+	transferPairIds,
+	windowSummary,
+	type KpiStore,
+} from "../../kpi";
 import type FinancePlugin from "../../main";
 import { normalizeMerchantKey, type RecurringSeries } from "../../recurring";
 import { upcomingPayments } from "../../subscriptions";
@@ -259,7 +270,11 @@ export function committedPayments(
 	for (const s of series) {
 		if (s.direction !== "debit") continue;
 		if (!inScope(s.accountId)) continue;
-		if (s.expectedNextDate <= from || s.expectedNextDate > until) continue;
+		// `< from`, not `<= from`: a charge expected *today* has not necessarily hit the account yet, and
+		// the subscription branch above already keeps today's payments (upcomingPayments rolls forward to
+		// the first date on or after today). Dropping it here made the two halves of the same list
+		// disagree about what "committed" means on the one day it matters most.
+		if (s.expectedNextDate < from || s.expectedNextDate > until) continue;
 		if (seriesMatchesSubscription(s, subs)) continue;
 		out.push({
 			date: s.expectedNextDate,
@@ -313,7 +328,15 @@ export function projectMonthEnd(
 	// Measured over the *spending* accounts rather than the whole portfolio: a broker's buy rows are
 	// negative amounts too, and counting a €5,000 ETF purchase as everyday spending would put the
 	// discretionary rate an order of magnitude out.
+	//
+	// The two sides of this subtraction must agree on what counts as spend. `windowSummary` strips
+	// transfers *including pair-matched ones*, while `recurringSeries` only knows the category/marker
+	// classifier and has no pair detection — so a checking→savings standing order is absent from `spend`
+	// but present in `recurringSpend`. Subtracting it drove the difference negative, `Math.max(0, …)`
+	// hid that, and the discretionary rate collapsed to €0/day for anyone whose standing order is larger
+	// than their everyday spending. Skipping pair-matched occurrences puts both sides on the same books.
 	const spendIds = accountIds ?? spendingAccountIds(store);
+	const pairIds = transferPairIds(store);
 	const windowFrom = shiftDays(from, -89);
 	const spend = windowSummary(store, windowFrom, from, spendIds).expenses;
 	let recurringSpend = 0;
@@ -323,6 +346,7 @@ export function projectMonthEnd(
 		for (const occ of s.occurrences) {
 			if (occ.date < windowFrom || occ.date > from) continue;
 			if (!spendIds.includes(occ.accountId)) continue;
+			if (pairIds.has(occ.id)) continue;
 			recurringSpend += Math.abs(occ.amount);
 		}
 	}
@@ -357,6 +381,11 @@ export interface IncomeStability {
  * How predictable the money coming in is, which is what actually decides how much buffer to advise.
  * Undefined below six complete months: a coefficient of variation over three data points is noise
  * dressed as a statistic.
+ *
+ * Mean and variance run over the months that *had* income, not over all twelve. The trailing window is
+ * padded with zeros for months before the ledger starts, and averaging a perfect €3,000 salary against
+ * six of those reported "€1,500/mo on average, ±100% month to month" — calling a salary paid to the cent
+ * "Irregular" — for every user with less than a year of history.
  */
 export function incomeStability(store: KpiStore, accountIds: string[] | undefined, today: Date = new Date()): IncomeStability | undefined {
 	const { months } = ttmWindow(today);
@@ -366,11 +395,52 @@ export function incomeStability(store: KpiStore, accountIds: string[] | undefine
 	});
 	const active = values.filter((v) => v > 0);
 	if (active.length < 6) return undefined;
-	const mean = values.reduce((a, b) => a + b, 0) / values.length;
+	const mean = active.reduce((a, b) => a + b, 0) / active.length;
 	if (mean <= 0) return undefined;
-	const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+	const variance = active.reduce((sum, v) => sum + (v - mean) ** 2, 0) / active.length;
 	const cv = Math.sqrt(variance) / mean;
 	return { cv, mean, label: cv < 0.15 ? "Steady" : cv > 0.5 ? "Irregular" : "Variable" };
+}
+
+/* ---------- raw (transfer-preserving) account flows ---------- */
+
+export interface RawAccountFlows {
+	/** Every euro that arrived, interest included. Always positive. */
+	inflow: number;
+	/** Every euro that left, as a positive magnitude. */
+	outflow: number;
+	/** The part of `inflow` the ledger classifies as passive income — interest and dividends. */
+	interest: number;
+	/** inflow − outflow. */
+	net: number;
+}
+
+/**
+ * Signed sums over one account's transactions in a window, **without transfer stripping**.
+ *
+ * This is the contribution/withdrawal source for the savings and investing dashboards, and it exists
+ * because `windowSummary` cannot be one: a savings deposit *is* a transfer (pair-matched, and marker-
+ * matched via a Deposit/Withdrawal `type` on a saving account), so `windowSummary` correctly removes it
+ * — and a page whose entire subject is "how much did you move into this account" then reads €0 for
+ * someone saving €500 a month. Contributions are the money that arrived under its own steam:
+ * `inflow − interest`. Growth from interest is a different fact and is kept separable rather than being
+ * quietly counted as saving.
+ */
+export function rawAccountFlows(store: KpiStore, accountId: string, window: { from: string; to: string }): RawAccountFlows {
+	let inflow = 0;
+	let outflow = 0;
+	let interest = 0;
+	for (const tx of store.transactions) {
+		if (tx.accountId !== accountId) continue;
+		if (!tx.date || tx.date < window.from || tx.date > window.to) continue;
+		if (tx.amount >= 0) {
+			inflow += tx.amount;
+			if (isPassiveIncome(tx)) interest += tx.amount;
+		} else {
+			outflow += -tx.amount;
+		}
+	}
+	return { inflow, outflow, interest, net: inflow - outflow };
 }
 
 /** The biggest thing that reliably pays you every month — a salary, in almost every ledger. */

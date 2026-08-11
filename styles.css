@@ -1258,6 +1258,10 @@
 
 .fp-chart-plot {
 	position: relative;
+	/* Charts draw at a 240px floor (charts.ts), so in a pane narrower than that the SVG is wider than
+	   its box and `.fp-chart-svg` is `overflow: visible` — end labels and leader lines painted outside
+	   the card. Clipping here is the containment; the tooltip is positioned inside the plot box. */
+	overflow: hidden;
 }
 .fp-chart-svg {
 	display: block;
@@ -3489,6 +3493,10 @@
 .fp-trustbar.is-bad .fp-trustbar-link {
 	color: var(--fp-neg-ink);
 	font-weight: var(--fp-fw-semibold);
+}
+/* A caveat on every total on the page, not a link — it reads in the warning ink but isn't clickable. */
+.fp-trustbar-flag {
+	color: var(--fp-warn-ink);
 }
 
 /* ---------- Page actions ---------- */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { upcomingPayments, monthlyCost } from "./subscriptions";
+import { daysUntil, nextOccurrence, upcomingPayments, monthlyCost } from "./subscriptions";
 import type { Subscription } from "./types";
 
 function sub(partial: Partial<Subscription> & Pick<Subscription, "id" | "cost" | "billingCycle" | "nextDueDate">): Subscription {
@@ -34,6 +34,26 @@ describe("upcomingPayments", () => {
 		expect(payments.map((p) => p.sub.id)).toEqual(["s2", "s1"]);
 		expect(payments.map((p) => p.amount)).toEqual([9.99, 30]);
 		expect(payments[0].daysUntil).toBe(4);
+	});
+
+	it("reports the stored due date itself, not the day before it (regression: TZ, review CRITICAL #2)", () => {
+		// `nextDueDate` is parsed as *local* midnight, so rendering it through toISOString() reported the
+		// previous day for every timezone east of UTC — every subscription date in the app a day early,
+		// and a charge due on the 1st of next month pulled into this month's committed outflows.
+		//
+		// Every date here is built from local components on both sides, so the assertion holds in any TZ.
+		const today = new Date(2026, 7, 11); // 2026-08-11 local
+		const monthly = sub({ id: "s1", cost: 12.99, billingCycle: "monthly", nextDueDate: "2026-09-01" });
+		expect(nextOccurrence(monthly, today)).toBe("2026-09-01");
+		expect(daysUntil("2026-09-01", today)).toBe(21);
+
+		const [payment] = upcomingPayments([monthly], today);
+		expect(payment.date).toBe("2026-09-01");
+		expect(payment.daysUntil).toBe(21);
+
+		// And an anchor already in the past rolls forward onto the same calendar day, not the day before it.
+		const rolled = sub({ id: "s2", cost: 5, billingCycle: "monthly", nextDueDate: "2026-08-01" });
+		expect(nextOccurrence(rolled, today)).toBe("2026-09-01");
 	});
 
 	it("skips archived and lapsed subscriptions", () => {

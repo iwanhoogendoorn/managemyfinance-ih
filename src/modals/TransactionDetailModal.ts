@@ -1,5 +1,6 @@
 import { App, FuzzySuggestModal, Modal, Notice, TFile } from "obsidian";
 import type FinancePlugin from "../main";
+import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Transaction } from "../types";
 import { categoryChip, icon } from "../ui/dom";
 
@@ -42,6 +43,8 @@ export class TransactionDetailModal extends Modal {
 	}
 
 	onOpen(): void {
+		// Registered so a portfolio switch can close it — see modalRegistry.
+		registerOpenModal(this);
 		this.modalEl.addClass("fp-wizard-modal");
 		this.modalEl.addClass("fp-root");
 		const c = this.contentEl;
@@ -175,6 +178,7 @@ export class TransactionDetailModal extends Modal {
 	}
 
 	onClose(): void {
+		unregisterOpenModal(this);
 		this.contentEl.empty();
 	}
 }

@@ -147,9 +147,18 @@ export function deriveRulePattern(transactions: Transaction[]): string | undefin
 	return fires(candidate) ? candidate : undefined;
 }
 
-/** Deterministic id, so re-creating the same rule twice replaces rather than duplicates it. */
+/**
+ * Readable, slug-safe id for a user-created rule, made unique by a short random suffix.
+ *
+ * It used to be purely derived from the pattern, so two rules for the same merchant shared an id —
+ * and undo, which removes the rule it created *by id*, would take a pre-existing rule with the same
+ * pattern out with it. Duplicate rules are prevented where they are created (both call sites check
+ * pattern + category against `store.rules` before pushing), which is the right place for it: the id's
+ * job is to identify one rule object, not to deduplicate.
+ */
 export function userRuleId(pattern: string): string {
-	return `rule-user-${pattern.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}`;
+	const slug = pattern.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+	return `rule-user-${slug}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function buildUserRule(pattern: string, categoryId: string): CategoryRule {

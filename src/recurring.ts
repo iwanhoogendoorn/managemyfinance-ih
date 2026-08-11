@@ -229,12 +229,33 @@ function titleCase(raw: string): string {
 const TRANSFER_CATEGORY_NAMES = new Set(["transfers", "savings", "savings & transfers"]);
 const TRANSFER_ACCOUNT_MARKERS = new Set(["deposit", "withdraw", "withdrawal"]);
 
+/**
+ * Id lookups for the two arrays `isTransferLike` consults, cached by array identity + length.
+ *
+ * This classifier runs once per transaction from `recurringSeries` and again from every insight
+ * detector, and a linear `find` over categories *and* accounts inside that loop is the one hot spot in
+ * detection — hundreds of thousands of comparisons on a 10k-row ledger, on every render. The map holds
+ * the live objects rather than copies, so a renamed category takes effect immediately; only adding or
+ * removing an entry changes the length, which is exactly what invalidates the cache. Same contract as
+ * kpi.ts's transferPairCache.
+ */
+const idIndexCache = new WeakMap<{ id: string }[], { length: number; byId: Map<string, { id: string }> }>();
+
+function indexById<T extends { id: string }>(items: T[]): Map<string, T> {
+	const cached = idIndexCache.get(items);
+	if (cached && cached.length === items.length) return cached.byId as Map<string, T>;
+	const byId = new Map<string, T>();
+	for (const item of items) byId.set(item.id, item);
+	idIndexCache.set(items, { length: items.length, byId });
+	return byId;
+}
+
 export function isTransferLike(store: KpiStore, tx: Transaction): boolean {
 	if (tx.categoryId) {
-		const cat = store.categories.find((c) => c.id === tx.categoryId);
+		const cat = indexById(store.categories).get(tx.categoryId);
 		if (cat && TRANSFER_CATEGORY_NAMES.has(cat.name.trim().toLowerCase())) return true;
 	}
-	const account = store.accounts.find((a) => a.id === tx.accountId);
+	const account = indexById(store.accounts).get(tx.accountId);
 	if (account && (account.type === "saving" || account.type === "investing")) {
 		const action = (tx.action ?? "").trim().toLowerCase();
 		const type = (tx.type ?? "").trim().toLowerCase();

@@ -1,6 +1,7 @@
 import { App, Modal, Notice } from "obsidian";
 import { ACCOUNT_TYPE_META } from "../constants";
 import type FinancePlugin from "../main";
+import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Account, AccountType } from "../types";
 import { icon } from "../ui/dom";
 
@@ -16,6 +17,8 @@ export class CreateAccountModal extends Modal {
 	}
 
 	onOpen(): void {
+		// Registered so a portfolio switch can close it — see modalRegistry.
+		registerOpenModal(this);
 		this.modalEl.addClass("fp-wizard-modal");
 		const c = this.contentEl;
 		c.addClass("fp-account-modal");
@@ -87,6 +90,7 @@ export class CreateAccountModal extends Modal {
 	}
 
 	onClose(): void {
+		unregisterOpenModal(this);
 		this.contentEl.empty();
 	}
 }

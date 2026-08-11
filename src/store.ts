@@ -78,6 +78,13 @@ export class FinanceStore {
 	transactions: Transaction[] = [];
 	subscriptions: Subscription[] = [];
 	cards: Card[] = [];
+	/**
+	 * Bumped on every `load()`. Switching portfolio mutates *this* store in place (same instance, new
+	 * `dataFolder`), so anything holding data it read earlier — an open wizard's parsed rows, a review
+	 * queue's transaction ids — is now looking at another portfolio's world. Long-lived dialogs capture
+	 * this number when they open and refuse to write when it no longer matches.
+	 */
+	generation = 0;
 
 	constructor(private app: App, public settings: FinanceSettings) {}
 
@@ -93,6 +100,7 @@ export class FinanceStore {
 	}
 
 	async load(): Promise<void> {
+		this.generation++;
 		await this.ensureFolder(this.path());
 		await this.ensureFolder(this.path("data"));
 		await this.ensureFolder(this.path("data", "ledger"));

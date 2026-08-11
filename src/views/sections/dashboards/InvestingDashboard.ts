@@ -6,7 +6,6 @@ import {
 	realizedPLByYear,
 	shiftMonth,
 	todayIso,
-	windowSummary,
 	monthOf,
 	type KpiStore,
 } from "../../../kpi";
@@ -24,6 +23,7 @@ import {
 	money,
 	monthWindow,
 	pct,
+	rawAccountFlows,
 	setStatFoot,
 	signedMoney,
 	ttmWindow,
@@ -35,6 +35,9 @@ const CONCENTRATION_WARN = 0.3;
 const CONCENTRATION_BAD = 0.5;
 
 const DIVIDEND_ACTIONS = ["dividend", "interest"];
+
+/** Net contributions below this share of market value are too small a base to divide by. */
+const SIMPLE_RETURN_MIN_BASE = 0.1;
 
 function isDividend(tx: Transaction): boolean {
 	const action = (tx.action ?? "").toLowerCase();
@@ -107,14 +110,30 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 	if (marketValue !== undefined && netContributions > 0) {
 		const growth = marketValue - netContributions;
 		const simpleReturn = growth / netContributions;
+		// Deposits less withdrawals is a *net* figure, so it collapses towards zero on an account that
+		// has been drawn down — and dividing by a near-zero base manufactures a triumphant number out of
+		// a loss. €100k in, €95k out, €10k left is "+100%" by this formula and −€90k in real life. Below
+		// a tenth of the portfolio's value the denominator is noise, so the tile refuses to answer.
+		const meaningfulBase = netContributions >= SIMPLE_RETURN_MIN_BASE * marketValue;
 		const returnCard = renderStat(grid, {
 			label: "Simple return",
-			value: pct(simpleReturn, 1),
+			value: meaningfulBase ? pct(simpleReturn, 1) : "—",
 			iconName: "trending-up",
 			money: false,
-			tone: simpleReturn >= 0 ? "good" : "bad",
+			tone: meaningfulBase ? (simpleReturn >= 0 ? "good" : "bad") : "neutral",
 		});
-		setStatFoot(returnCard, [{ money: signedMoney(growth, currency) }, " above what you put in · not annualized"]);
+		setStatFoot(
+			returnCard,
+			meaningfulBase
+				? [{ money: signedMoney(growth, currency) }, " above what you put in · not annualized"]
+				: [
+						"deposits and withdrawals have nearly cancelled out (",
+						{ money: money(netContributions, currency) },
+						" net against ",
+						{ money: money(marketValue, currency) },
+						" held), so a return against them would say more about the withdrawals than the investments",
+				  ]
+		);
 	}
 
 	// A euro figure for fees changes nothing. "2.1% of everything you contributed" changes behaviour.
@@ -324,7 +343,10 @@ function monthlyContribution(store: KpiStore, accountId: string, month: string):
 		}
 	}
 	if (sawAction) return tagged;
-	return windowSummary(store, w.from, w.to, [accountId]).net;
+	// Raw signed flow, not `windowSummary`: a transfer from checking into a broker is exactly what a
+	// contribution *is*, and windowSummary strips transfers — so the fallback this comment promises
+	// returned 0 for every account funded the normal way.
+	return rawAccountFlows(store, accountId, w).net;
 }
 
 /**
@@ -369,10 +391,17 @@ function renderFlowOnlyVariant(container: HTMLElement, plugin: FinancePlugin, ac
 	});
 
 	const ttm = ttmWindow(today);
-	const flows = windowSummary(store, ttm.from, ttm.to, ids);
-	const inCard = renderStat(grid, { label: "Paid in (12 months)", value: money(flows.income, currency), iconName: "download" });
-	setStatFoot(inCard, [`${flows.txCount} transaction${flows.txCount === 1 ? "" : "s"} in the last 12 months`]);
-	renderStat(grid, { label: "Taken out (12 months)", value: money(flows.expenses, currency), iconName: "upload" });
+	// Raw flows for the same reason as the savings page: funding a wallet from your bank is a transfer,
+	// and the transfer-stripping summary reported "€0 paid in" for an account funded every month.
+	const flows = rawAccountFlows(store, account.id, ttm);
+	const txCount = store.transactions.filter((t) => t.accountId === account.id && t.date >= ttm.from && t.date <= ttm.to).length;
+	const inCard = renderStat(grid, {
+		label: "Paid in (12 months)",
+		value: money(flows.inflow - flows.interest, currency),
+		iconName: "download",
+	});
+	setStatFoot(inCard, [`${txCount} transaction${txCount === 1 ? "" : "s"} in the last 12 months`]);
+	renderStat(grid, { label: "Taken out (12 months)", value: money(flows.outflow, currency), iconName: "upload" });
 
 	if (marketValue !== undefined && balance !== 0) {
 		const growth = marketValue - balance;
@@ -387,10 +416,7 @@ function renderFlowOnlyVariant(container: HTMLElement, plugin: FinancePlugin, ac
 
 	if (balances.length > 1) {
 		const months = balances.slice(-24).map((b) => b.key);
-		const values = months.map((m) => {
-			const w = monthWindow(m);
-			return windowSummary(store, w.from, w.to, ids).net;
-		});
+		const values = months.map((m) => rawAccountFlows(store, account.id, monthWindow(m)).net);
 		const card = container.createDiv({ cls: "fp-card" });
 		cardHead(card, "Net flows by month");
 		groupedColumnChart(

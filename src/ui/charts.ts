@@ -199,43 +199,6 @@ function describeSvg(svg: SVGSVGElement, title: string, desc: string): void {
 	svg.append(titleEl, descEl);
 }
 
-/**
- * Chart / Table view toggle for a chart card. Returns both panels; the caller fills them. Every
- * chart in the app should offer the table, which is also the relief valve for the categorical
- * slots that sit below 3:1 against the surface.
- */
-export function chartTableToggle(
-	container: HTMLElement,
-	opts?: { chartLabel?: string; tableLabel?: string }
-): { chartPanel: HTMLElement; tablePanel: HTMLElement; toggleEl: HTMLElement } {
-	const toggleEl = container.createDiv({ cls: "fp-view-toggle", attr: { role: "tablist" } });
-	const chartPanel = container.createDiv({ cls: "fp-view-panel" });
-	const tablePanel = container.createDiv({ cls: "fp-view-panel is-hidden" });
-
-	const mk = (label: string, active: boolean) =>
-		toggleEl.createEl("button", {
-			cls: "fp-view-toggle-btn" + (active ? " is-active" : ""),
-			text: label,
-			attr: { type: "button", role: "tab", "aria-selected": String(active) },
-		});
-
-	const chartBtn = mk(opts?.chartLabel ?? "Chart", true);
-	const tableBtn = mk(opts?.tableLabel ?? "Table", false);
-
-	const select = (btn: HTMLElement, panel: HTMLElement, otherBtn: HTMLElement, otherPanel: HTMLElement) => {
-		btn.addClass("is-active");
-		btn.setAttribute("aria-selected", "true");
-		otherBtn.removeClass("is-active");
-		otherBtn.setAttribute("aria-selected", "false");
-		panel.removeClass("is-hidden");
-		otherPanel.addClass("is-hidden");
-	};
-	chartBtn.addEventListener("click", () => select(chartBtn, chartPanel, tableBtn, tablePanel));
-	tableBtn.addEventListener("click", () => select(tableBtn, tablePanel, chartBtn, chartPanel));
-
-	return { chartPanel, tablePanel, toggleEl };
-}
-
 /* ==========================================================================
    Line chart
    ========================================================================== */
@@ -293,7 +256,7 @@ export function lineChart(container: HTMLElement, categories: string[], series: 
 	const plot = wrap.createDiv({ cls: "fp-chart-plot" });
 	let lastSize: { w: number; h: number } | undefined;
 	const redraw = () => {
-		if (lastSize) drawLineChart(plot, categories, series, hidden, lastSize.w, lastSize.h, { formatValue, formatTick, smooth, area: !!opts?.area, title: opts?.title, description: opts?.description });
+		if (lastSize) drawLineChart(plot, categories, series, hidden, lastSize.w, lastSize.h, { formatValue, formatTick, money, smooth, area: !!opts?.area, title: opts?.title, description: opts?.description });
 	};
 
 	mountResponsiveChart(
@@ -309,6 +272,8 @@ export function lineChart(container: HTMLElement, categories: string[], series: 
 interface DrawOpts {
 	formatValue: (n: number) => string;
 	formatTick: (n: number) => string;
+	/** Mirrors the wrapper's `fp-chart-money` class, so the tooltip value opts out of redaction too. */
+	money: boolean;
 	smooth: boolean;
 	area: boolean;
 	title?: string;
@@ -563,7 +528,7 @@ function drawLineChart(
 			const swatch = row.createSpan({ cls: "fp-chart-swatch" });
 			swatch.style.setProperty("--fp-swatch-color", s.color);
 			row.createSpan({ text: s.label });
-			row.createSpan({ cls: "fp-chart-tooltip-value fp-money", text: o.formatValue(s.values[activeIdx]) });
+			row.createSpan({ cls: "fp-chart-tooltip-value" + (o.money ? " fp-money" : ""), text: o.formatValue(s.values[activeIdx]) });
 		});
 		tooltip.addClass("is-visible");
 
@@ -621,6 +586,9 @@ export function groupedColumnChart(
 ): void {
 	const money = opts?.money !== false;
 	const formatValue = opts?.formatValue ?? ((n: number) => EUR.format(n));
+	// Axis ticks follow `formatValue` the way lineChart's do. Hardcoding `formatCompact` rendered the
+	// credit-utilization axis (ratios 0…0.5) as "0 0 0 0 0 1", and sized padLeft off those strings.
+	const formatTick = opts?.formatValue ?? formatCompact;
 	const wrap = container.createDiv({ cls: "fp-chart" + (money ? " fp-chart-money" : "") });
 
 	if (series.length >= 2) {
@@ -644,7 +612,7 @@ export function groupedColumnChart(
 			const scaleMin = Math.min(0, ...allValues, ticks[0] ?? 0);
 			const scaleMax = Math.max(0, ...allValues, ticks[ticks.length - 1] ?? 0);
 
-			const widestTick = ticks.reduce((w, t) => Math.max(w, textWidth(formatCompact(t))), 0);
+			const widestTick = ticks.reduce((w, t) => Math.max(w, textWidth(formatTick(t))), 0);
 			const padLeft = Math.round(8 + widestTick);
 			const padRight = 12;
 			const padTop = 12;
@@ -683,9 +651,30 @@ export function groupedColumnChart(
 				label.setAttribute("class", "fp-chart-axis");
 				label.setAttribute("text-anchor", "end");
 				label.setAttribute("dominant-baseline", "middle");
-				label.textContent = formatCompact(t);
+				label.textContent = formatTick(t);
 				svg.appendChild(label);
 			}
+
+			// A DOM tooltip rather than a native `<title>` carrying the amount: an OS tooltip is drawn by
+			// the browser chrome, so no stylesheet can redact it and privacy mode leaked every column's
+			// exact figure on hover. This one is ordinary DOM, so `.fp-money` covers it.
+			const tooltip = plot.createDiv({ cls: "fp-chart-tooltip" });
+			const showTip = (cat: string, s: ChartSeries, v: number, x: number, y: number) => {
+				tooltip.empty();
+				tooltip.createDiv({ cls: "fp-chart-tooltip-title", text: cat });
+				const row = tooltip.createDiv({ cls: "fp-chart-tooltip-row" });
+				const swatch = row.createSpan({ cls: "fp-chart-swatch" });
+				swatch.style.setProperty("--fp-swatch-color", s.color);
+				row.createSpan({ text: s.label });
+				// `fp-money` only on a money chart — redacting a utilization percentage would be wrong.
+				row.createSpan({ cls: "fp-chart-tooltip-value" + (money ? " fp-money" : ""), text: formatValue(v) });
+				tooltip.addClass("is-visible");
+				const flip = x / width > 0.6;
+				tooltip.style.left = `${x + (flip ? -8 : 8)}px`;
+				tooltip.style.transform = flip ? "translateX(-100%)" : "none";
+				tooltip.style.top = `${Math.max(0, Math.min(plotH - tooltip.offsetHeight, y - tooltip.offsetHeight - 8))}px`;
+			};
+			const hideTip = () => tooltip.removeClass("is-visible");
 
 			const slot = plotW / Math.max(1, categories.length);
 			const groupW = Math.min(slot * 0.72, (opts?.maxBarWidth ?? 24) * series.length + 2 * (series.length - 1));
@@ -700,13 +689,17 @@ export function groupedColumnChart(
 					const v = s.values[ci] ?? 0;
 					const y = Math.min(scaleY(v), zeroY);
 					const h = Math.max(1, Math.abs(zeroY - scaleY(v)));
+					const barX = groupX + si * (barW + 2);
 					const bar = svgEl("path");
-					bar.setAttribute("d", roundedTopBar(groupX + si * (barW + 2), y, barW, h, 4));
+					bar.setAttribute("d", roundedTopBar(barX, y, barW, h, 4));
 					bar.setAttribute("class", "fp-chart-column");
 					bar.style.setProperty("--fp-bar-color", s.color);
+					// Label only — the figure lives in the tooltip below, where privacy mode can reach it.
 					const t = svgEl("title");
-					t.textContent = `${cat} · ${s.label}: ${formatValue(v)}`;
+					t.textContent = `${cat} · ${s.label}`;
 					bar.appendChild(t);
+					bar.addEventListener("mouseenter", () => showTip(cat, s, v, barX + barW / 2, y));
+					bar.addEventListener("mouseleave", hideTip);
 					svg.appendChild(bar);
 				});
 
@@ -822,7 +815,9 @@ export function stackedShareBar(
 		const seg = bar.createDiv({ cls: "fp-share-bar-seg" });
 		seg.style.width = `${pct * 100}%`;
 		seg.style.setProperty("--fp-seg-color", s.color);
-		seg.setAttribute("title", `${s.label}: ${formatValue(s.value)} (${(pct * 100).toFixed(0)}%)`);
+		// Label and share only. The euro figure is already in the legend row, in a `.fp-money` span
+		// privacy mode can redact — a native tooltip is browser chrome and no stylesheet reaches it.
+		seg.setAttribute("title", `${s.label} — ${(pct * 100).toFixed(0)}%`);
 		seg.addEventListener("mouseenter", () => legendItems[i]?.addClass("is-highlight"));
 		seg.addEventListener("mouseleave", () => legendItems[i]?.removeClass("is-highlight"));
 	});
@@ -845,14 +840,18 @@ export function barChart(
 		const share = max > 0 ? (r.value / max) * 100 : 0;
 		// The mark is the hit target here (no crosshair), so identity + value live on the row itself.
 		// With onRowClick the row becomes a real button so it's focusable and announced.
+		//
+		// Label only in `title`/`aria-label`: the value is right there in the row's own `.fp-money`
+		// cell, which privacy mode redacts — a native tooltip and an accessible name are both outside
+		// CSS's reach, so repeating the amount there would print it in plain text with amounts hidden.
 		const row = opts?.onRowClick
 			? wrap.createEl("button", {
 					cls: "fp-barchart-row fp-barchart-row--clickable",
-					attr: { type: "button", title: `${r.label}: ${formatValue(r.value)}`, "aria-label": `${r.label}: ${formatValue(r.value)}` },
+					attr: { type: "button", title: r.label, "aria-label": r.label },
 			  })
 			: wrap.createDiv({
 					cls: "fp-barchart-row",
-					attr: { title: `${r.label}: ${formatValue(r.value)}`, "aria-label": `${r.label}: ${formatValue(r.value)}` },
+					attr: { title: r.label, "aria-label": r.label },
 			  });
 		if (opts?.onRowClick) row.addEventListener("click", () => opts.onRowClick!(i));
 		const labelEl = row.createDiv({ cls: "fp-barchart-label" });

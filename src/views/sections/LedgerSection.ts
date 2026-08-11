@@ -111,6 +111,17 @@ export function clearLedgerFilter(): void {
 }
 
 /**
+ * Where an account-less ledger link actually lands. Exported so a caller can *name* its destination
+ * before sending the user there: a portfolio-wide figure that opens one account's rows is a lie the
+ * label has to own, and it can only do that if it knows which account.
+ */
+export function busiestAccountId(store: { accounts: { id: string }[]; transactions: { accountId: string }[] }): string | undefined {
+	const counts = new Map<string, number>();
+	for (const tx of store.transactions) counts.set(tx.accountId, (counts.get(tx.accountId) ?? 0) + 1);
+	return store.accounts.slice().sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0))[0]?.id;
+}
+
+/**
  * Deep link into the ledger with a filter applied. The ledger only renders on an account page (All
  * Accounts is an overview, not a transaction browser), so a link carrying no account of its own
  * falls back to the busiest account rather than navigating somewhere with nothing to show.
@@ -119,11 +130,7 @@ export async function goToLedger(plugin: FinancePlugin, patch: LedgerFilterPatch
 	setLedgerFilter(patch);
 	const store = plugin.store;
 	let target = accountId ?? patch.accountId ?? plugin.settings.activeAccountId;
-	if (!target || !store.accounts.some((a) => a.id === target)) {
-		const counts = new Map<string, number>();
-		for (const tx of store.transactions) counts.set(tx.accountId, (counts.get(tx.accountId) ?? 0) + 1);
-		target = store.accounts.slice().sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0))[0]?.id;
-	}
+	if (!target || !store.accounts.some((a) => a.id === target)) target = busiestAccountId(store);
 	if (!target) return;
 	// The account filter is redundant once the page is scoped to that account, and leaving it set
 	// would silently hide every row if the user later switched to a different account.

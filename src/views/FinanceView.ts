@@ -9,7 +9,7 @@ import type { Account } from "../types";
 import { icon } from "../ui/dom";
 import { formatEUR } from "../ui/metricsTable";
 import { openCreatePortfolioWizard } from "../wizards/PortfolioWizard";
-import { renderSetupView, shouldShowSetup } from "./SetupView";
+import { leaveSetup, renderSetupView, shouldShowSetup } from "./SetupView";
 import { renderAccountPage } from "./sections/AccountPage";
 import { renderBudgetsSection } from "./sections/BudgetsSection";
 import { renderCardsSection } from "./sections/CardsSection";
@@ -27,6 +27,10 @@ interface NavTabDef {
 }
 
 const DEFAULT_NAV_ORDER = ["all-accounts", "budgets", "subscriptions", "cards"];
+
+/** Classes the section renderers put on the shared body element — stripped before every dispatch so
+ *  they never outlive the page that added them. */
+const BODY_SECTION_CLASSES = ["fp-section"];
 
 function possessive(name: string): string {
 	const trimmed = name.trim();
@@ -166,6 +170,10 @@ export class FinanceView extends ItemView {
 	}
 
 	private async selectAccount(accountId: string | undefined): Promise<void> {
+		// Clicking anything in the rail is a decision to be somewhere else. Without this, setup keeps
+		// the body (`inProgress`) while the rail marks the tab active — the nav goes through the
+		// motions and nothing moves.
+		leaveSetup(this.bodyEl);
 		this.plugin.settings.activeAccountId = accountId;
 		this.plugin.settings.activeView = undefined;
 		await this.plugin.saveSettings();
@@ -174,6 +182,7 @@ export class FinanceView extends ItemView {
 	}
 
 	private async selectView(view: "budgets" | "subscriptions" | "cards"): Promise<void> {
+		leaveSetup(this.bodyEl);
 		this.plugin.settings.activeView = view;
 		await this.plugin.saveSettings();
 		this.renderNav();
@@ -420,9 +429,14 @@ export class FinanceView extends ItemView {
 
 	private renderBody(): void {
 		this.bodyEl.empty();
+		// `.empty()` clears children, not the classes the sections put on the body itself. Every section
+		// adds `fp-section` and none removes it, so one visit to any of them left `.fp-section` on the
+		// shared body for the life of the view — after which `.fp-section .fp-step-desc` started
+		// applying to the setup view too, depending only on where you happened to have been.
+		for (const cls of BODY_SECTION_CLASSES) this.bodyEl.removeClass(cls);
 		// First run owns the whole body: a fresh install with no accounts has nothing to show on any
 		// tab, and the old empty state was a dead end that told you to go hunt in the sidebar.
-		if (shouldShowSetup(this.plugin)) {
+		if (shouldShowSetup(this.plugin, this.bodyEl)) {
 			renderSetupView(this.bodyEl, this.plugin, () => this.refresh());
 			return;
 		}

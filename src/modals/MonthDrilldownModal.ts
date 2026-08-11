@@ -3,12 +3,15 @@ import { budgetStatuses } from "../budgets";
 import { formatMoney, formatPct as formatPctValue } from "../format";
 import { firstDayOf, lastDayOf, monthOf, shiftMonth, summarizeByMonth, todayIso, windowSummary, categorySpend } from "../kpi";
 import type FinancePlugin from "../main";
+import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import { merchantSourceText, normalizeMerchantKey } from "../recurring";
 import type { Transaction } from "../types";
 import { barChart } from "../ui/charts";
 import { categoryChip, emptyState, icon, renderStat, tabSwitcher } from "../ui/dom";
 import { formatEUR, formatPct, metricRow, yearHeaderRow, yoy } from "../ui/metricsTable";
 import { goToLedger, UNCATEGORIZED } from "../views/sections/LedgerSection";
+import { setStatFoot } from "../views/sections/shared";
+import { openImportWizard } from "../wizards/ImportWizard";
 import { openReviewQueue } from "./ReviewQueueModal";
 import { TransactionDetailModal } from "./TransactionDetailModal";
 
@@ -87,6 +90,8 @@ export class MonthDrilldownModal extends Modal {
 	}
 
 	onOpen(): void {
+		// Registered so a portfolio switch can close it — see modalRegistry.
+		registerOpenModal(this);
 		this.modalEl.addClass("fp-wizard-modal");
 		this.modalEl.addClass("fp-root");
 		this.modalEl.addClass("fp-drilldown-modal");
@@ -131,6 +136,7 @@ export class MonthDrilldownModal extends Modal {
 	}
 
 	onClose(): void {
+		unregisterOpenModal(this);
 		this.contentEl.empty();
 	}
 
@@ -162,29 +168,44 @@ export class MonthDrilldownModal extends Modal {
 
 		const monthTxs = this.scopedTransactions().filter((t) => t.date && t.date >= from && t.date <= to);
 		if (monthTxs.length === 0) {
+			// With no transactions at all there are no bounds, so both arrows above are disabled —
+			// "use the arrows" was pointing at two dead buttons. The only thing that helps here is rows.
+			const hasAnyData = !!this.bounds();
 			emptyState(panel, {
 				iconName: "calendar-off",
 				title: `No transactions in ${monthLabel(this.month)}`,
-				description: "Use the arrows above to look at another month.",
+				description: hasAnyData
+					? "Use the arrows above to look at another month."
+					: "This account has no transactions yet — import a bank or broker export and this fills itself in.",
+				actionLabel: hasAnyData ? undefined : "Import transactions",
+				onAction: hasAnyData
+					? undefined
+					: () => {
+							this.close();
+							openImportWizard(this.plugin);
+						},
 			});
 			return;
 		}
 
 		const stats = panel.createDiv({ cls: "fp-stat-grid" });
-		renderStat(stats, {
+		const prevLabel = MONTH_LABELS[Number(prevMonth.slice(5, 7)) - 1];
+		// `sub` is a plain string, so money inside it escapes privacy redaction entirely — the whole
+		// reason `setStatFoot` exists. These two footnotes carry last month's actual figures.
+		const income = renderStat(stats, {
 			label: "Income",
 			value: formatMoney(summary.income, "EUR", { decimals: 0 }),
 			iconName: "arrow-down-left",
 			delta: prev.income > 0 ? { value: yoy(summary.income, prev.income) ?? 0 } : undefined,
-			sub: `vs ${formatMoney(prev.income, "EUR", { decimals: 0 })} in ${MONTH_LABELS[Number(prevMonth.slice(5, 7)) - 1]}`,
 		});
-		renderStat(stats, {
+		setStatFoot(income, ["vs ", { money: formatMoney(prev.income, "EUR", { decimals: 0 }) }, ` in ${prevLabel}`]);
+		const expenses = renderStat(stats, {
 			label: "Expenses",
 			value: formatMoney(summary.expenses, "EUR", { decimals: 0 }),
 			iconName: "arrow-up-right",
 			delta: prev.expenses > 0 ? { value: yoy(summary.expenses, prev.expenses) ?? 0, goodIfUp: false } : undefined,
-			sub: `vs ${formatMoney(prev.expenses, "EUR", { decimals: 0 })} in ${MONTH_LABELS[Number(prevMonth.slice(5, 7)) - 1]}`,
 		});
+		setStatFoot(expenses, ["vs ", { money: formatMoney(prev.expenses, "EUR", { decimals: 0 }) }, ` in ${prevLabel}`]);
 		renderStat(stats, {
 			label: "Net",
 			value: formatMoney(summary.net, "EUR", { decimals: 0 }),
@@ -333,6 +354,11 @@ export class MonthDrilldownModal extends Modal {
 
 	private renderBudgets(panel: HTMLElement): void {
 		const store = this.plugin.store;
+		// Budgets are portfolio-wide: `budgetStatuses` has no account dimension. Under an
+		// account-named heading ("In review — ING Checking"), where every other panel *is* that
+		// account, showing them would be a figure that quietly means something else. Portfolio scope
+		// only, until budgets themselves can be scoped.
+		if (this.accountId) return;
 		const statuses = budgetStatuses(store, store.categories, this.month).sort((a, b) => b.pct - a.pct);
 		if (statuses.length === 0) return;
 

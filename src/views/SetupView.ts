@@ -45,17 +45,45 @@ interface SetupState {
 	imported?: { added: number; skipped: number };
 }
 
-/** Survives a re-render of the body (each nav click rebuilds it) but not a reload — which is right:
- *  everything durable is already written to disk by the time it matters. */
-const state: SetupState = { step: "welcome", inProgress: false, categoriesInstalled: false, useStandardCategories: true, created: [] };
+/**
+ * Setup state, keyed on the body element it is being rendered into — i.e. one per Finance leaf.
+ *
+ * Survives a re-render of the body (each nav click rebuilds it) but not a reload, which is right:
+ * everything durable is already written to disk by the time it matters. It used to be a module
+ * singleton, so a second Finance leaf shared one `step`/`inProgress` — only the leaf you clicked in
+ * re-rendered, and the other one's Back button acted on state it wasn't showing.
+ */
+const stateByHost = new WeakMap<HTMLElement, SetupState>();
 
-export function shouldShowSetup(plugin: FinancePlugin): boolean {
+function stateFor(host: HTMLElement): SetupState {
+	let state = stateByHost.get(host);
+	if (!state) {
+		state = { step: "welcome", inProgress: false, categoriesInstalled: false, useStandardCategories: true, created: [] };
+		stateByHost.set(host, state);
+	}
+	return state;
+}
+
+export function shouldShowSetup(plugin: FinancePlugin, host: HTMLElement): boolean {
 	if (plugin.settings.onboardingCompleted) return false;
-	return plugin.store.accounts.length === 0 || state.inProgress;
+	return plugin.store.accounts.length === 0 || stateFor(host).inProgress;
+}
+
+/**
+ * Releases the body from setup without completing it — for a user who clicked a rail tab or an
+ * account instead. `inProgress` is what keeps the first created account from evicting them mid-flow,
+ * and with nothing clearing it the rail became decorative: the tab went `is-active` and the body kept
+ * showing the wizard. Onboarding is deliberately *not* marked complete here — they navigated away,
+ * they didn't tell setup to go away.
+ */
+export function leaveSetup(host: HTMLElement): void {
+	const state = stateByHost.get(host);
+	if (state) state.inProgress = false;
 }
 
 export function renderSetupView(container: HTMLElement, plugin: FinancePlugin, onDone: () => void): void {
 	container.empty();
+	const state = stateFor(container);
 	const root = container.createDiv({ cls: "fp-setup" });
 
 	const rerender = (): void => renderSetupView(container, plugin, onDone);
@@ -75,6 +103,13 @@ export function renderSetupView(container: HTMLElement, plugin: FinancePlugin, o
 	const goTo = (step: StepId): void => {
 		state.step = step;
 		state.inProgress = true;
+		// An explicit `false` on first entry, so a reload after abandoning setup is distinguishable
+		// from a pre-flag install. `migrateOnboardingFlag` only fills in an *absent* flag; without
+		// this, quitting at the account step and reloading silently completed onboarding forever.
+		if (plugin.settings.onboardingCompleted === undefined) {
+			plugin.settings.onboardingCompleted = false;
+			void plugin.saveSettings();
+		}
 		rerender();
 	};
 
@@ -86,16 +121,16 @@ export function renderSetupView(container: HTMLElement, plugin: FinancePlugin, o
 			renderWelcome(body, plugin, goTo, finish);
 			break;
 		case "categories":
-			renderCategories(body, plugin, goTo, rerender, finish);
+			renderCategories(body, plugin, state, goTo, rerender, finish);
 			break;
 		case "account":
-			renderAccount(body, plugin, goTo, rerender, finish);
+			renderAccount(body, plugin, state, goTo, rerender, finish);
 			break;
 		case "import":
-			renderImport(body, plugin, goTo, finish);
+			renderImport(body, plugin, state, goTo, finish);
 			break;
 		case "done":
-			renderDone(body, plugin, finish);
+			renderDone(body, plugin, state, finish);
 			break;
 	}
 }
@@ -181,7 +216,14 @@ function renderWelcome(body: HTMLElement, plugin: FinancePlugin, goTo: (step: St
 
 // ---------- A2 · Categories & rules ----------
 
-function renderCategories(body: HTMLElement, plugin: FinancePlugin, goTo: (step: StepId) => void, rerender: () => void, finish: () => Promise<void>): void {
+function renderCategories(
+	body: HTMLElement,
+	plugin: FinancePlugin,
+	state: SetupState,
+	goTo: (step: StepId) => void,
+	rerender: () => void,
+	finish: () => Promise<void>
+): void {
 	body.createEl("h2", { text: "Start with a standard category set?" });
 	body.createEl("p", {
 		cls: "fp-setup-lede",
@@ -225,7 +267,14 @@ function renderCategories(body: HTMLElement, plugin: FinancePlugin, goTo: (step:
 
 // ---------- A3 · First account ----------
 
-function renderAccount(body: HTMLElement, plugin: FinancePlugin, goTo: (step: StepId) => void, rerender: () => void, finish: () => Promise<void>): void {
+function renderAccount(
+	body: HTMLElement,
+	plugin: FinancePlugin,
+	state: SetupState,
+	goTo: (step: StepId) => void,
+	rerender: () => void,
+	finish: () => Promise<void>
+): void {
 	body.createEl("h2", { text: "Add your first account" });
 	body.createEl("p", {
 		cls: "fp-setup-lede",
@@ -323,6 +372,18 @@ function renderAccount(body: HTMLElement, plugin: FinancePlugin, goTo: (step: St
 	const skip = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Skip setup", attr: { type: "button" } });
 	skip.addEventListener("click", () => void finish());
 
+	// "Every step can be skipped" was not true of this one: with nothing entered, Continue only ever
+	// produced a Notice, and the single way out was "Skip setup" — which *completes* onboarding. This
+	// skips the step without ending the flow, so the rest of setup is still reachable.
+	if (state.created.length === 0) {
+		const without = left.createEl("button", {
+			cls: "fp-btn fp-btn--ghost fp-btn-ghost",
+			text: "Continue without an account",
+			attr: { type: "button" },
+		});
+		without.addEventListener("click", () => goTo("import"));
+	}
+
 	const another = right.createEl("button", { cls: "fp-btn fp-btn--secondary fp-btn-secondary", attr: { type: "button" } });
 	icon(another, "plus");
 	another.createSpan({ text: "Add another" });
@@ -339,7 +400,7 @@ function renderAccount(body: HTMLElement, plugin: FinancePlugin, goTo: (step: St
 		if (name.trim()) {
 			if (!(await createAccount())) return;
 		} else if (state.created.length === 0) {
-			new Notice("Add at least one account, or skip setup");
+			new Notice("Name an account to add it, or use \"Continue without an account\"");
 			return;
 		}
 		goTo("import");
@@ -350,7 +411,7 @@ function renderAccount(body: HTMLElement, plugin: FinancePlugin, goTo: (step: St
 
 // ---------- A4 · First import ----------
 
-function renderImport(body: HTMLElement, plugin: FinancePlugin, goTo: (step: StepId) => void, finish: () => Promise<void>): void {
+function renderImport(body: HTMLElement, plugin: FinancePlugin, state: SetupState, goTo: (step: StepId) => void, finish: () => Promise<void>): void {
 	body.createEl("h2", { text: "Bring in your transactions" });
 	body.createEl("p", {
 		cls: "fp-setup-lede",
@@ -364,9 +425,17 @@ function renderImport(body: HTMLElement, plugin: FinancePlugin, goTo: (step: Ste
 	openBtn.createDiv({ cls: "fp-dropzone-subtext", text: "Opens the import wizard — drop a file or browse" });
 	openBtn.addEventListener("click", () => {
 		openImportWizard(plugin, {
-			onDone: (outcome) => {
+			onDone: async (outcome) => {
 				state.imported = { added: outcome.added, skipped: outcome.skipped };
-				goTo("done");
+				if (outcome.destination === "none") {
+					goTo("done");
+					return;
+				}
+				// The summary's other buttons go somewhere specific — the ledger, the subscriptions tab,
+				// the review queue. Setup still owns the body at that point (`onboardingCompleted` is
+				// false, `inProgress` is true), so without completing it first the user pressed
+				// "Go to ledger" and landed on "Setup complete — your dashboard is ready".
+				await finish();
 			},
 		});
 	});
@@ -385,7 +454,7 @@ function renderImport(body: HTMLElement, plugin: FinancePlugin, goTo: (step: Ste
 
 // ---------- A5 · Done ----------
 
-function renderDone(body: HTMLElement, plugin: FinancePlugin, finish: () => Promise<void>): void {
+function renderDone(body: HTMLElement, plugin: FinancePlugin, state: SetupState, finish: () => Promise<void>): void {
 	const head = body.createDiv({ cls: "fp-setup-head" });
 	icon(head, "party-popper", "fp-welcome-icon");
 	head.createEl("h2", { text: "Setup complete — your dashboard is ready" });

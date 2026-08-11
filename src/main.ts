@@ -1,6 +1,7 @@
 import { FuzzySuggestModal, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { defaultCategories, VIEW_TYPE_FINANCE } from "./constants";
 import { autoCategorize, buildDefaultRules } from "./import/autoCategorize";
+import { closeAllPluginModals } from "./modalRegistry";
 import { openBudgetSetup } from "./modals/BudgetSetupModal";
 import { CreateAccountModal } from "./modals/CreateAccountModal";
 import { openMonthInReview } from "./modals/MonthDrilldownModal";
@@ -87,7 +88,9 @@ export default class FinancePlugin extends Plugin {
 		this.addCommand({
 			id: "add-subscription",
 			name: "Add subscription",
-			callback: () => openSubscriptionWizard(this),
+			// The wizard only saves and notifies; without this the Subscriptions tab you were looking
+			// at when you ran the command stays exactly as it was.
+			callback: () => openSubscriptionWizard(this, undefined, () => this.refreshViews()),
 		});
 
 		this.addCommand({
@@ -158,7 +161,10 @@ export default class FinancePlugin extends Plugin {
 	}
 
 	onunload(): void {
-		// Views are torn down by Obsidian; nothing to clean up manually.
+		// Views are torn down by Obsidian, but `fp-privacy` lives on <body> (modals mount outside the
+		// view), so nothing else would ever take it off — leaving every amount in the app blurred for
+		// the rest of the session after the plugin is disabled.
+		document.body.removeClass("fp-privacy");
 	}
 
 	async loadSettings(): Promise<void> {
@@ -169,14 +175,21 @@ export default class FinancePlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	/**
+	 * Reveals the Finance view, wherever the user put it. A leaf docked in a sidebar is a layout
+	 * choice, not leftover state — detaching it meant Import/Budget setup/Detect subscriptions each
+	 * silently destroyed the pane they were meant to bring to the front.
+	 *
+	 * The main area is still preferred when there is a choice, and a *new* leaf is still created there
+	 * rather than in a sidebar: this view wants the width, it just doesn't get to overrule someone who
+	 * decided otherwise.
+	 */
 	async activateView(): Promise<void> {
-		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_FINANCE)) {
-			if (leaf.getRoot() === this.app.workspace.rootSplit) {
-				await this.app.workspace.revealLeaf(leaf);
-				return;
-			}
-			// Leftover from an older layout (e.g. a sidebar) — drop it so we open fresh in the main area.
-			leaf.detach();
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_FINANCE);
+		const existing = leaves.find((leaf) => leaf.getRoot() === this.app.workspace.rootSplit) ?? leaves[0];
+		if (existing) {
+			await this.app.workspace.revealLeaf(existing);
+			return;
 		}
 		const leaf = this.app.workspace.getLeaf("tab");
 		await leaf.setViewState({ type: VIEW_TYPE_FINANCE, active: true });
@@ -240,10 +253,16 @@ export default class FinancePlugin extends Plugin {
 		await this.saveSettings();
 	}
 
-	/** Anyone who already has accounts has already onboarded — first-run setup must never appear for
-	 *  an existing install just because the flag postdates their data. */
+	/**
+	 * Anyone who already has accounts has already onboarded — first-run setup must never appear for an
+	 * existing install just because the flag postdates their data.
+	 *
+	 * Only runs when the flag is *absent*. SetupView writes an explicit `false` the moment someone
+	 * enters the flow, so abandoning setup at the account step and reloading used to look identical to
+	 * a pre-flag install here — and permanently completed an onboarding the user never finished.
+	 */
 	private async migrateOnboardingFlag(): Promise<void> {
-		if (this.settings.onboardingCompleted) return;
+		if (this.settings.onboardingCompleted !== undefined) return;
 		if (this.store.accounts.length === 0) return;
 		this.settings.onboardingCompleted = true;
 		await this.saveSettings();
@@ -265,10 +284,20 @@ export default class FinancePlugin extends Plugin {
 		return portfolio;
 	}
 
-	/** Account/view selection is portfolio-scoped, so switching always clears it rather than risk pointing at another portfolio's account id. */
+	/**
+	 * Account/view selection is portfolio-scoped, so switching always clears it rather than risk
+	 * pointing at another portfolio's account id.
+	 *
+	 * Open dialogs are closed *first*, before the store is re-pointed. The store is mutated in place —
+	 * same instance, new `dataFolder` — so an import wizard holding parsed rows, or a review queue
+	 * holding transaction ids, would happily write portfolio A's data into portfolio B's files.
+	 * Closing them is the fix; the `store.generation` check inside those write paths is the backstop
+	 * for a dialog that never registered or was opened mid-switch.
+	 */
 	async switchPortfolio(id: string): Promise<void> {
 		const portfolio = this.settings.portfolios?.find((p) => p.id === id);
 		if (!portfolio || id === this.settings.activePortfolioId) return;
+		closeAllPluginModals();
 		this.settings.activePortfolioId = id;
 		this.settings.dataFolder = portfolio.folder;
 		this.settings.activeAccountId = undefined;

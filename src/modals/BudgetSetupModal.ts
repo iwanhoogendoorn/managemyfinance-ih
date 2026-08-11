@@ -2,6 +2,7 @@ import { App, Modal, Notice } from "obsidian";
 import { currentMonth, suggestedBudget } from "../budgets";
 import { formatMoney } from "../format";
 import type FinancePlugin from "../main";
+import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Category } from "../types";
 import { categoryChip, emptyState, icon } from "../ui/dom";
 
@@ -36,6 +37,8 @@ export class BudgetSetupModal extends Modal {
 	}
 
 	onOpen(): void {
+		// Registered so a portfolio switch can close it — see modalRegistry.
+		registerOpenModal(this);
 		this.modalEl.addClass("fp-wizard-modal");
 		this.modalEl.addClass("fp-root");
 		this.modalEl.addClass("fp-budget-setup-modal");
@@ -47,6 +50,7 @@ export class BudgetSetupModal extends Modal {
 	}
 
 	onClose(): void {
+		unregisterOpenModal(this);
 		this.contentEl.empty();
 	}
 
@@ -103,10 +107,16 @@ export class BudgetSetupModal extends Modal {
 		const cancel = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Cancel", attr: { type: "button" } });
 		cancel.addEventListener("click", () => this.close());
 
-		const count = this.rows.filter((r) => r.checked).length;
+		// Counted the same way `save()` counts: a checked row with the amount zeroed out writes nothing,
+		// so promising "Set 5 budgets" and then reporting 4 was the button describing a different set of
+		// rows than the one it acts on.
+		const count = this.rows.filter((r) => r.checked && r.value > 0).length;
 		const save = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
 		icon(save, "target");
-		save.createSpan({ text: count === 0 ? "Nothing selected" : `Set ${count} budget${count === 1 ? "" : "s"}` });
+		const checked = this.rows.filter((r) => r.checked).length;
+		save.createSpan({
+			text: count > 0 ? `Set ${count} budget${count === 1 ? "" : "s"}` : checked === 0 ? "Nothing selected" : "Every selected limit is 0",
+		});
 		save.disabled = count === 0;
 		save.addEventListener("click", () => void this.save());
 	}

@@ -114,6 +114,64 @@ export interface TransferPair {
 const AMOUNT_TOLERANCE = 0.010001;
 const MAX_DAYS_APART = 3;
 
+/**
+ * Above this amount the shape test alone (opposite sign, same cents, ≤3 days, different account) is not
+ * enough and a corroborating signal is required — see `pairCorroborated`.
+ *
+ * Round four-figure amounts are exactly where a genuine credit and a genuine debit collide: a €3,000
+ * salary landing in checking on the 1st and €3,000 of rent leaving a second account on the 2nd satisfy
+ * every clause of the shape test, and treating them as one move erases €3,000 of income *and* €3,000 of
+ * expenses from every figure in the app. Small pairs deliberately keep the loose rule: a wrong match
+ * there costs a few euro, everyday account-to-account moves often carry no corroborating field at all,
+ * and the alternative — double-counting them — is the bug the heuristic exists to fix. €500 is the point
+ * where a false match stops being noise and starts being visible in a monthly total.
+ */
+const PAIR_CORROBORATION_ABOVE = 500;
+
+interface PairCorroboration {
+	transferCategoryIds: ReadonlySet<string>;
+	accountsById: Map<string, Account>;
+}
+
+function pairCorroborationContext(store: KpiStore): PairCorroboration {
+	const transferCategoryIds = new Set<string>();
+	for (const cat of store.categories) {
+		if (TRANSFER_CATEGORY_NAMES.has(cat.name.trim().toLowerCase())) transferCategoryIds.add(cat.id);
+	}
+	const accountsById = new Map<string, Account>();
+	for (const acc of store.accounts) accountsById.set(acc.id, acc);
+	return { transferCategoryIds, accountsById };
+}
+
+/** Whether `tx`'s own text names `account` — the bank's own record that this row is the other half of a
+ *  move between two of your accounts ("Naar Oranje Spaarrekening", "NL12INGB0001234567"). */
+function namesAccount(tx: Transaction, account: Account | undefined): boolean {
+	if (!account) return false;
+	const haystack = `${tx.counterparty ?? ""} ${tx.description ?? ""}`.toLowerCase();
+	if (!haystack.trim()) return false;
+	// Four characters minimum so an account called "Cash" or "A" doesn't match half the ledger.
+	const name = account.name.trim().toLowerCase();
+	if (name.length >= 4 && haystack.includes(name)) return true;
+	const iban = (account.iban ?? "").replace(/\s+/g, "").toLowerCase();
+	return iban.length >= 8 && haystack.replace(/\s+/g, "").includes(iban);
+}
+
+/**
+ * Any one of three independent signals that a large opposite-sign match really is one move:
+ * either side explicitly categorized as a transfer, either side sitting on a savings/investing account
+ * (the accounts whose entire purpose is money arriving from elsewhere in the portfolio), or one side's
+ * text naming the other side's account by name or IBAN.
+ */
+function pairCorroborated(a: Transaction, b: Transaction, ctx: PairCorroboration): boolean {
+	if (a.categoryId && ctx.transferCategoryIds.has(a.categoryId)) return true;
+	if (b.categoryId && ctx.transferCategoryIds.has(b.categoryId)) return true;
+	for (const tx of [a, b]) {
+		const account = ctx.accountsById.get(tx.accountId);
+		if (account && (account.type === "saving" || account.type === "investing")) return true;
+	}
+	return namesAccount(a, ctx.accountsById.get(b.accountId)) || namesAccount(b, ctx.accountsById.get(a.accountId));
+}
+
 interface PairCandidate {
 	tx: Transaction;
 	index: number;
@@ -134,8 +192,11 @@ interface PairCandidate {
  *
  * Candidates are bucketed by absolute amount in cents so each search touches only the three buckets
  * that could possibly hold a match, instead of scanning the whole ledger once per transaction.
+ *
+ * Above `PAIR_CORROBORATION_ABOVE` the shape test alone is not trusted — see `pairCorroborated`.
  */
 export function detectTransferPairs(store: KpiStore): TransferPair[] {
+	const corroboration = pairCorroborationContext(store);
 	const candidates: PairCandidate[] = [];
 	const byCents = new Map<number, PairCandidate[]>();
 	store.transactions.forEach((tx, index) => {
@@ -170,6 +231,7 @@ export function detectTransferPairs(store: KpiStore): TransferPair[] {
 				if (Math.abs(Math.abs(other.tx.amount) - Math.abs(candidate.tx.amount)) > AMOUNT_TOLERANCE) continue;
 				const daysApart = Math.abs(other.day - candidate.day);
 				if (daysApart > MAX_DAYS_APART) continue;
+				if (Math.abs(candidate.tx.amount) > PAIR_CORROBORATION_ABOVE && !pairCorroborated(candidate.tx, other.tx, corroboration)) continue;
 				// Closest in time wins; an exact amount match breaks a tie between two equally close rows.
 				const score = daysApart * 1000 + Math.abs(other.cents - candidate.cents);
 				if (score < bestScore) {
@@ -258,8 +320,10 @@ function isTransfer(tx: Transaction, ctx: TransferContext): boolean {
 	return false;
 }
 
-/** Dividends and interest payouts, identified from the broker action/type text (e.g. Trade Republic exports). */
-function isPassiveIncome(tx: Transaction): boolean {
+/** Dividends and interest payouts, identified from the broker action/type text (e.g. Trade Republic exports).
+ *  Exported so a raw (transfer-preserving) flow view — `rawAccountFlows` — classifies interest exactly the
+ *  way `windowSummary` does, instead of growing a second, silently diverging definition. */
+export function isPassiveIncome(tx: Transaction): boolean {
 	const text = `${tx.action ?? ""} ${tx.type ?? ""}`.toLowerCase();
 	return /dividend|interest/.test(text);
 }
@@ -627,8 +691,10 @@ export interface Holding {
 	ticker: string;
 	assetClass?: string;
 	shares: number;
-	/** Average-cost basis of the shares still held — what they cost you, not what they're worth today. */
+	/** Every euro still in the position — what it cost you, not what it's worth today. Includes money from
+	 *  Buy rows with no share count, which is why it can exceed `avgCost × shares`. */
 	netInvested: number;
+	/** Average cost of the shares we can actually price (see TickerState.unattributed). */
 	avgCost: number;
 	/** Gain/loss already booked by selling this ticker: proceeds minus the basis those sold shares carried. */
 	realizedPL: number;
@@ -636,7 +702,16 @@ export interface Holding {
 
 interface TickerState {
 	shares: number;
+	/** Cost of the shares counted in `shares` — the only pool average cost may be derived from. */
 	basis: number;
+	/**
+	 * Money from Buy rows that carried no share count. It is real money invested, so it belongs in
+	 * `netInvested`, but attributing it per share would invent an average cost the user never paid:
+	 * buy 10 @ €100 then a €500 buy with no `shares` would read as €150/share against 10 shares. It is
+	 * therefore kept out of `basis` (and so out of `avgCost`), and released only once `basis` is
+	 * exhausted by sales.
+	 */
+	unattributed: number;
 	realized: number;
 	assetClass?: string;
 }
@@ -669,23 +744,40 @@ function walkTrades(store: KpiStore, accountId: string): {
 
 	for (const { tx } of trades) {
 		const ticker = tx.ticker!;
-		const state = byTicker.get(ticker) ?? { shares: 0, basis: 0, realized: 0, assetClass: tx.assetClass };
+		const state = byTicker.get(ticker) ?? { shares: 0, basis: 0, unattributed: 0, realized: 0, assetClass: tx.assetClass };
 		const shares = tx.shares ?? 0;
 		const amount = Math.abs(tx.amount);
 
 		if ((tx.action ?? "").toLowerCase() === "buy") {
-			state.shares += shares;
-			state.basis += amount;
+			if (shares > 0) {
+				state.shares += shares;
+				state.basis += amount;
+			} else {
+				// No share count: money in, but nothing we can price per share. See TickerState.unattributed.
+				state.unattributed += amount;
+			}
+		} else if (state.basis <= 0 && state.unattributed <= 0 && state.shares <= 0) {
+			// A sale of a position this ledger has no record of buying — transferred in from another
+			// broker, or a history that predates the import. Booking proceeds against a €0 basis would
+			// report 100% of the sale as profit, which is a fabricated number, not a conservative one.
+			// Nothing is knowable here, so nothing is booked: no realized P/L, no year bucket.
 		} else {
 			// A sell row without a share count (hand-entered, or a generic CSV) can't be attributed per
 			// share, so fall back to releasing basis up to the proceeds — that books no phantom profit,
 			// which is the conservative reading when the data can't tell us the real one.
-			const costOut =
+			const attributed =
 				shares > 0 && state.shares > 0
 					? Math.min(state.basis, (state.basis / state.shares) * shares)
 					: Math.min(state.basis, amount);
-			state.basis -= costOut;
-			state.shares -= shares;
+			// Unattributed money only starts being released once the priced shares have paid for themselves,
+			// so a share-less Buy never dilutes the average cost of a sale that *is* priced per share.
+			const fromUnattributed = Math.max(0, Math.min(state.unattributed, amount - attributed));
+			const costOut = attributed + fromUnattributed;
+			state.basis -= attributed;
+			state.unattributed -= fromUnattributed;
+			// Clamped: an oversell (a partial import, a stock split recorded as shares out) must not leave a
+			// negative share count that silently eats every later Buy and hides the position from Holdings.
+			state.shares = Math.max(0, state.shares - shares);
 			state.realized += amount - costOut;
 
 			const year = tx.date?.slice(0, 4);
@@ -714,7 +806,9 @@ export function investingHoldings(store: KpiStore, accountId: string): Holding[]
 			ticker,
 			assetClass: state.assetClass,
 			shares: state.shares,
-			netInvested: state.basis,
+			// All the money still in the position, priced or not; `avgCost` deliberately reads only the
+			// priced pool, so the two can disagree when a Buy row arrived without a share count.
+			netInvested: state.basis + state.unattributed,
 			avgCost: state.shares > 0 ? state.basis / state.shares : 0,
 			realizedPL: state.realized,
 		}))
@@ -757,9 +851,14 @@ export function investingActivityByYear(store: KpiStore, accountId: string): Inv
 		if (!map.has(year)) map.set(year, { year, deposits: 0, withdrawals: 0, dividends: 0, fees: 0 });
 		const bucket = map.get(year)!;
 		const action = (tx.action ?? "").toLowerCase();
+		// "withdrawal" as well as "withdraw": TRANSFER_ACCOUNT_MARKERS above and the investing dashboard
+		// both accept it (ING writes the long form), and accepting only one spelling reported an account
+		// that had money taken out as having withdrawn nothing.
 		if (action === "deposit") bucket.deposits += Math.abs(tx.amount);
-		else if (action === "withdraw") bucket.withdrawals += Math.abs(tx.amount);
-		else if (action === "dividend" || action.startsWith("interest")) bucket.dividends += Math.abs(tx.amount);
+		else if (action === "withdraw" || action === "withdrawal") bucket.withdrawals += Math.abs(tx.amount);
+		// startsWith rather than equality so "Dividend (Gross)" / "Interest payment" — the forms brokers
+		// actually export, and the forms the dashboard's own yield figure already accepts — are counted here too.
+		else if (action.startsWith("dividend") || action.startsWith("interest")) bucket.dividends += Math.abs(tx.amount);
 		if (tx.fee) bucket.fees += Math.abs(tx.fee);
 	}
 	return Array.from(map.values()).sort((a, b) => a.year.localeCompare(b.year));

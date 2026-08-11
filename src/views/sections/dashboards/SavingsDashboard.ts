@@ -1,4 +1,4 @@
-import { balanceSeries, burnRate, fiProjection, netWorth, todayIso, windowSummary } from "../../../kpi";
+import { balanceSeries, burnRate, fiProjection, netWorth, todayIso } from "../../../kpi";
 import type FinancePlugin from "../../../main";
 import type { Account } from "../../../types";
 import { groupedColumnChart, lineChart, stackedShareBar } from "../../../ui/charts";
@@ -15,6 +15,7 @@ import {
 	money,
 	monthWindow,
 	pct,
+	rawAccountFlows,
 	setStatFoot,
 	signedMoney,
 	spendingAccountIds,
@@ -38,9 +39,16 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 
 	const balance = netWorth(store, account.id, now);
 	const ttm = ttmWindow(today);
-	const ttmSummary = windowSummary(store, ttm.from, ttm.to, ids);
-	const contributions = ttmSummary.income - ttmSummary.passiveIncome;
-	const interest = ttmSummary.passiveIncome;
+	// Raw signed flows, NOT `windowSummary`: that helper strips transfers by design, and a savings
+	// deposit *is* a transfer — pair-matched to the debit in checking, and marker-matched by its
+	// Deposit/Withdrawal type. Every figure on this page ran through it, so a €500/mo standing order
+	// rendered as "€0 contributed", a flat net-contributions chart and a goal card claiming there was
+	// no pace to project. Money moving between your own accounts doesn't change your net worth, but on
+	// this account's own page it is the entire subject.
+	const ttmFlows = rawAccountFlows(store, account.id, ttm);
+	const contributions = ttmFlows.inflow - ttmFlows.interest;
+	const withdrawn = ttmFlows.outflow;
+	const interest = ttmFlows.interest;
 
 	const balances = balanceSeries(store, ids, "month", today);
 	const ttmBalances = balances.filter((b) => ttm.months.includes(b.key)).map((b) => b.balance);
@@ -89,10 +97,7 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 	});
 	setStatFoot(yieldCard, [{ money: money(interest, currency) }, " of interest on an average balance of ", { money: money(meanBalance, currency) }]);
 
-	const withdrawalMonths = ttm.months.filter((m) => {
-		const w = monthWindow(m);
-		return windowSummary(store, w.from, w.to, ids).expenses > 0;
-	}).length;
+	const withdrawalMonths = ttm.months.filter((m) => rawAccountFlows(store, account.id, monthWindow(m)).outflow > 0).length;
 	const withdrawals = renderStat(grid, {
 		label: "Withdrawals",
 		value: `${withdrawalMonths} of 12 months`,
@@ -100,11 +105,12 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 		money: false,
 		tone: withdrawalMonths >= 6 ? "warn" : "neutral",
 	});
-	setStatFoot(withdrawals, [{ money: money(ttmSummary.expenses, currency) }, " taken out over the last 12 months"]);
+	setStatFoot(withdrawals, [{ money: money(withdrawn, currency) }, " taken out over the last 12 months"]);
 
 	/* ---------- goal ---------- */
 
-	renderGoal(container, plugin, account, balance, (ttmSummary.net - interest) / 12, currency);
+	// Net of withdrawals and net of the bank's interest: the pace *you* set.
+	renderGoal(container, plugin, account, balance, (ttmFlows.net - interest) / 12, currency);
 
 	/* ---------- contributions vs interest ---------- */
 
@@ -126,11 +132,10 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 	const trendMonths = balances.slice(-24).map((b) => b.key);
 	if (trendMonths.length > 1) {
 		const values = trendMonths.map((m) => {
-			const w = monthWindow(m);
-			const s = windowSummary(store, w.from, w.to, ids);
+			const f = rawAccountFlows(store, account.id, monthWindow(m));
 			// Interest isn't a contribution — conflating the two is how "net deposits" quietly credits
 			// you with the bank's money.
-			return s.income - s.expenses - s.passiveIncome;
+			return f.net - f.interest;
 		});
 		const card = container.createDiv({ cls: "fp-card" });
 		cardHead(card, "Net contributions", { sub: "Deposits less withdrawals, interest excluded" });
@@ -232,6 +237,12 @@ function renderGoal(
 				el.createSpan({ text: " · at " });
 				el.createSpan({ cls: "fp-money", text: signedMoney(monthlyContribution, currency) });
 				el.createSpan({ text: `/mo that's about ${monthsToGoal} month${monthsToGoal === 1 ? "" : "s"}` });
+			} else if (monthlyContribution > 0) {
+				// `fiProjection` returned nothing despite a positive pace, which means the goal is more
+				// than its 60-year horizon away. Saying "no net contributions" here was simply false.
+				el.createSpan({ text: " · at " });
+				el.createSpan({ cls: "fp-money", text: signedMoney(monthlyContribution, currency) });
+				el.createSpan({ text: "/mo that's further out than this projection goes — more than 60 years" });
 			} else {
 				el.createSpan({ text: " · no net contributions in the last 12 months, so there's no pace to project" });
 			}

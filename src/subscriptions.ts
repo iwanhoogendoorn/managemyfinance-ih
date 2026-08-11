@@ -36,8 +36,21 @@ export function yearlyCost(sub: Subscription): number {
 	return monthlyCost(sub) * 12;
 }
 
+function pad2(n: number): string {
+	return String(n).padStart(2, "0");
+}
+
+/**
+ * A Date's day in the *local* calendar as "YYYY-MM-DD".
+ *
+ * Deliberately built from local components rather than `toISOString().slice(0, 10)`: every Date in this
+ * file starts life as local midnight (`new Date("2026-09-01T00:00:00")`), and rendering local midnight
+ * through UTC reports the *previous* day for everyone east of UTC. That made every subscription date in
+ * the app a day early, put `daysUntil` off by one, and pulled a charge due on the 1st of next month into
+ * this month's committed outflows. Same reasoning — and same shape — as `kpi.ts`'s `todayIso`.
+ */
 function isoDate(d: Date): string {
-	return d.toISOString().slice(0, 10);
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 function addCycle(date: Date, cycle: SubscriptionBillingCycle): Date {

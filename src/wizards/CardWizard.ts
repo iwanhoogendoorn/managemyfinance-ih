@@ -54,6 +54,9 @@ export function openCardWizard(
 			title: "Details",
 			icon: "credit-card",
 			skippable: opts?.skippable,
+			// "Skip for now" here means "no card at all", not "show me the preview of the card I
+			// haven't filled in" — the onboarding entry points expect it to leave.
+			skipExits: true,
 			skipLabel: opts?.skipLabel ?? "Skip for now",
 			onSkip: opts?.onSkip,
 			render: (c) => {

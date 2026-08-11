@@ -1,9 +1,10 @@
 import { findCategorizationInconsistencies } from "../../categorization";
-import { computeInsights, type Insight, type InsightDeepLink, type InsightSeverity } from "../../insights";
+import { computeInsights, type Insight, type InsightDeepLink, type InsightPart, type InsightSeverity } from "../../insights";
 import type FinancePlugin from "../../main";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import type { RecurringSeries } from "../../recurring";
 import { emptyState, icon } from "../../ui/dom";
+import { setBudgetsMonth } from "./BudgetsSection";
 import { goToLedger, UNCATEGORIZED } from "./LedgerSection";
 import { cardHead, goToAccount, goToView, money, portfolioCurrency } from "./shared";
 
@@ -22,9 +23,32 @@ interface FeedItem {
 	severity: InsightSeverity;
 	title: string;
 	detail: string;
+	/** Structured title/detail, when the detector supplies them — see {@link renderParts}. */
+	titleParts?: InsightPart[];
+	detailParts?: InsightPart[];
 	impactEUR: number;
 	actionLabel?: string;
 	run?: () => void;
+}
+
+/**
+ * Insight copy is the one place in the app where merchant names and exact amounts are interpolated
+ * into a sentence, which is exactly what privacy mode cannot redact: CSS hides `.fp-money` spans, not
+ * substrings. So the detectors hand back segments and this paints each one with the class it earns.
+ *
+ * The fallback — no parts — redacts the *whole* line rather than trusting a pre-formatted string. An
+ * over-redacted sentence is recoverable by hovering; a leaked one isn't.
+ */
+function renderParts(host: HTMLElement, parts: InsightPart[] | undefined, plain: string): void {
+	if (!parts || parts.length === 0) {
+		host.addClass("fp-sensitive");
+		host.setText(plain);
+		return;
+	}
+	for (const part of parts) {
+		const cls = [part.money ? "fp-money" : "", part.sensitive ? "fp-sensitive" : ""].filter(Boolean).join(" ");
+		host.createSpan(cls ? { cls, text: part.text } : { text: part.text });
+	}
 }
 
 function severityRank(s: InsightSeverity): number {
@@ -60,8 +84,18 @@ function linkAction(plugin: FinancePlugin, link: InsightDeepLink): { label: stri
 		case "subscription":
 		case "detected-subscription":
 			return { label: "Open subscriptions", run: () => void goToView(plugin, "subscriptions") };
-		case "budgets":
-			return { label: "Open budgets", run: () => void goToView(plugin, "budgets") };
+		case "budgets": {
+			// The link carries the month the overrun happened in — opening August for "you went €80 over
+			// in March" sends the user to a page that doesn't contain the thing they clicked.
+			const month = link.month;
+			return {
+				label: "Open budgets",
+				run: () => {
+					if (month) setBudgetsMonth(month);
+					void goToView(plugin, "budgets");
+				},
+			};
+		}
 		case "account":
 			return { label: "Open account", run: () => void goToAccount(plugin, link.accountId) };
 	}
@@ -74,6 +108,8 @@ function toFeedItem(plugin: FinancePlugin, insight: Insight): FeedItem {
 		severity: insight.severity,
 		title: insight.title,
 		detail: insight.detail,
+		titleParts: insight.titleParts,
+		detailParts: insight.detailParts,
 		impactEUR: insight.impactEUR,
 		actionLabel: action?.label,
 		run: action?.run,
@@ -96,6 +132,18 @@ function categorizationItems(plugin: FinancePlugin): FeedItem[] {
 			detail: `${flag.majorityCount} of ${flag.totalCount} are "${flag.majorityCategoryName}", but ${flag.outliers.length} ${
 				flag.outliers.length === 1 ? "is" : "are"
 			} not.`,
+			// The merchant key is raw ledger text; the counts are not.
+			titleParts: [
+				{ text: flag.key, sensitive: true },
+				{ text: " is tagged inconsistently" },
+			],
+			detailParts: [
+				{
+					text: `${flag.majorityCount} of ${flag.totalCount} are "${flag.majorityCategoryName}", but ${flag.outliers.length} ${
+						flag.outliers.length === 1 ? "is" : "are"
+					} not.`,
+				},
+			],
 			impactEUR: impact,
 			actionLabel: first ? "Open transaction" : undefined,
 			run: first ? () => new TransactionDetailModal(plugin.app, plugin, first.transaction).open() : undefined,
@@ -172,8 +220,8 @@ export function renderInsightsFeed(container: HTMLElement, plugin: FinancePlugin
 		icon(glyph, SEVERITY_ICON[item.severity]);
 
 		const body = row.createDiv({ cls: "fp-insight-body" });
-		body.createDiv({ cls: "fp-insight-title", text: item.title });
-		body.createDiv({ cls: "fp-insight-detail", text: item.detail });
+		renderParts(body.createDiv({ cls: "fp-insight-title" }), item.titleParts, item.title);
+		renderParts(body.createDiv({ cls: "fp-insight-detail" }), item.detailParts, item.detail);
 
 		const actions = row.createDiv({ cls: "fp-insight-actions" });
 		if (item.impactEUR > 0) {
@@ -183,9 +231,11 @@ export function renderInsightsFeed(container: HTMLElement, plugin: FinancePlugin
 			const btn = actions.createEl("button", { cls: "fp-btn fp-btn--secondary", text: item.actionLabel, attr: { type: "button" } });
 			btn.addEventListener("click", item.run);
 		}
+		// The accessible name deliberately omits the insight's own copy: `aria-label` is plain text
+		// outside CSS's reach, and every title here can carry a merchant name and an amount.
 		const close = actions.createEl("button", {
 			cls: "fp-btn fp-btn--ghost fp-btn--icon",
-			attr: { type: "button", "aria-label": `Dismiss: ${item.title}` },
+			attr: { type: "button", "aria-label": "Dismiss this insight" },
 		});
 		icon(close, "x");
 		close.addEventListener("click", () => void dismiss(item.id));

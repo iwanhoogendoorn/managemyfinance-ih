@@ -318,6 +318,20 @@ describe("recurringSeries", () => {
 		expect(s).toHaveLength(0);
 	});
 
+	it("sees a category renamed in place, despite the id lookups being cached (review-flows: hoisted finds)", () => {
+		// The classifier's category/account lookups are cached by array identity + length so they aren't
+		// re-scanned per transaction. The cache holds the live objects, so renaming one must take effect
+		// immediately — that is the whole reason it isn't a name snapshot.
+		const renamed: Category = { ...catFood, name: "Food" };
+		const s = store(series("OWN SAVINGS", "2024-01-05", 30, 4, -500, { categoryId: renamed.id }), {
+			categories: [renamed, catTransfers],
+		});
+		expect(recurringSeries(s)).toHaveLength(1);
+
+		renamed.name = "Savings & Transfers";
+		expect(recurringSeries(s)).toHaveLength(0);
+	});
+
 	it("honours an injected transfer classifier", () => {
 		const s = recurringSeries(store(series("NETFLIX", "2024-01-05", 30, 4, -10)), 3, { isTransfer: () => true });
 		expect(s).toHaveLength(0);

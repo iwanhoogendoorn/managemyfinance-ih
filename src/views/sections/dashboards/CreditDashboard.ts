@@ -1,4 +1,14 @@
-import { balanceSeries, firstDayOf, monthOf, netWorth, shiftMonth, todayIso, windowSummary, type KpiStore } from "../../../kpi";
+import {
+	balanceSeries,
+	firstDayOf,
+	monthOf,
+	netWorth,
+	shiftMonth,
+	todayIso,
+	transferPairIds,
+	windowSummary,
+	type KpiStore,
+} from "../../../kpi";
 import type FinancePlugin from "../../../main";
 import type { Account, Transaction } from "../../../types";
 import { groupedColumnChart } from "../../../ui/charts";
@@ -33,22 +43,52 @@ function isInterestOrFee(tx: Transaction, feeCategoryIds: Set<string>): boolean 
 }
 
 /**
+ * Whether the account's `statementDay` can actually anchor a cycle. 29–31 doesn't fall in every
+ * month, so a cycle anchored there would silently move; the calendar month is the honest fallback,
+ * and the footnote on the tile says so rather than printing "statement day 31" next to a window that
+ * starts on the 1st.
+ */
+function statementDayUsable(account: Account): boolean {
+	const day = account.statementDay;
+	return !!day && day >= 1 && day <= 28;
+}
+
+/**
  * The start of the statement cycle currently running: the most recent `statementDay` on or before
- * today. With no statement day set, the calendar month is the honest default rather than a guess.
+ * today. With no usable statement day, the calendar month is the honest default rather than a guess.
  */
 function cycleStart(account: Account, today: string): string {
 	const day = account.statementDay;
 	const month = monthOf(today);
-	if (!day || day < 1 || day > 28) return firstDayOf(month);
+	if (!statementDayUsable(account) || !day) return firstDayOf(month);
 	const thisMonth = `${month}-${String(day).padStart(2, "0")}`;
 	return thisMonth <= today ? thisMonth : `${shiftMonth(month, -1)}-${String(day).padStart(2, "0")}`;
 }
 
-/** Payments *to* a credit account arrive as credits — money you sent to clear the balance. */
-function paymentsIn(store: KpiStore, accountId: string, from: string, to: string): number {
+/**
+ * Payments *to* a credit account arrive as credits — money you sent to clear the balance. But so does
+ * every refund, and an €800 laptop return counted as a payment both inflates "payments made" and
+ * shortens the "months to clear at that rate" derived from it. A real payment has a counterpart debit
+ * in another account, which is exactly what the transfer-pair detector finds, so only matched credits
+ * count. The cost is honest and stated in the footnote: pay the card from an account that isn't in
+ * the ledger and this reads zero rather than reading a refund as a payment.
+ */
+function paymentsIn(store: KpiStore, accountId: string, from: string, to: string, pairIds: ReadonlySet<string>): number {
 	let total = 0;
 	for (const tx of store.transactions) {
 		if (tx.accountId !== accountId || tx.amount <= 0 || !tx.date || tx.date < from || tx.date > to) continue;
+		if (!pairIds.has(tx.id)) continue;
+		total += tx.amount;
+	}
+	return total;
+}
+
+/** Positive rows on the card that the pair detector did *not* match — refunds, or payments from an account the ledger doesn't have. */
+function unmatchedCredits(store: KpiStore, accountId: string, from: string, to: string, pairIds: ReadonlySet<string>): number {
+	let total = 0;
+	for (const tx of store.transactions) {
+		if (tx.accountId !== accountId || tx.amount <= 0 || !tx.date || tx.date < from || tx.date > to) continue;
+		if (pairIds.has(tx.id)) continue;
 		total += tx.amount;
 	}
 	return total;
@@ -82,7 +122,9 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 	for (const tx of store.transactions) {
 		if (tx.accountId !== account.id || !tx.date) continue;
 		if (!isInterestOrFee(tx, feeCategoryIds)) continue;
-		if (tx.date >= ttm.from && tx.date <= now) interestTtm += -tx.amount;
+		// `ttm.to`, not today: this tile sits next to "Payments made (12 months)", which is measured over
+		// the 12 complete months. Running interest up to today silently made it a 13-month figure.
+		if (tx.date >= ttm.from && tx.date <= ttm.to) interestTtm += -tx.amount;
 		if (tx.date >= threeMonthsAgo && tx.date <= now) interestRecent += -tx.amount;
 	}
 
@@ -122,7 +164,11 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 		iconName: "calendar-range",
 	});
 	setStatFoot(cycleCard, [
-		account.statementDay ? `since ${formatDay(start)} (statement day ${account.statementDay})` : `since ${formatDay(start)} — no statement day set`,
+		statementDayUsable(account)
+			? `since ${formatDay(start)} (statement day ${account.statementDay})`
+			: account.statementDay
+			? `since ${formatDay(start)} — statement day ${account.statementDay} doesn't fall in every month, so this is the calendar month`
+			: `since ${formatDay(start)} — no statement day set`,
 	]);
 
 	// Interest is only worth a tile when it's non-zero; a permanent "€0" tile trains people to skip it.
@@ -136,10 +182,18 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 		setStatFoot(interestCard, ["paid to the card issuer, on top of what you bought"]);
 	}
 
-	const paid = paymentsIn(store, account.id, ttm.from, ttm.to);
+	const pairIds = transferPairIds(store);
+	const paid = paymentsIn(store, account.id, ttm.from, ttm.to, pairIds);
 	const paidCard = renderStat(grid, { label: "Payments made (12 months)", value: money(paid, currency), iconName: "check-circle" });
 	const monthlyPayment = paid / 12;
-	if (owed > 0 && monthlyPayment > 0) {
+	const unmatched = unmatchedCredits(store, account.id, ttm.from, ttm.to, pairIds);
+	if (paid === 0 && unmatched > 0) {
+		setStatFoot(paidCard, [
+			"only payments whose other side is in your ledger are counted — the ",
+			{ money: money(unmatched, currency) },
+			" of credits here look like refunds, or came from an account you haven't imported",
+		]);
+	} else if (owed > 0 && monthlyPayment > 0) {
 		const months = owed / monthlyPayment;
 		setStatFoot(paidCard, [
 			{ money: money(monthlyPayment, currency) },
@@ -191,7 +245,7 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 	});
 	const paymentSeries = months.map((m) => {
 		const w = monthWindow(m);
-		return paymentsIn(store, account.id, w.from, w.to);
+		return paymentsIn(store, account.id, w.from, w.to, pairIds);
 	});
 	if (spendSeries.some((v) => v > 0) || paymentSeries.some((v) => v > 0)) {
 		const card = container.createDiv({ cls: "fp-card" });

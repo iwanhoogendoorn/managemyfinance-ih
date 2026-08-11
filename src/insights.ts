@@ -60,12 +60,34 @@ export type InsightDeepLink =
 	| { type: "budgets"; categoryId?: string; month?: string }
 	| { type: "account"; accountId: string };
 
+/**
+ * One run of insight copy.
+ *
+ * The feed's strings interpolate merchant names and exact euro amounts, and a pre-formatted string
+ * cannot carry the two hooks the rest of the app redacts on (`.fp-money`, `.fp-sensitive`) — which is
+ * why privacy mode used to leave the five most prominent cards on the overview fully legible. Splitting
+ * the copy into parts lets the view wrap each run in the right span while this module stays the single
+ * owner of the wording.
+ */
+export interface InsightPart {
+	text: string;
+	/** A figure privacy mode must redact. */
+	money?: boolean;
+	/** Merchant, account or counterparty text — identifying, so redacted alongside money. */
+	sensitive?: boolean;
+}
+
 export interface Insight {
 	id: string;
 	kind: InsightKind;
 	severity: InsightSeverity;
+	/** Always the exact concatenation of `titleParts`, and the fallback for any renderer that ignores them. */
 	title: string;
 	detail: string;
+	/** Structured `title` — see InsightPart. Optional so an Insight built outside this module still compiles. */
+	titleParts?: InsightPart[];
+	/** Structured `detail` — see InsightPart. */
+	detailParts?: InsightPart[];
 	/** Annualized where the insight is about an ongoing commitment, one-off where it's about a single
 	 *  event. Always a positive magnitude — direction lives in the copy. */
 	impactEUR: number;
@@ -98,6 +120,28 @@ const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 0, medium: 1, low
  *  instance. Reuses the ledger's own `stableHash` rather than adding a hashing dependency. */
 function insightId(kind: InsightKind, ...key: (string | number)[]): string {
 	return `ins-${stableHash([kind, ...key])}`;
+}
+
+/* Part builders. Deliberately terse — every insight below composes its copy out of them, and the flat
+   `title`/`detail` strings are then `joinParts` of the same arrays, so the two can never drift apart. */
+
+/** Plain copy: no figure, nothing identifying. */
+function txt(text: string): InsightPart {
+	return { text };
+}
+
+/** A money figure — redacted in privacy mode. */
+function amt(text: string): InsightPart {
+	return { text, money: true };
+}
+
+/** Merchant / account / counterparty text — redacted in privacy mode. */
+function who(text: string): InsightPart {
+	return { text, sensitive: true };
+}
+
+function joinParts(parts: InsightPart[]): string {
+	return parts.map((part) => part.text).join("");
 }
 
 function eur(n: number): string {
@@ -136,6 +180,12 @@ function elapsedFraction(monthKey: string, today: string): number {
 	const day = Number(today.slice(8, 10));
 	return day / daysInMonth(monthKey);
 }
+
+/** Before roughly the 5th of the month, dividing by the elapsed fraction amplifies a single grocery run
+ *  into a €3,000 projection. Waiting a few days costs nothing and stops the feed being wrong every month.
+ *  Shared by every detector that paces a partial month — `categoryDeltas` and `budgetOverruns` — because
+ *  two different floors would mean the overview contradicts itself on the 2nd. */
+const MIN_ELAPSED_FOR_PROJECTION = 0.15;
 
 /** The `n` complete months ending at M-1 — never including the partial current month, which is what
  *  makes every "vs your average" comparison in this file a fair one. */
@@ -220,12 +270,24 @@ export function recurringPriceDrift(series: RecurringSeries[]): Insight[] {
 		if (Math.abs(delta) <= Math.max(0.5, baseline * 0.02)) continue;
 
 		const impactEUR = Math.abs(delta) * CYCLES_PER_YEAR[s.cycle];
+		const titleParts = [who(s.displayName), txt(delta > 0 ? " went up to " : " went down to "), amt(eur(s.lastAmount))];
+		const detailParts = [
+			txt("Was "),
+			amt(eur(baseline)),
+			txt(` per ${s.cycle === "yearly" ? "year" : s.cycle.replace("ly", "")}, charged `),
+			amt(eur(s.lastAmount)),
+			txt(` on ${s.lastDate} — `),
+			amt(eur0(impactEUR)),
+			txt(`/year ${delta > 0 ? "more" : "less"}.`),
+		];
 		out.push({
 			id: insightId("recurring-price-drift", s.key, s.lastDate, s.lastAmount.toFixed(2)),
 			kind: "recurring-price-drift",
 			severity: impactEUR >= 60 ? "high" : impactEUR >= 12 ? "medium" : "low",
-			title: `${s.displayName} ${delta > 0 ? "went up" : "went down"} to ${eur(s.lastAmount)}`,
-			detail: `Was ${eur(baseline)} per ${s.cycle === "yearly" ? "year" : s.cycle.replace("ly", "")}, charged ${eur(s.lastAmount)} on ${s.lastDate} — ${eur0(impactEUR)}/year ${delta > 0 ? "more" : "less"}.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR,
 			deepLink: { type: "ledger", accountId: s.accountId, search: s.displayName },
 		});
@@ -249,12 +311,26 @@ export function staleSubscriptionCost(subscriptions: Subscription[], series: Rec
 		if (Math.abs(delta) <= 0.5) continue;
 
 		const impactEUR = Math.abs(delta) * CYCLES_PER_YEAR[sub.billingCycle];
+		const titleParts = [who(sub.name), txt(" costs "), amt(eur(match.lastAmount)), txt(", not "), amt(eur(sub.cost))];
+		const detailParts = [
+			txt("You track "),
+			who(sub.name),
+			txt(" at "),
+			amt(eur(sub.cost)),
+			txt(` but the last charge on ${match.lastDate} was `),
+			amt(eur(match.lastAmount)),
+			txt(" — "),
+			amt(eur0(impactEUR)),
+			txt(`/year ${delta > 0 ? "more" : "less"} than your subscription total says.`),
+		];
 		out.push({
 			id: insightId("stale-subscription-cost", sub.id, match.lastAmount.toFixed(2)),
 			kind: "stale-subscription-cost",
 			severity: impactEUR >= 60 ? "high" : "medium",
-			title: `${sub.name} costs ${eur(match.lastAmount)}, not ${eur(sub.cost)}`,
-			detail: `You track ${sub.name} at ${eur(sub.cost)} but the last charge on ${match.lastDate} was ${eur(match.lastAmount)} — ${eur0(impactEUR)}/year ${delta > 0 ? "more" : "less"} than your subscription total says.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR,
 			deepLink: { type: "subscription", subscriptionId: sub.id },
 		});
@@ -278,12 +354,21 @@ export function phantomSubscriptions(subscriptions: Subscription[], series: Recu
 		if (subscriptions.some((sub) => !sub.archived && matchesSeries(sub, s))) continue;
 
 		const impactEUR = s.lastAmount * CYCLES_PER_YEAR[s.cycle];
+		const titleParts = [who(s.displayName), txt(" isn't in your subscriptions")];
+		const detailParts = [
+			amt(eur(s.lastAmount)),
+			txt(` ${s.cycle}, ${s.occurrences.length} payments since ${s.firstDate} — `),
+			amt(eur0(impactEUR)),
+			txt("/year that your committed spend doesn't count."),
+		];
 		out.push({
 			id: insightId("phantom-subscription", s.key, s.direction),
 			kind: "phantom-subscription",
 			severity: impactEUR >= 120 ? "high" : "medium",
-			title: `${s.displayName} isn't in your subscriptions`,
-			detail: `${eur(s.lastAmount)} ${s.cycle}, ${s.occurrences.length} payments since ${s.firstDate} — ${eur0(impactEUR)}/year that your committed spend doesn't count.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR,
 			deepLink: { type: "detected-subscription", merchantKey: s.key },
 		});
@@ -331,14 +416,24 @@ export function zombieSubscriptions(store: KpiStore, subscriptions: Subscription
 		if (lastCharge && daysBetweenIso(lastCharge, now) <= graceDays) continue;
 
 		const impactEUR = (sub.cost * CYCLES_PER_YEAR[sub.billingCycle]);
+		const titleParts = [txt("No charge seen for "), who(sub.name)];
+		const detailParts = [
+			txt(
+				lastCharge
+					? `Last charged ${lastCharge}, ${daysBetweenIso(lastCharge, now)} days ago, on a ${sub.billingCycle} cycle — cancelled, or paid from an untracked account? `
+					: "No matching charge anywhere in this ledger — cancelled, or paid from an untracked account? "
+			),
+			amt(eur0(impactEUR)),
+			txt("/year is riding on the answer."),
+		];
 		out.push({
 			id: insightId("zombie-subscription", sub.id, lastCharge ?? "never"),
 			kind: "zombie-subscription",
 			severity: "medium",
-			title: `No charge seen for ${sub.name}`,
-			detail: lastCharge
-				? `Last charged ${lastCharge}, ${daysBetweenIso(lastCharge, now)} days ago, on a ${sub.billingCycle} cycle — cancelled, or paid from an untracked account? ${eur0(impactEUR)}/year is riding on the answer.`
-				: `No matching charge anywhere in this ledger — cancelled, or paid from an untracked account? ${eur0(impactEUR)}/year is riding on the answer.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR,
 			deepLink: { type: "subscription", subscriptionId: sub.id },
 		});
@@ -353,12 +448,17 @@ export function zombieSubscriptions(store: KpiStore, subscriptions: Subscription
  * correctly on the 3rd as well as the 30th — the single fix that makes an early-month dashboard honest.
  * "Uncategorized" is excluded: it has its own, better-targeted insight, and a card telling you your
  * uncategorized spend is up isn't advice, it's a chore notification.
+ *
+ * Dividing by a tiny elapsed fraction is the same trap `budgetOverruns` guards against, and this
+ * detector fell into it: one €100 grocery run on the 1st became "€3,100 this month at today's pace,
+ * €2,800 above your average" — with an impactEUR of 2,800 it took the top slot of the five-card feed on
+ * the 1st of every month. Same threshold, same reason.
  */
 export function categoryDeltas(store: KpiStore, today: Date = new Date(), max = 3): Insight[] {
 	const now = todayIso(today);
 	const m0 = monthKeyOf(now);
 	const elapsed = elapsedFraction(m0, now);
-	if (elapsed <= 0) return [];
+	if (elapsed < MIN_ELAPSED_FOR_PROJECTION) return [];
 
 	const current = categorySpendMonth(store, m0);
 	const priorMonths = completeMonths(now, 3).map((m) => categorySpendMonth(store, m));
@@ -383,12 +483,22 @@ export function categoryDeltas(store: KpiStore, today: Date = new Date(), max = 
 		.map(({ categoryId, delta, pace, priorMean }) => {
 			const name = categoryNameOf(store, categoryId);
 			const up = delta > 0;
+			// The category name is the user's own label, not a merchant or an account, so it stays plain.
+			const titleParts = [txt(`${name} `), amt(eur0(delta)), txt(` ${up ? "above" : "below"} your 3-month average`)];
+			const detailParts = [
+				amt(eur0(pace)),
+				txt(" this month at today's pace against a "),
+				amt(eur0(priorMean)),
+				txt(" average over the last 3 complete months."),
+			];
 			return {
 				id: insightId("category-delta", m0, categoryId),
 				kind: "category-delta" as const,
 				severity: up ? (Math.abs(delta) >= 200 ? "high" : "medium") : ("low" as InsightSeverity),
-				title: `${name} ${eur0(delta)} ${up ? "above" : "below"} your 3-month average`,
-				detail: `${eur0(pace)} this month at today's pace against a ${eur0(priorMean)} average over the last 3 complete months.`,
+				title: joinParts(titleParts),
+				detail: joinParts(detailParts),
+				titleParts,
+				detailParts,
 				impactEUR: Math.abs(delta),
 				deepLink: { type: "ledger" as const, categoryId, dateFrom: `${m0}-01`, dateTo: lastDayOfMonth(m0) },
 			};
@@ -430,6 +540,29 @@ export function duplicateCharges(store: KpiStore, series: RecurringSeries[] = []
 	for (const group of groups.values()) {
 		if (group.length < 2) continue;
 		const sorted = group.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1));
+
+		// Matching rows are unioned into clusters rather than emitted per pair. Three identical charges
+		// produce the pairs (0,1), (0,2) and (1,2) — three cards, same merchant, same amount, same impact,
+		// three of the five slots on the overview spent telling one fact three times. The union also keeps
+		// the one-cent tolerance transitive (49.95/49.96/49.97 is one cluster, not two overlapping pairs).
+		const parent = new Map<string, string>();
+		for (const tx of sorted) parent.set(tx.id, tx.id);
+		const find = (id: string): string => {
+			let root = id;
+			while (parent.get(root) !== root) root = parent.get(root)!;
+			while (parent.get(id) !== root) {
+				const next = parent.get(id)!;
+				parent.set(id, root);
+				id = next;
+			}
+			return root;
+		};
+		const union = (a: string, b: string): void => {
+			const ra = find(a);
+			const rb = find(b);
+			if (ra !== rb) parent.set(rb, ra);
+		};
+
 		// Only forward within a 3-day window, so a merchant with hundreds of rows stays linear.
 		for (let i = 0; i < sorted.length; i++) {
 			for (let j = i + 1; j < sorted.length; j++) {
@@ -439,18 +572,45 @@ export function duplicateCharges(store: KpiStore, series: RecurringSeries[] = []
 				if (a.id === b.id) continue;
 				if (Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) > 0.011) continue;
 				if (knownPairs.has(pairKey(a.id, b.id))) continue;
-
-				const amount = Math.abs(b.amount);
-				out.push({
-					id: insightId("duplicate-charge", ...[a.id, b.id].sort()),
-					kind: "duplicate-charge",
-					severity: amount >= 50 ? "high" : "medium",
-					title: `${eur(amount)} charged twice by ${merchantSourceText(b) || "the same merchant"}`,
-					detail: `${a.date} and ${b.date}, same account, same amount — worth checking before it's too late to dispute.`,
-					impactEUR: amount,
-					deepLink: { type: "transaction", transactionId: b.id },
-				});
+				union(a.id, b.id);
 			}
+		}
+
+		const clusters = new Map<string, Transaction[]>();
+		for (const tx of sorted) {
+			const root = find(tx.id);
+			const cluster = clusters.get(root);
+			if (cluster) cluster.push(tx);
+			else clusters.set(root, [tx]);
+		}
+
+		for (const cluster of clusters.values()) {
+			if (cluster.length < 2) continue; // a row that matched nothing is its own singleton cluster
+			const last = cluster[cluster.length - 1];
+			const amount = Math.abs(last.amount);
+			const times = cluster.length;
+			const dates = cluster.map((tx) => tx.date);
+			const dateText = `${dates.slice(0, -1).join(", ")} and ${dates[dates.length - 1]}`;
+			// One extra charge per member beyond the first — the money actually at risk, and identical to
+			// the old per-pair figure for the two-charge case.
+			const impactEUR = amount * (times - 1);
+			const titleParts = [
+				amt(eur(amount)),
+				txt(times === 2 ? " charged twice by " : ` charged ${times} times by `),
+				who(merchantSourceText(last) || "the same merchant"),
+			];
+			const detailParts = [txt(`${dateText}, same account, same amount — worth checking before it's too late to dispute.`)];
+			out.push({
+				id: insightId("duplicate-charge", ...cluster.map((tx) => tx.id).sort()),
+				kind: "duplicate-charge",
+				severity: amount >= 50 ? "high" : "medium",
+				title: joinParts(titleParts),
+				detail: joinParts(detailParts),
+				titleParts,
+				detailParts,
+				impactEUR,
+				deepLink: { type: "transaction", transactionId: last.id },
+			});
 		}
 	}
 	return out;
@@ -501,22 +661,27 @@ export function categoryOutliers(store: KpiStore, today: Date = new Date()): Ins
 		if (deviation <= 0) continue;
 		if (amount <= centre + 3 * deviation) continue;
 
+		const titleParts = [amt(eur(amount)), txt(` on ${categoryNameOf(store, key)} is unusual`)];
+		const detailParts = [
+			who(merchantSourceText(tx) || tx.description),
+			txt(` on ${tx.date}. Your typical ${categoryNameOf(store, key)} charge over the last 12 months is `),
+			amt(eur0(centre)),
+			txt("."),
+		];
 		out.push({
 			id: insightId("category-outlier", tx.id),
 			kind: "category-outlier",
 			severity: "medium",
-			title: `${eur(amount)} on ${categoryNameOf(store, key)} is unusual`,
-			detail: `${merchantSourceText(tx) || tx.description} on ${tx.date}. Your typical ${categoryNameOf(store, key)} charge over the last 12 months is ${eur0(centre)}.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR: amount - centre,
 			deepLink: { type: "transaction", transactionId: tx.id },
 		});
 	}
 	return out;
 }
-
-/** Before roughly the 5th of the month, dividing by the elapsed fraction amplifies a single grocery run
- *  into a €3,000 projection. Waiting a few days costs nothing and stops the feed being wrong every month. */
-const MIN_ELAPSED_FOR_PROJECTION = 0.15;
 
 /**
  * A budgeted category on pace to finish the month over its limit. Pacing, not `spent/budget`, is what
@@ -539,12 +704,16 @@ export function budgetOverruns(store: KpiStore, budgets: BudgetsContext, today: 
 		if (projected <= budget * 1.1) continue;
 
 		const name = category.name ?? categoryNameOf(store, category.id);
+		const titleParts = [txt(`${name} on pace for `), amt(eur0(projected)), txt(" against a "), amt(eur0(budget)), txt(" limit")];
+		const detailParts = [amt(eur0(spent)), txt(` spent with ${Math.round((1 - elapsed) * 100)}% of the month left.`)];
 		out.push({
 			id: insightId("budget-overrun", month, category.id),
 			kind: "budget-overrun",
 			severity: projected > budget * 1.5 ? "high" : "medium",
-			title: `${name} on pace for ${eur0(projected)} against a ${eur0(budget)} limit`,
-			detail: `${eur0(spent)} spent with ${Math.round((1 - elapsed) * 100)}% of the month left.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR: projected - budget,
 			deepLink: { type: "budgets", categoryId: category.id, month },
 		});
@@ -552,12 +721,21 @@ export function budgetOverruns(store: KpiStore, budgets: BudgetsContext, today: 
 	return out;
 }
 
+/** A ledger this far behind describes the past, not the present — the same 45-day bar zombieSubscriptions
+ *  uses, for the same reason. */
+const STALE_LEDGER_DAYS = 45;
+
 /**
  * The biggest regular incoming payment is late. Scoped to the largest monthly-cadence credit series
  * because that is a salary, and a salary that hasn't arrived is the one piece of news in this whole
  * file that a user wants *before* they check anything else.
+ *
+ * `store` is optional only so the exported signature stays compatible; pass it. Without it there is no
+ * way to tell a genuinely missing salary from a ledger nobody has imported into since March, and a user
+ * three months behind on imports gets a permanent high-severity "your salary hasn't arrived" pinned to
+ * the top of the feed — the exact false alarm zombieSubscriptions already refuses to raise.
  */
-export function missingIncome(series: RecurringSeries[], today: Date = new Date()): Insight[] {
+export function missingIncome(series: RecurringSeries[], today: Date = new Date(), store?: KpiStore): Insight[] {
 	const now = todayIso(today);
 	let largest: RecurringSeries | undefined;
 	for (const s of series) {
@@ -566,16 +744,29 @@ export function missingIncome(series: RecurringSeries[], today: Date = new Date(
 	}
 	if (!largest) return [];
 
+	if (store) {
+		const ledgerEnd = latestTxDate(store.transactions);
+		if (!ledgerEnd || daysBetweenIso(ledgerEnd, now) > STALE_LEDGER_DAYS) return [];
+	}
+
 	const daysLate = daysBetweenIso(largest.expectedNextDate, now);
 	if (daysLate <= 5) return [];
 
+	const titleParts = [who(largest.displayName), txt(" hasn't arrived")];
+	const detailParts = [
+		txt("Usually about "),
+		amt(eur0(largest.medianAmount)),
+		txt(` around the ${ordinal(Number(largest.lastDate.slice(8, 10)))} — expected ${largest.expectedNextDate}, ${daysLate} days ago.`),
+	];
 	return [
 		{
 			id: insightId("missing-income", largest.key, largest.expectedNextDate),
 			kind: "missing-income",
 			severity: "high",
-			title: `${largest.displayName} hasn't arrived`,
-			detail: `Usually about ${eur0(largest.medianAmount)} around the ${ordinal(Number(largest.lastDate.slice(8, 10)))} — expected ${largest.expectedNextDate}, ${daysLate} days ago.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR: largest.medianAmount,
 			deepLink: { type: "ledger", accountId: largest.accountId, search: largest.displayName },
 		},
@@ -601,13 +792,22 @@ export function uncategorizedBacklog(store: KpiStore, today: Date = new Date()):
 	const share = uncategorized / total;
 	if (share <= UNCATEGORIZED_WARN_SHARE) return [];
 
+	const titleParts = [txt(`${Math.round(share * 100)}% of your recent spending is uncategorized`)];
+	const detailParts = [
+		amt(eur0(uncategorized)),
+		txt(" of "),
+		amt(eur0(total)),
+		txt(" over the last 3 complete months has no category, so every category figure on your dashboards is a lower bound."),
+	];
 	return [
 		{
 			id: insightId("uncategorized-backlog", months[0]),
 			kind: "uncategorized-backlog",
 			severity: share > 0.3 ? "high" : "medium",
-			title: `${Math.round(share * 100)}% of your recent spending is uncategorized`,
-			detail: `${eur0(uncategorized)} of ${eur0(total)} over the last 3 complete months has no category, so every category figure on your dashboards is a lower bound.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR: uncategorized,
 			deepLink: { type: "ledger", uncategorizedOnly: true, dateFrom: from, dateTo: to },
 		},
@@ -631,13 +831,17 @@ export function staleAccounts(store: KpiStore, today: Date = new Date()): Insigh
 		const days = daysBetweenIso(latest, now);
 		if (days <= STALE_ACCOUNT_DAYS) continue;
 
+		const titleParts = [who(account.name), txt(" may need a re-import")];
+		const detailParts = [txt(`No transactions since ${latest}, ${days} days ago, while your other accounts are current.`)];
 		out.push({
 			id: insightId("stale-account", account.id, latest),
 			kind: "stale-account",
 			severity: "low",
 			// Impact is the activity you're *not* seeing — the account's own monthly expense average.
-			title: `${account.name} may need a re-import`,
-			detail: `No transactions since ${latest}, ${days} days ago, while your other accounts are current.`,
+			title: joinParts(titleParts),
+			detail: joinParts(detailParts),
+			titleParts,
+			detailParts,
 			impactEUR: monthlyExpenseAverage(store, account.id),
 			deepLink: { type: "account", accountId: account.id },
 		});
@@ -674,7 +878,7 @@ export function computeInsights(
 		...duplicateCharges(store, series, today),
 		...categoryOutliers(store, today),
 		...budgetOverruns(store, budgetsCtx, today),
-		...missingIncome(series, today),
+		...missingIncome(series, today, store),
 		...uncategorizedBacklog(store, today),
 		...staleAccounts(store, today),
 	];

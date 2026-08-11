@@ -24,7 +24,7 @@ import { deltaRow, formatEUR, formatPct as tableFormatPct, metricRow, yearHeader
 import { openImportWizard } from "../../wizards/ImportWizard";
 import { renderCategoryFlowCard } from "./CategoryFlow";
 import { renderInsightsFeed } from "./InsightsFeed";
-import { goToLedger, UNCATEGORIZED } from "./LedgerSection";
+import { busiestAccountId, goToLedger, UNCATEGORIZED } from "./LedgerSection";
 import {
 	balanceOf,
 	catColor,
@@ -69,14 +69,64 @@ function renderTrustBar(container: HTMLElement, plugin: FinancePlugin): void {
 	bar.createSpan({ cls: "fp-trustbar-sep", text: "·" });
 	bar.createSpan({ text: `${store.accounts.length} account${store.accounts.length === 1 ? "" : "s"}` });
 
+	// Every total on this page is a 1:1 sum across whatever currencies the accounts are in, stamped
+	// with one symbol (`portfolioCurrency` falls back to EUR when they disagree). That is a caveat on
+	// the whole page, which is exactly what this bar is for.
+	const currencies = new Set(store.accounts.map((a) => a.currency || "EUR"));
+	if (currencies.size > 1) {
+		bar.createSpan({ cls: "fp-trustbar-sep", text: "·" });
+		bar.createSpan({
+			cls: "fp-trustbar-flag",
+			text: `mixed currencies (${Array.from(currencies).sort().join(", ")}) summed 1:1`,
+		});
+	}
+
 	if (share.total <= 0) return;
+	// The figure is portfolio-wide over the trailing 3 complete months, but the ledger only renders on
+	// an account page — so the link says which account it opens, and carries the same 3-month window
+	// it just quoted. Before, a portfolio-wide 3-month number opened one account's entire history.
+	const { from, to } = ttmWindow(new Date(), 3);
+	const destination = store.accounts.find((a) => a.id === busiestAccountId(store));
 	bar.createSpan({ cls: "fp-trustbar-sep", text: "·" });
 	const link = bar.createEl("button", {
 		cls: "fp-trustbar-link",
-		text: `${pct(share.share)} of trailing 3-month spend uncategorized`,
+		text: destination
+			? `${pct(share.share)} of trailing 3-month spend uncategorized — review in ${destination.name}`
+			: `${pct(share.share)} of trailing 3-month spend uncategorized`,
 		attr: { type: "button" },
 	});
-	link.addEventListener("click", () => void goToLedger(plugin, { categoryId: UNCATEGORIZED, preset: "all", dateFrom: "", dateTo: "" }));
+	link.addEventListener("click", () =>
+		void goToLedger(plugin, { categoryId: UNCATEGORIZED, preset: "custom", dateFrom: from, dateTo: to }, destination?.id)
+	);
+}
+
+/* ==========================================================================
+   The portfolio projection
+   ========================================================================== */
+
+/**
+ * `projectMonthEnd`'s single `accountIds` knob answers two questions that want different answers at
+ * portfolio scope:
+ *
+ * - *what balance am I projecting?* — the liquid accounts, because a credit card's balance is a debt,
+ *   not a buffer you can spend from;
+ * - *what everyday spending do I do?* — the spending accounts, credit included, because a card
+ *   purchase does drain checking eventually and excluding it overstates the runway.
+ *
+ * Left at `undefined` it takes the liquid answer for the balance and the portfolio-wide answer for
+ * the commitments, so a €400/mo SaaS charged to a card was subtracted from a checking balance it will
+ * never touch — enough to print "projected short before 31 Aug" for someone who isn't. The
+ * commitments are re-derived here over the same accounts the balance is measured on; everything else
+ * (including the deliberately broader discretionary base) is left exactly as the helper computed it.
+ */
+function portfolioProjection(plugin: FinancePlugin, series: RecurringSeries[], today: Date) {
+	const store = plugin.store;
+	const base = projectMonthEnd(store, store.subscriptions, series, undefined, today);
+	const liquid = liquidAccountIds(store);
+	const committed = committedPayments(store.subscriptions, series, base.eom, liquid, today);
+	const scheduledOut = committed.reduce((sum, c) => sum + c.amount, 0);
+	const projected = base.current + base.scheduledIn - scheduledOut - base.discretionary;
+	return { ...base, committed, scheduledOut, projected, safeToSpend: projected - base.dailyDiscretionary * 7 };
 }
 
 /* ==========================================================================
@@ -121,7 +171,7 @@ function renderHeroRow(container: HTMLElement, plugin: FinancePlugin, series: Re
 		const w = monthWindow(key);
 		netByMonth.push(windowSummary(store, w.from, w.to).net);
 	}
-	const projection = projectMonthEnd(store, store.subscriptions, series, undefined, today);
+	const projection = portfolioProjection(plugin, series, today);
 	const cashflowCard = renderStat(grid, {
 		label: "This month's cashflow",
 		value: signedMoney(m0.net, currency),
@@ -143,7 +193,9 @@ function renderHeroRow(container: HTMLElement, plugin: FinancePlugin, series: Re
 		value: pct(ttmSummary.savingsRate),
 		iconName: "piggy-bank",
 		money: false,
-		delta: rateDelta === undefined || !Number.isFinite(rateDelta) ? undefined : { value: rateDelta },
+		// Percentage *points*: this delta is a difference of two rates (20% → 25% is +5pp), not the
+		// relative change the net-worth chip above it shows.
+		delta: rateDelta === undefined || !Number.isFinite(rateDelta) ? undefined : { value: rateDelta, unit: "pp" as const },
 	});
 	setStatFoot(rateCard, [{ money: money(ttmSummary.net, currency) }, " kept of ", { money: money(ttmSummary.income, currency) }, " earned"]);
 }
@@ -155,7 +207,7 @@ function renderHeroRow(container: HTMLElement, plugin: FinancePlugin, series: Re
 function renderProjection(container: HTMLElement, plugin: FinancePlugin, series: RecurringSeries[], today: Date): void {
 	const store = plugin.store;
 	const currency = portfolioCurrency(store);
-	const p = projectMonthEnd(store, store.subscriptions, series, undefined, today);
+	const p = portfolioProjection(plugin, series, today);
 	if (p.current === 0 && p.committed.length === 0 && p.dailyDiscretionary === 0) return;
 
 	const ratio = p.current > 0 ? Math.max(0, p.projected) / p.current : 0;
@@ -279,8 +331,10 @@ function renderNext30(container: HTMLElement, plugin: FinancePlugin, series: Rec
 	const currency = portfolioCurrency(store);
 	const now = todayIso(today);
 	const until = shiftDays(now, 30);
-	const p = projectMonthEnd(store, store.subscriptions, series, undefined, today);
-	const payments = committedPayments(store.subscriptions, series, until, undefined, today);
+	const p = portfolioProjection(plugin, series, today);
+	// Same scope as the running balance below it: this table subtracts each payment from a liquid
+	// balance, so a charge that lands on a credit card has no business in the column.
+	const payments = committedPayments(store.subscriptions, series, until, liquidAccountIds(store), today);
 
 	const total = payments.reduce((sum, c) => sum + c.amount, 0);
 	const card = container.createDiv({ cls: "fp-card" });

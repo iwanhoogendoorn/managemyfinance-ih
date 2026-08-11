@@ -266,6 +266,24 @@ describe("categoryDeltas", () => {
 		expect(categoryDeltas(s, TODAY)).toEqual([]);
 	});
 
+	it("says nothing in the first days of the month, where the pace figure is fiction (review MAJOR #6)", () => {
+		// One €100 grocery run on the 1st against a €300 average read as "€3,100 this month at today's
+		// pace, €2,800 above your average" — impactEUR 2,800, top of the five-card feed, every month.
+		const s = store([
+			tx({ date: "2024-04-10", amount: -300, categoryId: catFood.id }),
+			tx({ date: "2024-05-10", amount: -300, categoryId: catFood.id }),
+			tx({ date: "2024-06-10", amount: -300, categoryId: catFood.id }),
+			tx({ date: "2024-07-01", amount: -100, categoryId: catFood.id }),
+		]);
+		expect(categoryDeltas(s, new Date(2024, 6, 1))).toEqual([]); // 1/31 of the month elapsed
+		expect(categoryDeltas(s, new Date(2024, 6, 4))).toEqual([]); // 4/31 — still under the floor
+		// Past the floor the same ledger is fair game again — and by then the honest reading of €100 by the
+		// 15th against a €300 average is that Food is running *below* normal, not €2,800 above it.
+		const later = categoryDeltas(s, TODAY);
+		expect(later).toHaveLength(1);
+		expect(later[0].title).toContain("below");
+	});
+
 	it("returns nothing for an empty store", () => {
 		expect(categoryDeltas(EMPTY, TODAY)).toEqual([]);
 	});
@@ -328,6 +346,32 @@ describe("duplicateCharges", () => {
 			tx({ date: "2024-07-02", amount: -49.96, counterparty: "MEDIA MARKT" }),
 		]);
 		expect(duplicateCharges(s, [], TODAY)).toHaveLength(1);
+	});
+
+	it("collapses a triple charge into one card instead of three (review MINOR #21)", () => {
+		// Three identical rows produce the pairs (0,1), (0,2) and (1,2) — three cards, same merchant, same
+		// amount, three of the five slots on the overview spent telling one fact three times.
+		const s = store([
+			tx({ date: "2024-07-01", amount: -60, counterparty: "MEDIA MARKT" }),
+			tx({ date: "2024-07-02", amount: -60, counterparty: "MEDIA MARKT" }),
+			tx({ date: "2024-07-03", amount: -60, counterparty: "MEDIA MARKT" }),
+		]);
+		const insights = duplicateCharges(s, [], TODAY);
+		expect(insights).toHaveLength(1);
+		expect(insights[0].title).toContain("charged 3 times");
+		expect(insights[0].detail).toContain("2024-07-01, 2024-07-02 and 2024-07-03");
+		expect(insights[0].impactEUR).toBeCloseTo(120, 6); // the two extra charges, not one and not three
+	});
+
+	it("still says 'twice' and books one charge of impact for a plain pair", () => {
+		const s = store([
+			tx({ date: "2024-07-01", amount: -60, counterparty: "MEDIA MARKT" }),
+			tx({ date: "2024-07-02", amount: -60, counterparty: "MEDIA MARKT" }),
+		]);
+		const [insight] = duplicateCharges(s, [], TODAY);
+		expect(insight.title).toContain("charged twice");
+		expect(insight.detail).toContain("2024-07-01 and 2024-07-02");
+		expect(insight.impactEUR).toBeCloseTo(60, 6);
 	});
 
 	it("looks back 90 days only, so a 2019 double charge doesn't outrank live insights", () => {
@@ -457,6 +501,17 @@ describe("missingIncome", () => {
 
 	it("returns nothing for an empty store", () => {
 		expect(missingIncome(recurringSeries(EMPTY), TODAY)).toEqual([]);
+	});
+
+	it("blames a stale import rather than the employer when the whole ledger is months behind (review MINOR #19)", () => {
+		// Last import ended 25 April, "today" is 15 July. Without the guard this pinned a permanent
+		// high-severity "your salary hasn't arrived" to the top of the feed — the same false alarm
+		// zombieSubscriptions already refuses to raise.
+		const s = store(charges("EMPLOYER BV", "2024-02-25", 30, [2500, 2500, 2500]));
+		expect(missingIncome(recurringSeries(s), TODAY, s)).toEqual([]);
+		// A current ledger with the same late salary still speaks up.
+		const current = store([...charges("EMPLOYER BV", "2024-02-25", 30, [2500, 2500, 2500]), tx({ date: "2024-07-12", amount: -30 })]);
+		expect(missingIncome(recurringSeries(current), TODAY, current)).toHaveLength(1);
 	});
 });
 
@@ -599,5 +654,47 @@ describe("computeInsights", () => {
 			expect(insight.impactEUR).toBeGreaterThanOrEqual(0);
 			expect(insight.deepLink.type).toBeTruthy();
 		}
+	});
+
+	// ---------- structured copy (privacy contract) ----------
+
+	it("gives every insight parts that join back to its own title and detail", () => {
+		// The view renders parts so privacy mode can redact figures and merchant names; the flat strings
+		// stay the fallback, so the two must never disagree by so much as a space.
+		const s = store([
+			...charges("NETFLIX", "2024-02-05", 30, [-9.99, -9.99, -9.99, -17.99]),
+			...charges("EMPLOYER BV", "2024-02-25", 30, [2500, 2500, 2500]),
+			tx({ date: "2024-07-01", amount: -400, counterparty: "MEDIA MARKT" }),
+			tx({ date: "2024-07-02", amount: -400, counterparty: "MEDIA MARKT" }),
+			tx({ date: "2024-07-10", amount: -900, categoryId: catFood.id }),
+			tx({ date: "2024-06-10", amount: -100 }),
+			tx({ date: "2024-05-10", amount: -100 }),
+		]);
+		const feed = computeInsights(s, [sub({ cost: 4.99 })], null, { today: TODAY });
+		expect(feed.length).toBeGreaterThan(3);
+		const kinds = new Set(feed.map((i) => i.kind));
+		expect(kinds.size).toBeGreaterThan(2);
+
+		for (const insight of feed) {
+			expect(insight.titleParts?.map((p) => p.text).join("")).toBe(insight.title);
+			expect(insight.detailParts?.map((p) => p.text).join("")).toBe(insight.detail);
+			// Nothing carries both flags — a part is either a figure or a name, never a mixed run.
+			for (const part of [...(insight.titleParts ?? []), ...(insight.detailParts ?? [])]) {
+				expect(part.money && part.sensitive).toBeFalsy();
+			}
+		}
+	});
+
+	it("marks the amounts as money and the merchant as sensitive", () => {
+		const s = store([
+			tx({ date: "2024-07-01", amount: -400, counterparty: "MEDIA MARKT" }),
+			tx({ date: "2024-07-02", amount: -400, counterparty: "MEDIA MARKT" }),
+		]);
+		const [insight] = duplicateCharges(s, [], TODAY);
+		expect(insight.titleParts).toEqual([
+			{ text: "€400.00", money: true },
+			{ text: " charged twice by " },
+			{ text: "MEDIA MARKT", sensitive: true },
+		]);
 	});
 });

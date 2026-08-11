@@ -42,8 +42,10 @@ export function renderCardVisual(parent: HTMLElement, card: CardVisualData, cls?
 
 	const shine = face.createDiv({ cls: "fp-card-visual-shine" });
 
+	// Issuer, last four and cardholder name all carry `.fp-sensitive`: the Cards tab is the most
+	// person-identifying screen in the plugin, and privacy mode existed to make a screen shareable.
 	const top = face.createDiv({ cls: "fp-card-visual-top" });
-	top.createDiv({ cls: "fp-card-visual-issuer", text: card.issuer || card.product || "" });
+	top.createDiv({ cls: "fp-card-visual-issuer fp-sensitive", text: card.issuer || card.product || "" });
 	if (card.isPrimary) top.createDiv({ cls: "fp-card-visual-primary", text: "PRIMARY" });
 
 	const chipRow = face.createDiv({ cls: "fp-card-visual-chip-row" });
@@ -51,14 +53,14 @@ export function renderCardVisual(parent: HTMLElement, card: CardVisualData, cls?
 	chip.createDiv({ cls: "fp-card-visual-chip-lines" });
 	chipRow.createDiv({ cls: "fp-card-visual-contactless" });
 	face.createDiv({
-		cls: "fp-card-visual-number",
+		cls: "fp-card-visual-number fp-sensitive",
 		text: card.last4 ? `•••• •••• •••• ${card.last4}` : "•••• •••• •••• ••••",
 	});
 
 	const bottom = face.createDiv({ cls: "fp-card-visual-bottom" });
 	const nameCol = bottom.createDiv({ cls: "fp-card-visual-name-col" });
 	nameCol.createDiv({ cls: "fp-card-visual-label", text: "CARDHOLDER" });
-	nameCol.createDiv({ cls: "fp-card-visual-name", text: card.name });
+	nameCol.createDiv({ cls: "fp-card-visual-name fp-sensitive", text: card.name });
 	if (card.expiry) {
 		const expCol = bottom.createDiv({ cls: "fp-card-visual-exp-col" });
 		expCol.createDiv({ cls: "fp-card-visual-label", text: "EXP" });

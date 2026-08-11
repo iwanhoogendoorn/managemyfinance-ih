@@ -21,7 +21,12 @@ export interface StatOpts {
 	iconName?: string;
 	/** Kept for the legacy `statTile` contract. `bad` now tints only the border — no accent stripe. */
 	tone?: Tone;
-	delta?: { value: number; goodIfUp?: boolean };
+	/**
+	 * `unit` is not decoration. `%` is a *relative* change (net worth grew 5%); `pp` is a difference
+	 * of two rates (a savings rate moving 20% → 25% is +5pp, not +5%). Rendering both as "%" in the
+	 * same chip made two different quantities look like one.
+	 */
+	delta?: { value: number; goodIfUp?: boolean; unit?: "%" | "pp" };
 	sparklineValues?: number[];
 	sparklineColor?: string;
 	sub?: string;
@@ -84,7 +89,7 @@ export function renderStat(parent: HTMLElement, opts: StatOpts): HTMLElement {
 			cls: "fp-delta " + (dir === 0 ? "fp-delta--flat" : good ? "fp-delta--good" : "fp-delta--bad"),
 		});
 		deltaGlyph(chip, dir);
-		chip.createSpan({ text: `${raw >= 0 ? "+" : ""}${(raw * 100).toFixed(1)}%` });
+		chip.createSpan({ text: `${raw >= 0 ? "+" : ""}${(raw * 100).toFixed(1)}${opts.delta.unit ?? "%"}` });
 	}
 
 	const body = card.createDiv({ cls: "fp-stat-body" });
@@ -143,12 +148,19 @@ export function categoryChip(parent: HTMLElement, name: string, color: string, i
  * A small tab strip switching between panels rendered into the same container — first tab active by
  * default. Tabs are real `<button role="tab">`s with a roving tabindex, so they are focusable,
  * announced, and keyboard-operable (the old `<div>` implementation was none of those).
+ *
+ * Panels render on *first activation*, not eagerly. Rendering a hidden panel meant every chart in it
+ * mounted at 0×0 behind `display: none` — the ResizeObserver never saw a size change, so it never
+ * ran its own disposal path and the observer outlived the DOM it watched. It also paid for charts
+ * most readers never open. Each panel still renders at most once, so a caller that caches the panel
+ * element it was handed (MonthDrilldownModal's Month tab) keeps a valid reference.
  */
 export function tabSwitcher(container: HTMLElement, tabs: { label: string; render: (panel: HTMLElement) => void }[]): void {
 	const header = container.createDiv({ cls: "fp-tabs", attr: { role: "tablist" } });
 	const panels = container.createDiv({ cls: "fp-tab-panels" });
 	const buttons: HTMLElement[] = [];
 	const panelEls: HTMLElement[] = [];
+	const rendered: boolean[] = [];
 
 	const select = (i: number) => {
 		buttons.forEach((b, j) => {
@@ -157,6 +169,10 @@ export function tabSwitcher(container: HTMLElement, tabs: { label: string; rende
 			b.setAttribute("tabindex", i === j ? "0" : "-1");
 		});
 		panelEls.forEach((p, j) => p.toggleClass("is-hidden", i !== j));
+		if (!rendered[i]) {
+			rendered[i] = true;
+			tabs[i].render(panelEls[i]);
+		}
 	};
 
 	tabs.forEach((tab, i) => {
@@ -166,7 +182,6 @@ export function tabSwitcher(container: HTMLElement, tabs: { label: string; rende
 			attr: { type: "button", role: "tab", "aria-selected": String(i === 0), tabindex: i === 0 ? "0" : "-1" },
 		});
 		const panel = panels.createDiv({ cls: "fp-tab-panel" + (i === 0 ? "" : " is-hidden"), attr: { role: "tabpanel" } });
-		tab.render(panel);
 		btn.addEventListener("click", () => select(i));
 		btn.addEventListener("keydown", (ev: KeyboardEvent) => {
 			const next = ev.key === "ArrowRight" ? i + 1 : ev.key === "ArrowLeft" ? i - 1 : -1;
@@ -177,7 +192,14 @@ export function tabSwitcher(container: HTMLElement, tabs: { label: string; rende
 		});
 		buttons.push(btn);
 		panelEls.push(panel);
+		rendered.push(false);
 	});
+
+	// The first tab is active on mount, so it is rendered now — everything else waits for a click.
+	if (tabs.length > 0) {
+		rendered[0] = true;
+		tabs[0].render(panelEls[0]);
+	}
 }
 
 export interface EmptyStateOpts {

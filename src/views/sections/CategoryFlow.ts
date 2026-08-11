@@ -68,9 +68,11 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 	const list = card.createDiv({ cls: "fp-catbars" });
 
 	rows.forEach((r) => {
+		// Label only in `title`: the amount is already in the row's `.fp-money` cell, and a native
+		// tooltip is browser chrome that no stylesheet — and so no privacy mode — can redact.
 		const row = list.createEl("button", {
 			cls: "fp-catbar",
-			attr: { type: "button", title: `${r.label}: ${money(r.value, currency)}` },
+			attr: { type: "button", title: r.label },
 		});
 
 		const label = row.createDiv({ cls: "fp-catbar-label" });
@@ -86,7 +88,7 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 			// with it.
 			const ghost = track.createDiv({
 				cls: "fp-catbar-ghost",
-				attr: { title: `${COMPARISON_MONTHS}-month average: ${money(r.mean, currency)}` },
+				attr: { title: `${COMPARISON_MONTHS}-month average` },
 			});
 			ghost.style.left = `${Math.min(100, (r.mean / max) * 100)}%`;
 		}

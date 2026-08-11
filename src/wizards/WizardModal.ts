@@ -1,4 +1,5 @@
 import { App, Modal } from "obsidian";
+import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import { icon } from "../ui/dom";
 
 /**
@@ -26,6 +27,9 @@ export interface WizardStep {
 	nextLabel?: string;
 	/** Shows a ghost "Skip" action alongside Next — bypasses canGoNext and onNext, just advances (or closes on the last step). */
 	skippable?: boolean;
+	/** Makes Skip leave the wizard rather than advance — for an onboarding-style "Skip for now" where
+	 *  this step *is* the flow, so there is nothing to advance to that would make sense. */
+	skipExits?: boolean;
 	skipLabel?: string;
 	onSkip?: () => void | Promise<void>;
 	/** Suppresses Back/Cancel — for a step that has already committed something, where "Back" would
@@ -52,6 +56,11 @@ export class WizardModal extends Modal {
 	private wizTitle: string;
 	private wizSubtitle: string;
 	private wizIcon: string;
+	/** True while a step's `onNext`/`onSkip` is in flight. A double-click on "Import" used to run the
+	 *  handler twice and advance the step index twice, walking past the last step and throwing in the
+	 *  stepper — after the second (idempotent) import had already overwritten the summary's numbers. */
+	private busy = false;
+	private nextBtn?: HTMLButtonElement;
 
 	constructor(app: App, opts: { title: string; subtitle: string; icon: string; steps: WizardStep[] }) {
 		super(app);
@@ -90,6 +99,8 @@ export class WizardModal extends Modal {
 	}
 
 	onOpen(): void {
+		// Registered so a portfolio switch can close it — see modalRegistry.
+		registerOpenModal(this);
 		this.modalEl.addClass("fp-wizard-modal");
 		// `.fp-root` is where the design tokens live; `.fp-wizard-modal` is kept as the alias every
 		// existing modal rule is written against.
@@ -106,10 +117,25 @@ export class WizardModal extends Modal {
 		this.bodyEl = this.contentEl.createDiv({ cls: "fp-wizard-body" });
 		this.footerEl = this.contentEl.createDiv({ cls: "fp-wizard-footer" });
 
+		// Next is disabled whenever `canGoNext` says so, and almost every `canGoNext` reads a field the
+		// user is typing in or a select they just changed. Re-evaluating here — once, on the body, for
+		// every step — is what keeps that from being a trap: no step has to remember to re-render its
+		// footer after wiring an input, and steps in wizards that never call `rerender()` still work.
+		this.bodyEl.addEventListener("input", () => this.syncNextDisabled());
+		this.bodyEl.addEventListener("change", () => this.syncNextDisabled());
+
 		void this.renderStep();
 	}
 
+	private syncNextDisabled(): void {
+		if (!this.nextBtn || this.busy) return;
+		const step = this.steps[this.stepIndex];
+		if (!step) return;
+		this.nextBtn.disabled = !!step.canGoNext && !step.canGoNext();
+	}
+
 	onClose(): void {
+		unregisterOpenModal(this);
 		this.contentEl.empty();
 	}
 
@@ -144,6 +170,7 @@ export class WizardModal extends Modal {
 
 	private renderFooter(): void {
 		this.footerEl.empty();
+		this.nextBtn = undefined;
 		const left = this.footerEl.createDiv({ cls: "fp-wizard-footer-left" });
 		const right = this.footerEl.createDiv({ cls: "fp-wizard-footer-right" });
 
@@ -166,8 +193,22 @@ export class WizardModal extends Modal {
 		if (step.skippable) {
 			const skip = right.createEl("button", { cls: "fp-btn fp-btn-ghost", text: step.skipLabel ?? "Skip" });
 			skip.addEventListener("click", async () => {
-				if (step.onSkip) await step.onSkip();
-				this.close();
+				if (this.busy) return;
+				this.busy = true;
+				skip.disabled = true;
+				try {
+					if (step.onSkip) await step.onSkip();
+					// Skipping is "I'm not doing this step", not "I'm leaving the wizard" — it advances,
+					// exactly as this step's own doc comment promises, and only closes on the last step
+					// or where the step opted into exiting.
+					if (isLast || step.skipExits) this.close();
+					else {
+						this.stepIndex++;
+						await this.renderStep();
+					}
+				} finally {
+					this.busy = false;
+				}
 			});
 		}
 
@@ -177,14 +218,26 @@ export class WizardModal extends Modal {
 			cls: "fp-btn fp-btn--primary fp-btn-primary",
 			text: step.nextLabel ?? (isLast ? "Finish" : "Next"),
 		});
+		// A live-looking primary button that silently does nothing is worse than a disabled one.
+		// Evaluated here on every render, and again on any input/change inside the step body.
+		this.nextBtn = next;
+		this.syncNextDisabled();
 		next.addEventListener("click", async () => {
+			// Backstop for a step that invalidated itself without an input/change event or a rerender.
 			if (step.canGoNext && !step.canGoNext()) return;
-			if (step.onNext) await step.onNext();
-			if (isLast) {
-				this.close();
-			} else {
-				this.stepIndex++;
-				await this.renderStep();
+			if (this.busy) return;
+			this.busy = true;
+			next.disabled = true;
+			try {
+				if (step.onNext) await step.onNext();
+				if (isLast) {
+					this.close();
+				} else {
+					this.stepIndex++;
+					await this.renderStep();
+				}
+			} finally {
+				this.busy = false;
 			}
 		});
 	}

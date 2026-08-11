@@ -7,14 +7,18 @@ import { openCardWizard } from "../../wizards/CardWizard";
 
 /** One card, per your bank/card issuer: always linked to an account, counted and shown completely separately from it. */
 export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin): void {
-	container.addClass("fp-section");
+	// A root of our own, not the shared view body: `render()` is reachable from wizard and modal
+	// callbacks that resolve after an await, by which time the user may have navigated. `container` is
+	// the view body and stays connected regardless; a root we created dies with the body's `.empty()`.
+	const root = container.createDiv({ cls: "fp-section" });
 
 	function render(): void {
-		container.empty();
+		if (!root.isConnected) return;
+		root.empty();
 		const store = plugin.store;
 		const cards = store.cards;
 
-		const header = container.createDiv({ cls: "fp-section-header" });
+		const header = root.createDiv({ cls: "fp-section-header" });
 		const headText = header.createDiv();
 		headText.createEl("h2", { text: "Cards" });
 		headText.createDiv({
@@ -31,7 +35,7 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 		// back at the reader. This page is a visual inventory, and that is a fine thing to be.
 
 		if (store.accounts.length === 0) {
-			emptyState(container, {
+			emptyState(root, {
 				iconName: "credit-card",
 				title: "Add an account first",
 				description: "Cards always link to an account — set one up, then come back to add its cards.",
@@ -40,7 +44,7 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 		}
 
 		if (cards.length === 0) {
-			emptyState(container, {
+			emptyState(root, {
 				iconName: "credit-card",
 				title: "No cards tracked yet",
 				description: "Add your first card and link it to one of your accounts.",
@@ -57,7 +61,7 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 			return an.localeCompare(bn) || a.name.localeCompare(b.name);
 		});
 
-		const grid = container.createDiv({ cls: "fp-card-grid" });
+		const grid = root.createDiv({ cls: "fp-card-grid" });
 		sorted.forEach((card) => renderCardTile(grid, card, accountById.get(card.accountId)?.name ?? "Unknown account"));
 	}
 

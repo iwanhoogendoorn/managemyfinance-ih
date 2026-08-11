@@ -30,20 +30,33 @@ interface GroupDecision {
 	makeRule: boolean;
 }
 
+/** Where the user chose to go from the summary screen — "none" is the plain Done button. */
+export type ImportDestination = "none" | "review" | "subscriptions" | "ledger";
+
 export interface ImportOutcome {
 	added: number;
 	skipped: number;
 	rulesCreated: number;
+	/**
+	 * Which button ended the wizard. A host that owns the workspace body (first-run setup) has to know
+	 * whether the user asked to *go* somewhere before deciding whether to keep showing itself.
+	 */
+	destination: ImportDestination;
 }
 
 export interface ImportWizardOptions {
-	/** Fired after a successful import, once the user leaves the summary screen. */
-	onDone?: (outcome: ImportOutcome) => void;
+	/** Fired after a successful import, once the user leaves the summary screen. Awaited before the
+	 *  wizard performs its own navigation, so a host can hand the body over first. */
+	onDone?: (outcome: ImportOutcome) => void | Promise<void>;
 }
 
 /** Bank/broker CSV or Excel import: pick file → detect & preview → review categorization → confirm → summary. */
 export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOptions = {}): void {
 	const store = plugin.store;
+	/** The store's world as it was when this wizard opened. Switching portfolio re-points the same
+	 *  store instance at another folder, and every row parsed here carries *this* portfolio's account
+	 *  ids — appending them afterwards files them permanently into the wrong ledger. */
+	const openedAtGeneration = store.generation;
 
 	let selectedFile: string | null = null;
 	let tables: DetectedTable[] = [];
@@ -439,9 +452,18 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				});
 
 				if (reviewGroups.length === 0) {
+					// `fresh.length === 0` has two causes, and they are opposites: every row was a
+					// duplicate, or there were no rows at all. A header-only file used to be reported as
+					// "every row is already in your ledger", which sends the user looking for rows that
+					// were never read.
 					c.createEl("p", {
 						cls: "fp-step-desc",
-						text: fresh.length === 0 ? "Nothing new in this file — every row is already in your ledger." : "Everything in this file already has a category. Nothing to do here.",
+						text:
+							parsed.length === 0
+								? "No rows could be read from this file — check the column mapping on the previous step."
+								: fresh.length === 0
+									? "Nothing new in this file — every row is already in your ledger."
+									: "Everything in this file already has a category. Nothing to do here.",
 					});
 					return;
 				}
@@ -540,6 +562,13 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 			onNext: async () => {
 				importError = null;
 				rulesCreated = [];
+				if (store.generation !== openedAtGeneration) {
+					// Belt and braces: `switchPortfolio` closes open dialogs before reloading, so this
+					// only fires for a wizard that outran that (or was opened mid-switch).
+					importError = "Portfolio changed — reopen this dialog and import again.";
+					new Notice("Portfolio changed — reopen this dialog");
+					return;
+				}
 				try {
 					const rules = pendingRules().filter((rule) => !store.rules.some((r) => r.pattern === rule.pattern && r.categoryId === rule.categoryId));
 					if (rules.length > 0) {
@@ -623,14 +652,20 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
 				const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
 
+				/** Awaited before navigating: a host that owns the workspace body (first-run setup) has
+				 *  to release it first, or the destination is painted over by the host's own screen. */
+				const finishWith = async (destination: ImportDestination): Promise<void> => {
+					api.close();
+					await opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length, destination });
+				};
+
 				if (needCategory > 0) {
 					const review = left.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
 					icon(review, "tags");
 					review.createSpan({ text: `Review ${needCategory} uncategorized` });
-					review.addEventListener("click", () => {
+					review.addEventListener("click", async () => {
 						const ids = new Set(imported.filter((t) => !t.categoryId).map((t) => t.id));
-						api.close();
-						opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
+						await finishWith("review");
 						openReviewQueue(plugin, { transactionIds: ids, title: "Review this import" });
 					});
 				}
@@ -640,8 +675,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					icon(subs, "repeat");
 					subs.createSpan({ text: `${candidates.length} possible subscriptions` });
 					subs.addEventListener("click", async () => {
-						api.close();
-						opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
+						await finishWith("subscriptions");
 						plugin.settings.activeView = "subscriptions";
 						await plugin.saveSettings();
 						await plugin.activateView();
@@ -649,29 +683,32 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					});
 				}
 
-				const ledger = right.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Go to ledger", attr: { type: "button" } });
-				ledger.addEventListener("click", async () => {
-					const accountId = imported[0]?.accountId;
-					api.close();
-					opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
-					// Scope the ledger to exactly what this import covered, so "go to ledger" lands
-					// on the new rows instead of the full history.
-					const dates = imported.map((t) => t.date).filter(Boolean).sort();
-					if (dates.length > 0) setLedgerFilter({ dateFrom: dates[0], dateTo: dates[dates.length - 1] });
-					if (accountId) {
-						plugin.settings.activeAccountId = accountId;
-						plugin.settings.activeView = undefined;
-						await plugin.saveSettings();
-					}
-					await plugin.activateView();
-					plugin.refreshViews();
-				});
+				// When everything in the file was a duplicate, `imported` is empty — the button used to
+				// set no account and no date filter, so it re-rendered whatever page you were already on
+				// (nothing at all, on All Accounts). The duplicates name the account and the range just
+				// as well, and that is exactly where the user wanted to look.
+				const ledgerRows = imported.length > 0 ? imported : dupes;
+				if (ledgerRows.length > 0) {
+					const ledger = right.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Go to ledger", attr: { type: "button" } });
+					ledger.addEventListener("click", async () => {
+						const accountId = ledgerRows[0]?.accountId;
+						await finishWith("ledger");
+						// Scope the ledger to exactly what this import covered, so "go to ledger" lands
+						// on the new rows instead of the full history.
+						const dates = ledgerRows.map((t) => t.date).filter(Boolean).sort();
+						if (dates.length > 0) setLedgerFilter({ dateFrom: dates[0], dateTo: dates[dates.length - 1] });
+						if (accountId) {
+							plugin.settings.activeAccountId = accountId;
+							plugin.settings.activeView = undefined;
+							await plugin.saveSettings();
+						}
+						await plugin.activateView();
+						plugin.refreshViews();
+					});
+				}
 
 				const done = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", text: "Done", attr: { type: "button" } });
-				done.addEventListener("click", () => {
-					api.close();
-					opts.onDone?.({ added: result.added, skipped: result.skipped, rulesCreated: rulesCreated.length });
-				});
+				done.addEventListener("click", () => void finishWith("none"));
 			},
 		},
 	];

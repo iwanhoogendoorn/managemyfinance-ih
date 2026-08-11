@@ -1,7 +1,8 @@
 import { App, FuzzySuggestModal, Modal, Notice } from "obsidian";
 import { formatMoney } from "../format";
-import { autoCategorize } from "../import/autoCategorize";
+import { applyRules } from "../import/categorize";
 import type FinancePlugin from "../main";
+import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import { buildUserRule, deriveRulePattern, groupByMerchant, rankCategories, ruleReach, sortGroups, type GroupSort, type MerchantGroup } from "../reviewQueue";
 import type { Category, CategoryRule, Transaction } from "../types";
 import { categoryChip, emptyState, icon } from "../ui/dom";
@@ -63,8 +64,21 @@ export class ReviewQueueModal extends Modal {
 	private makeRule = true;
 	private undoStack: UndoEntry[] = [];
 	private assignedTxCount = 0;
-	private skipped = 0;
+	/**
+	 * Merchant *keys* skipped, not a running count. `undo()` rewinds the index past merchants that were
+	 * skipped on the way, so passing them a second time double-counted them; re-sorting rebuilds the
+	 * queue from scratch and re-offers them too. A set of keys survives both.
+	 */
+	private skippedKeys = new Set<string>();
+	/**
+	 * Rules created in this session, in creation order. Its own state rather than a filter over the
+	 * undo stack, because re-sorting mid-queue clears that stack — after which the summary claimed "0
+	 * rules created" and hid the apply button, for rules that were already saved to disk.
+	 */
+	private sessionRules: CategoryRule[] = [];
 	private busy = false;
+	/** The store's world when this queue was built — its transaction ids and rules belong to it. */
+	private openedAtGeneration = 0;
 	/** Uncategorized rows in scope, including any the grouper had to drop for having no merchant text
 	 *  at all — so the empty state can tell the truth about which of the two it is. */
 	private poolSize = 0;
@@ -75,11 +89,14 @@ export class ReviewQueueModal extends Modal {
 	}
 
 	onOpen(): void {
+		// Registered so a portfolio switch can close it — see modalRegistry.
+		registerOpenModal(this);
 		this.modalEl.addClass("fp-wizard-modal");
 		this.modalEl.addClass("fp-root");
 		this.modalEl.addClass("fp-review-modal");
 		this.contentEl.addClass("fp-review-queue");
 
+		this.openedAtGeneration = this.plugin.store.generation;
 		this.groups = this.buildQueue();
 		this.bodyEl = this.contentEl.createDiv({ cls: "fp-review-body" });
 		this.registerKeys();
@@ -87,6 +104,7 @@ export class ReviewQueueModal extends Modal {
 	}
 
 	onClose(): void {
+		unregisterOpenModal(this);
 		this.contentEl.empty();
 	}
 
@@ -153,6 +171,15 @@ export class ReviewQueueModal extends Modal {
 	private async assign(categoryId: string): Promise<void> {
 		const group = this.current;
 		if (!group || this.busy) return;
+		// Backstop for a portfolio switch (`switchPortfolio` closes open dialogs first): these
+		// transaction ids belong to the portfolio that was loaded when the queue was built. Against a
+		// different one they match nothing — and the derived rule would still be written to its
+		// rules.json.
+		if (this.plugin.store.generation !== this.openedAtGeneration) {
+			new Notice("Portfolio changed — reopen this dialog");
+			this.close();
+			return;
+		}
 		this.busy = true;
 		try {
 			const store = this.plugin.store;
@@ -170,9 +197,12 @@ export class ReviewQueueModal extends Modal {
 				rule = buildUserRule(pattern, categoryId);
 				store.rules.push(rule);
 				await store.saveRules();
+				this.sessionRules.push(rule);
 			}
 
 			this.undoStack.push({ groupIndex: this.index, previous, rule });
+			// A merchant you skipped and then came back to and categorized is not a skip.
+			this.skippedKeys.delete(group.key);
 			this.assignedTxCount += group.transactions.length;
 			this.plugin.refreshViews();
 			this.index++;
@@ -183,13 +213,21 @@ export class ReviewQueueModal extends Modal {
 	}
 
 	private skip(): void {
-		if (!this.current) return;
-		this.skipped++;
+		const group = this.current;
+		if (!group) return;
+		this.skippedKeys.add(group.key);
 		this.index++;
 		this.render();
 	}
 
 	private async undo(): Promise<void> {
+		// Same guard as `assign`: putting the old categories back is a write too, and against another
+		// portfolio's ledger it would strip categories from rows that were never touched here.
+		if (this.plugin.store.generation !== this.openedAtGeneration) {
+			new Notice("Portfolio changed — reopen this dialog");
+			this.close();
+			return;
+		}
 		const entry = this.undoStack.pop();
 		if (!entry || this.busy) return;
 		this.busy = true;
@@ -197,8 +235,11 @@ export class ReviewQueueModal extends Modal {
 			const store = this.plugin.store;
 			await store.recategorize(entry.previous);
 			if (entry.rule) {
+				// By id, which `buildUserRule` makes unique per rule object — a pre-existing rule with
+				// the same pattern is somebody else's and stays.
 				store.rules = store.rules.filter((r) => r.id !== entry.rule!.id);
 				await store.saveRules();
+				this.sessionRules = this.sessionRules.filter((r) => r.id !== entry.rule!.id);
 			}
 			this.assignedTxCount -= entry.previous.size;
 			this.index = entry.groupIndex;
@@ -264,7 +305,9 @@ export class ReviewQueueModal extends Modal {
 		sortBtn.addEventListener("click", () => {
 			this.sort = this.sort === "count" ? "amount" : "count";
 			// Rebuilt from the *remaining* uncategorized rows, so re-sorting mid-queue never re-offers
-			// a merchant that was already handled.
+			// a merchant that was already handled. The undo stack goes with it — its `groupIndex`es
+			// point into the old order — but the session totals (`sessionRules`, `skippedKeys`,
+			// `assignedTxCount`) are about work already done and survive.
 			this.groups = this.buildQueue();
 			this.index = 0;
 			this.undoStack = [];
@@ -357,15 +400,29 @@ export class ReviewQueueModal extends Modal {
 		});
 	}
 
+	/** Every still-uncategorized transaction one of *this session's* rules would claim, and the category
+	 *  it would get. Pure — computing it is also what lets the button state the size of what it does. */
+	private sessionRulePatches(): Map<string, string | undefined> {
+		const patches = new Map<string, string | undefined>();
+		if (this.sessionRules.length === 0) return patches;
+		for (const tx of this.plugin.store.transactions) {
+			if (tx.categoryId) continue;
+			const categoryId = applyRules(tx, this.sessionRules);
+			if (categoryId) patches.set(tx.id, categoryId);
+		}
+		return patches;
+	}
+
 	private renderDone(): void {
-		const rulesCreated = this.undoStack.filter((e) => e.rule).length;
+		const rulesCreated = this.sessionRules.length;
+		const skipped = this.skippedKeys.size;
 		const wrap = this.bodyEl.createDiv({ cls: "fp-review-done" });
 		const head = wrap.createDiv({ cls: "fp-review-done-head" });
 		icon(head, "check-check", "fp-review-done-icon");
 		head.createDiv({ cls: "fp-review-title", text: "All caught up" });
 		wrap.createDiv({
 			cls: "fp-step-desc",
-			text: `${this.assignedTxCount} transaction${this.assignedTxCount === 1 ? "" : "s"} categorized · ${rulesCreated} rule${rulesCreated === 1 ? "" : "s"} created · ${this.skipped} skipped`,
+			text: `${this.assignedTxCount} transaction${this.assignedTxCount === 1 ? "" : "s"} categorized · ${rulesCreated} rule${rulesCreated === 1 ? "" : "s"} created · ${skipped} skipped`,
 		});
 
 		const footer = wrap.createDiv({ cls: "fp-wizard-footer" });
@@ -377,15 +434,24 @@ export class ReviewQueueModal extends Modal {
 				cls: "fp-step-desc",
 				text: `Your ${rulesCreated} new rule${rulesCreated === 1 ? "" : "s"} will apply automatically to future imports.`,
 			});
+			// "Them" is this session's rules — it used to run the *entire* rule set, including the ~200
+			// seeded merchant rules, so one click could recategorize hundreds of rows nobody asked about
+			// and nothing here can undo. The reach is counted first so the button can name it.
+			const patches = this.sessionRulePatches();
 			const applyBtn = left.createEl("button", { cls: "fp-btn fp-btn--secondary fp-btn-secondary", attr: { type: "button" } });
 			icon(applyBtn, "wand-sparkles");
-			applyBtn.createSpan({ text: "Apply them to existing transactions too" });
+			applyBtn.createSpan({
+				text:
+					patches.size === 0
+						? "Nothing else matches these rules"
+						: `Apply them to ${patches.size} existing transaction${patches.size === 1 ? "" : "s"} too`,
+			});
+			applyBtn.disabled = patches.size === 0;
 			applyBtn.addEventListener("click", async () => {
 				const store = this.plugin.store;
-				const { patches, categorized } = autoCategorize(store.transactions, store.categories, store.rules);
-				if (patches.size > 0) await store.recategorize(patches);
+				await store.recategorize(patches);
 				this.plugin.refreshViews();
-				new Notice(`Categorized ${categorized} more transaction${categorized === 1 ? "" : "s"}`);
+				new Notice(`Categorized ${patches.size} more transaction${patches.size === 1 ? "" : "s"}`);
 				applyBtn.disabled = true;
 			});
 		}

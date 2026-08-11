@@ -1,6 +1,7 @@
 import { App, Modal, Notice } from "obsidian";
 import { CARD_NETWORK_LABEL, CARD_TYPE_LABEL } from "../cards";
 import type FinancePlugin from "../main";
+import { registerOpenModal, unregisterOpenModal } from "../modalRegistry";
 import type { Card } from "../types";
 import { renderCardVisual } from "../ui/cardVisual";
 import { icon } from "../ui/dom";
@@ -19,6 +20,8 @@ export class CardDetailModal extends Modal {
 	}
 
 	onOpen(): void {
+		// Registered so a portfolio switch can close it — see modalRegistry.
+		registerOpenModal(this);
 		this.modalEl.addClass("fp-wizard-modal");
 		this.render();
 	}
@@ -67,6 +70,7 @@ export class CardDetailModal extends Modal {
 	}
 
 	onClose(): void {
+		unregisterOpenModal(this);
 		this.contentEl.empty();
 	}
 }

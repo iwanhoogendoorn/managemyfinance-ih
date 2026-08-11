@@ -464,6 +464,36 @@ describe("investingHoldings", () => {
 		expect(holding.netInvested).toBeCloseTo(600, 6);
 		expect(holding.realizedPL).toBe(0);
 	});
+
+	it("counts a share-less buy as money in without inventing an average cost (review MINOR #17)", () => {
+		// €1,000 for 10 shares then a €500 buy with no share count used to report €150/share — an average
+		// the user never paid. The money still belongs in netInvested; only avgCost refuses to guess.
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: -1000, action: "buy", ticker: "VWCE", shares: 10 }),
+				tx({ date: "2024-02-01", accountId: investing.id, amount: -500, action: "buy", ticker: "VWCE" }),
+			],
+		});
+		const [holding] = investingHoldings(s, investing.id);
+		expect(holding.shares).toBe(10);
+		expect(holding.netInvested).toBeCloseTo(1500, 6);
+		expect(holding.avgCost).toBeCloseTo(100, 6);
+	});
+
+	it("clamps an oversell at zero shares instead of carrying a negative count (review MAJOR #3)", () => {
+		// A negative share count survived every later buy: after buying 10 more you still held −5, and the
+		// position disappeared from the holdings table entirely.
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: -1000, action: "buy", ticker: "VWCE", shares: 10 }),
+				tx({ date: "2024-02-01", accountId: investing.id, amount: 5000, action: "sell", ticker: "VWCE", shares: 25 }),
+				tx({ date: "2024-03-01", accountId: investing.id, amount: -800, action: "buy", ticker: "VWCE", shares: 8 }),
+			],
+		});
+		const [holding] = investingHoldings(s, investing.id);
+		expect(holding.shares).toBe(8);
+		expect(holding.avgCost).toBeCloseTo(100, 6);
+	});
 });
 
 // ---------- investingActivityByYear ----------
@@ -480,6 +510,29 @@ describe("investingActivityByYear", () => {
 		const [year] = investingActivityByYear(s, investing.id);
 		expect(year).toMatchObject({ year: "2024", deposits: 1000, withdrawals: 200, dividends: 5, fees: 1 });
 	});
+
+	it("accepts ING's long 'Withdrawal' spelling as well as 'withdraw' (review MINOR #13)", () => {
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: 5000, action: "Deposit" }),
+				tx({ date: "2024-02-01", accountId: investing.id, amount: -2000, action: "Withdrawal" }),
+			],
+		});
+		const [year] = investingActivityByYear(s, investing.id);
+		expect(year).toMatchObject({ deposits: 5000, withdrawals: 2000 });
+	});
+
+	it("counts the dividend/interest wordings brokers actually export (review MINOR #15)", () => {
+		// The dashboard's yield figure already accepts these; the activity table used to drop them.
+		const s = store({
+			transactions: [
+				tx({ date: "2024-01-01", accountId: investing.id, amount: 12, action: "Dividend (Gross)" }),
+				tx({ date: "2024-02-01", accountId: investing.id, amount: 3, action: "Interest payment" }),
+			],
+		});
+		const [year] = investingActivityByYear(s, investing.id);
+		expect(year.dividends).toBeCloseTo(15, 6);
+	});
 });
 
 // ---------- fiProjection ----------
@@ -493,8 +546,9 @@ describe("detectTransferPairs", () => {
 	}
 
 	it("matches an opposite-sign pair in different accounts within €0.01 and ±3 days", () => {
+		// Over €500 the shape test alone is not enough, so the outgoing row names the receiving account.
 		const s = twoAccountStore([
-			tx({ date: "2024-01-10", accountId: checking.id, amount: -5000 }),
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -5000, counterparty: "Naar Joint" }),
 			tx({ date: "2024-01-12", accountId: checking2.id, amount: 5000 }),
 		]);
 		const pairs = detectTransferPairs(s);
@@ -506,7 +560,7 @@ describe("detectTransferPairs", () => {
 		// Before the pair heuristic this recorded €5,000 of income AND €5,000 of expenses, inflating both
 		// and pushing the savings rate to nonsense.
 		const s = twoAccountStore([
-			tx({ date: "2024-01-10", accountId: checking.id, amount: -5000 }),
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -5000, counterparty: "Naar Joint" }),
 			tx({ date: "2024-01-12", accountId: checking2.id, amount: 5000 }),
 			tx({ date: "2024-01-15", accountId: checking.id, amount: 3000, categoryId: catIncome.id }),
 			tx({ date: "2024-01-20", accountId: checking.id, amount: -900, categoryId: catFood.id }),
@@ -585,12 +639,78 @@ describe("detectTransferPairs", () => {
 	it("matches the largest amounts first so a big move claims its true counterpart", () => {
 		const s = twoAccountStore([
 			tx({ date: "2024-01-10", accountId: checking.id, amount: -50 }),
-			tx({ date: "2024-01-10", accountId: checking.id, amount: -4000 }),
+			tx({ date: "2024-01-10", accountId: checking.id, amount: -4000, categoryId: catTransfers.id }),
 			tx({ date: "2024-01-10", accountId: checking2.id, amount: 4000 }),
 			tx({ date: "2024-01-10", accountId: checking2.id, amount: 50 }),
 		]);
 		const pairs = detectTransferPairs(s);
 		expect(pairs.map((p) => p.amount)).toEqual([4000, 50]);
+	});
+
+	// ---------- corroboration above €500 (review MINOR #11) ----------
+
+	it("refuses a large pair that has nothing but its shape going for it (regression: salary erased by rent)", () => {
+		// €3,000 of salary into checking on the 1st and €3,000 of rent out of a second account on the 2nd
+		// satisfy every clause of the shape test. Pairing them deleted the income AND the expense.
+		const s = twoAccountStore([
+			tx({ date: "2024-03-01", accountId: checking.id, amount: 3000, categoryId: catIncome.id, counterparty: "ACME PAYROLL" }),
+			tx({ date: "2024-03-02", accountId: checking2.id, amount: -3000, categoryId: catFood.id, counterparty: "LANDLORD BV" }),
+		]);
+		expect(detectTransferPairs(s)).toHaveLength(0);
+		const [year] = summarizeByYear(s);
+		expect(year.income).toBe(3000);
+		expect(year.expenses).toBe(3000);
+	});
+
+	it("keeps small uncorroborated pairs — the everyday move that carries no marker at all", () => {
+		const s = twoAccountStore([
+			tx({ date: "2024-03-01", accountId: checking.id, amount: -400 }),
+			tx({ date: "2024-03-02", accountId: checking2.id, amount: 400 }),
+		]);
+		expect(detectTransferPairs(s)).toHaveLength(1);
+	});
+
+	it("accepts a large pair corroborated by a transfer category on either side", () => {
+		const viaOut = twoAccountStore([
+			tx({ date: "2024-03-01", accountId: checking.id, amount: -3000, categoryId: catTransfers.id }),
+			tx({ date: "2024-03-02", accountId: checking2.id, amount: 3000 }),
+		]);
+		expect(detectTransferPairs(viaOut)).toHaveLength(1);
+
+		const viaIn = twoAccountStore([
+			tx({ date: "2024-03-01", accountId: checking.id, amount: -3000 }),
+			tx({ date: "2024-03-02", accountId: checking2.id, amount: 3000, categoryId: catTransfers.id }),
+		]);
+		expect(detectTransferPairs(viaIn)).toHaveLength(1);
+	});
+
+	it("accepts a large pair with a savings or investing account on one side", () => {
+		const s = store({
+			accounts: [checking, savings],
+			transactions: [
+				tx({ date: "2024-03-01", accountId: checking.id, amount: -1500 }),
+				tx({ date: "2024-03-01", accountId: savings.id, amount: 1500 }),
+			],
+		});
+		expect(detectTransferPairs(s)).toHaveLength(1);
+	});
+
+	it("accepts a large pair whose text names the other account by name or IBAN", () => {
+		const byName = twoAccountStore([
+			tx({ date: "2024-03-01", accountId: checking.id, amount: -2500, counterparty: "Overboeking naar Joint" }),
+			tx({ date: "2024-03-02", accountId: checking2.id, amount: 2500, counterparty: "SOMETHING ELSE" }),
+		]);
+		expect(detectTransferPairs(byName)).toHaveLength(1);
+
+		const withIban: Account = { ...checking2, iban: "NL12INGB0001234567" };
+		const byIban = store({
+			accounts: [checking, withIban],
+			transactions: [
+				tx({ date: "2024-03-01", accountId: checking.id, amount: -2500, description: "SEPA naar NL12 INGB 0001 2345 67" }),
+				tx({ date: "2024-03-02", accountId: withIban.id, amount: 2500 }),
+			],
+		});
+		expect(detectTransferPairs(byIban)).toHaveLength(1);
 	});
 
 	it("ignores rows with no date or a zero amount", () => {
@@ -870,6 +990,15 @@ describe("realizedPLByYear", () => {
 	it("returns nothing when nothing was ever sold", () => {
 		const s = store({
 			transactions: [tx({ date: "2024-01-01", accountId: investing.id, amount: -100, action: "buy", ticker: "AAPL", shares: 1 })],
+		});
+		expect(realizedPLByYear(s, investing.id)).toEqual([]);
+	});
+
+	it("books nothing at all for a sale of a position it never saw bought (review MAJOR #3)", () => {
+		// A transferred-in holding, or a ledger whose buy history predates the import. Against a €0 basis
+		// the old walk reported the entire €5,000 of proceeds as realized profit.
+		const s = store({
+			transactions: [tx({ date: "2025-03-01", accountId: investing.id, amount: 5000, action: "sell", ticker: "VWCE", shares: 10 })],
 		});
 		expect(realizedPLByYear(s, investing.id)).toEqual([]);
 	});

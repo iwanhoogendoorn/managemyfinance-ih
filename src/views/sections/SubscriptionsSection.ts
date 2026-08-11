@@ -36,16 +36,21 @@ function categoryColor(category: string): string {
  * plus what your transactions say you're paying for and haven't told us about.
  */
 export function renderSubscriptionsSection(container: HTMLElement, plugin: FinancePlugin): void {
-	container.addClass("fp-section");
+	// A root of our own, not the shared view body: every re-render below is reachable from an `await`,
+	// and `container` is the view's body element, which stays connected no matter where the user
+	// navigated in the meantime. A root we created goes away with the body's next `.empty()`, so
+	// `isConnected` is an honest answer to "do we still own this page?".
+	const root = container.createDiv({ cls: "fp-section" });
 
 	function render(): void {
-		container.empty();
+		if (!root.isConnected) return;
+		root.empty();
 		const store = plugin.store;
 		const subs = store.subscriptions;
 		const today = new Date();
 		const currency = portfolioCurrency(store);
 
-		const header = container.createDiv({ cls: "fp-section-header" });
+		const header = root.createDiv({ cls: "fp-section-header" });
 		const headText = header.createDiv();
 		headText.createEl("h2", { text: "Subscriptions" });
 		headText.createDiv({
@@ -59,7 +64,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 		addBtn.addEventListener("click", () => openSubscriptionWizard(plugin, undefined, () => render()));
 
 		const totals = subscriptionTotals(subs, today, DUE_SOON_DAYS);
-		const kpis = container.createDiv({ cls: "fp-stat-grid" });
+		const kpis = root.createDiv({ cls: "fp-stat-grid" });
 		const perMonth = renderStat(kpis, { label: "Per month", value: money(totals.perMonth, currency, 2), size: "hero", iconName: "calendar" });
 		setStatFoot(perMonth, [{ money: money(totals.perYear, currency) }, " a year at this rate"]);
 		renderStat(kpis, { label: "Private", value: money(totals.privatePerMonth, currency, 2), iconName: "user", sub: "per month" });
@@ -75,10 +80,10 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 
 		// Detection sits above the list: what the ledger knows that the tracker doesn't is the most
 		// actionable thing on this page.
-		renderDetection(container, plugin, today, currency, render);
+		renderDetection(root, plugin, today, currency, render);
 
 		if (subs.length === 0) {
-			emptyState(container, {
+			emptyState(root, {
 				iconName: "repeat",
 				title: "No subscriptions tracked yet",
 				description: "Add your first recurring payment to start tracking monthly spend.",
@@ -88,7 +93,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			return;
 		}
 
-		const breakdown = container.createDiv({ cls: "fp-sub-breakdown-grid" });
+		const breakdown = root.createDiv({ cls: "fp-sub-breakdown-grid" });
 		renderShareCard(breakdown, "By category", totalsByCategory(subs, today), currency, categoryColor);
 		renderShareCard(breakdown, "By billing cycle", totalsByBillingCycle(subs, today), currency);
 		renderShareCard(breakdown, "Private vs business", totalsByPaidVia(subs, today), currency);
@@ -100,13 +105,13 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			.sort((a, b) => b.value - a.value)
 			.slice(0, 5);
 		if (topRows.length > 0) {
-			const topCard = container.createDiv({ cls: "fp-card" });
+			const topCard = root.createDiv({ cls: "fp-card" });
 			cardHead(topCard, "Top subscriptions", { label: "Monthly cost" });
 			barChart(topCard, topRows, { formatValue: (n) => money(n, currency, 2) });
 		}
 
-		renderUpcoming(container, upcomingPayments(subs, today).slice(0, 6), currency);
-		renderList(container, subs, today, currency);
+		renderUpcoming(root, upcomingPayments(subs, today).slice(0, 6), currency);
+		renderList(root, subs, today, currency);
 	}
 
 	/* ---------- detection ---------- */
@@ -146,7 +151,8 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 
 			const main = row.createDiv({ cls: "fp-row-main" });
 			const titleLine = main.createDiv({ cls: "fp-row-title" });
-			titleLine.createSpan({ text: c.displayName });
+			// Raw ledger merchant text, exactly like the review queue's and the import preview's.
+			titleLine.createSpan({ cls: "fp-sensitive", text: c.displayName });
 			badge(titleLine, c.confidence, c.confidence === "high" ? "good" : c.confidence === "medium" ? "warn" : "neutral");
 			const accountName = store.accounts.find((a) => a.id === c.accountId)?.name;
 			main.createDiv({
@@ -182,7 +188,10 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			if (!keys.includes(c.merchantKey)) plugin.settings.dismissedSubscriptionKeys = [...keys, c.merchantKey];
 			await plugin.saveSettings();
 			new Notice(`"${c.displayName}" won't be suggested again`);
-			refresh();
+			// A full refresh, not the local `refresh()`: dismissing also changes the overview's insights
+			// feed. Rebuilding the body detaches our root, so the local render is a guarded no-op after
+			// this — nothing holds focus on this panel, so there is nothing to preserve.
+			plugin.refreshViews();
 		}
 
 		draw();
@@ -245,7 +254,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			initialsAvatar(row, p.sub.name, categoryColor(p.sub.category), "fp-row-avatar");
 
 			const main = row.createDiv({ cls: "fp-row-main" });
-			main.createDiv({ cls: "fp-row-title", text: p.sub.name });
+			main.createDiv({ cls: "fp-row-title fp-sensitive", text: p.sub.name });
 			main.createDiv({
 				cls: "fp-row-meta",
 				text: `${p.sub.category} · ${BILLING_CYCLE_LABEL[p.sub.billingCycle]}${p.sub.plan ? ` · ${p.sub.plan}` : ""}`,
@@ -293,7 +302,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 
 		const main = row.createDiv({ cls: "fp-row-main" });
 		const titleLine = main.createDiv({ cls: "fp-row-title" });
-		titleLine.createSpan({ text: sub.name });
+		titleLine.createSpan({ cls: "fp-sensitive", text: sub.name });
 		if (sub.plan) titleLine.createSpan({ cls: "fp-row-title-plan", text: sub.plan });
 		if (sub.paidVia === "business") badge(titleLine, "business", "warn");
 

@@ -114,9 +114,18 @@ describe("deriveRulePattern", () => {
 });
 
 describe("userRuleId", () => {
-	it("is deterministic and slug-safe, so re-creating the same rule replaces it", () => {
-		expect(userRuleId("h&m online")).toBe("rule-user-h-m-online");
-		expect(userRuleId("albert heijn")).toBe(userRuleId("albert heijn"));
+	it("is slug-safe and readable", () => {
+		expect(userRuleId("h&m online")).toMatch(/^rule-user-h-m-online-[a-z0-9]+$/);
+	});
+
+	it("is unique per rule, so undoing one rule never removes another with the same pattern", () => {
+		const mine = buildUserRule("albert heijn", "cat-food");
+		const theirs = buildUserRule("albert heijn", "cat-food");
+		expect(mine.id).not.toBe(theirs.id);
+
+		// Exactly what ReviewQueueModal.undo() does with the rule it created.
+		const rules = [theirs, mine];
+		expect(rules.filter((r) => r.id !== mine.id)).toEqual([theirs]);
 	});
 });
 
