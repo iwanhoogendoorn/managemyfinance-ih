@@ -440,7 +440,10 @@ export class FinanceView extends ItemView {
 			},
 		});
 		icon(privacyItem, privacyOn ? "eye-off" : "eye", "fp-nav-icon");
-		privacyItem.createSpan({ cls: "fp-nav-label", text: privacyOn ? "Amounts hidden" : "Hide amounts" });
+		// A constant one-word label: the footer shares its row with "Manage", and the previous
+		// "Amounts hidden" / "Hide amounts" truncated to an unreadable "Amounts …". State lives in
+		// the icon + aria-pressed + the is-privacy-on tint, not in label churn.
+		privacyItem.createSpan({ cls: "fp-nav-label", text: "Privacy" });
 		privacyItem.addEventListener("click", () => void this.togglePrivacy());
 	}
 

@@ -301,8 +301,12 @@
 	transition: color var(--fp-dur-1) var(--fp-ease), background-color var(--fp-dur-1) var(--fp-ease);
 	border-radius: 3px;
 }
+/* !important is deliberate and load-bearing: redaction is a contract, and any component rule with
+   three classes of specificity silently wins the cascade against `.fp-privacy .fp-money` otherwise —
+   the active rail row's `.fp-nav-item.is-active .fp-nav-balance` did exactly that, painting the one
+   balance you were focused on back on top of its redaction pill. */
 .fp-privacy .fp-money {
-	color: transparent;
+	color: transparent !important;
 	background: var(--fp-bg-track);
 	box-decoration-break: clone;
 	-webkit-box-decoration-break: clone;
@@ -310,7 +314,7 @@
 	cursor: default;
 }
 .fp-privacy .fp-money:hover {
-	color: inherit;
+	color: inherit !important;
 	background: transparent;
 }
 /* Table cells can't shrink-wrap their text, so a full-cell block would read as a filled
