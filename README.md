@@ -1,4 +1,4 @@
-# Finance
+# Finance (IH)
 
 A personal finance dashboard, ledger, budgeting, and import pipeline for [Obsidian](https://obsidian.md) — everything stored locally in your vault as plain JSON and CSV, no network calls, no telemetry, no external service.
 
@@ -23,15 +23,15 @@ This plugin isn't in the community plugin store yet, so the easiest way to insta
 
 1. Install **BRAT** from Obsidian's Community Plugins browser and enable it.
 2. Run **BRAT: Add a beta plugin for testing** from the command palette.
-3. Paste this repository URL: `https://github.com/gauv2/managemyfinance`
+3. Paste this repository URL: `https://github.com/iwanhoogendoorn/managemyfinance-ih`
 4. Choose the latest version and click **Add plugin**.
-5. Enable **Finance** under Settings → Community Plugins.
+5. Enable **Finance (IH)** under Settings → Community Plugins.
 
 BRAT will check for new releases on startup and update the plugin automatically.
 
 ### Manual
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/gauv2/managemyfinance/releases/latest) and drop them into `<vault>/.obsidian/plugins/finance-plugin/`, then reload Obsidian and enable the plugin.
+Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/iwanhoogendoorn/managemyfinance-ih/releases/latest) and drop them into `<vault>/.obsidian/plugins/finance-plugin-ih/`, then reload Obsidian and enable the plugin.
 
 ## Getting started
 
@@ -40,7 +40,7 @@ Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](
 3. Add your first account, then use the **Import transactions** command (or the in-app Import button) to bring in a bank/broker export.
 4. Optionally run **Install eMoney categories & auto-categorize transactions** from the command palette to seed a standard category set and categorize what it can recognize.
 
-All data lives under a folder in your vault (`Finance` by default, configurable per portfolio) as human-readable JSON (accounts, categories, rules, subscriptions, cards) and CSV (the transaction ledger, one file per source per year) — nothing is stored anywhere the plugin doesn't tell you about, and everything stays readable/diffable outside the plugin too.
+All data lives under a folder in your vault (`Finance-IH` by default, configurable per portfolio) as human-readable JSON (accounts, categories, rules, subscriptions, cards) and CSV (the transaction ledger, one file per source per year) — nothing is stored anywhere the plugin doesn't tell you about, and everything stays readable/diffable outside the plugin too.
 
 ## Development
 
@@ -52,7 +52,7 @@ npm test           # vitest
 npm run typecheck  # tsc -noEmit
 ```
 
-The build output (`main.js`, `manifest.json`, `styles.css`) goes in your vault at `.obsidian/plugins/finance-plugin/`.
+The build output (`main.js`, `manifest.json`, `styles.css`) goes in your vault at `.obsidian/plugins/finance-plugin-ih/`.
 
 ### Cutting a release
 
