@@ -29,6 +29,13 @@ jobs:
             exit 1
           fi
 
+      # package-lock.json is generated locally by npm 11, and npm 10 (what Node 20 ships) rejects
+      # it as out of sync — verified by running `npx npm@10 ci` against a lock npm 11 had just
+      # written. Pinning the major here means the version that writes the lock and the version that
+      # verifies it are the same one, instead of the two taking turns invalidating each other.
+      - name: Match the npm major that generates the lockfile
+        run: npm i -g npm@11
+
       - name: Install dependencies
         run: npm ci
 
