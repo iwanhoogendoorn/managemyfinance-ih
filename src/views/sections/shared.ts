@@ -28,14 +28,14 @@ import { icon } from "../../ui/dom";
 
 /** The eight validated categorical slots. Assigned in order; index wraps. */
 export const CAT_COLORS = [
-	"var(--fp-cat-1)",
-	"var(--fp-cat-2)",
-	"var(--fp-cat-3)",
-	"var(--fp-cat-4)",
-	"var(--fp-cat-5)",
-	"var(--fp-cat-6)",
-	"var(--fp-cat-7)",
-	"var(--fp-cat-8)",
+	"var(--fpih-cat-1)",
+	"var(--fpih-cat-2)",
+	"var(--fpih-cat-3)",
+	"var(--fpih-cat-4)",
+	"var(--fpih-cat-5)",
+	"var(--fpih-cat-6)",
+	"var(--fpih-cat-7)",
+	"var(--fpih-cat-8)",
 ];
 
 export function catColor(i: number): string {
@@ -508,16 +508,16 @@ export async function goToView(plugin: FinancePlugin, view: "budgets" | "subscri
 
 /** A card header: title on the left, an optional right-hand label or action slot. */
 export function cardHead(parent: HTMLElement, title: string, opts: { label?: string; sub?: string } = {}): HTMLElement {
-	const head = parent.createDiv({ cls: "fp-card-head" });
-	const left = head.createDiv({ cls: "fp-card-head-main" });
-	left.createEl("h3", { cls: "fp-card-title", text: title });
-	if (opts.sub) left.createDiv({ cls: "fp-card-sub", text: opts.sub });
-	if (opts.label) head.createDiv({ cls: "fp-card-head-label", text: opts.label });
+	const head = parent.createDiv({ cls: "fpih-card-head" });
+	const left = head.createDiv({ cls: "fpih-card-head-main" });
+	left.createEl("h3", { cls: "fpih-card-title", text: title });
+	if (opts.sub) left.createDiv({ cls: "fpih-card-sub", text: opts.sub });
+	if (opts.label) head.createDiv({ cls: "fpih-card-head-label", text: opts.label });
 	return head;
 }
 
 export function sectionCard(parent: HTMLElement, title: string, opts: { label?: string; sub?: string } = {}): HTMLElement {
-	const card = parent.createDiv({ cls: "fp-card" });
+	const card = parent.createDiv({ cls: "fpih-card" });
 	cardHead(card, title, opts);
 	return card;
 }
@@ -541,14 +541,14 @@ export function renderMonthPickerCard(
 		renderPeriod: (host: HTMLElement, months: string[]) => void;
 	}
 ): void {
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	const head = cardHead(card, opts.title, { sub: opts.sub });
 	const chartHost = card.createDiv();
 
 	let mode: "recent" | string = "recent";
 
 	if (opts.years.length > 0) {
-		const picker = head.createEl("select", { cls: "fp-select fp-select--sm", attr: { "aria-label": `${opts.title} period` } });
+		const picker = head.createEl("select", { cls: "fpih-select fpih-select--sm", attr: { "aria-label": `${opts.title} period` } });
 		picker.createEl("option", { text: opts.recentLabel ?? `Last ${opts.recentMonths.length} months`, value: "recent" });
 		[...opts.years].reverse().forEach((y) => picker.createEl("option", { text: y, value: y }));
 		picker.value = mode;
@@ -583,27 +583,27 @@ export function renderTriStat(
 	parent: HTMLElement,
 	opts: { label: string; iconName?: string; items: TriStatItem[]; foot?: string }
 ): HTMLElement {
-	const card = parent.createDiv({ cls: "fp-stat fp-stat--multi fp-card fp-card--tight" });
-	const eyebrow = card.createDiv({ cls: "fp-stat-eyebrow fp-overline" });
-	if (opts.iconName) icon(eyebrow, opts.iconName, "fp-stat-icon");
-	eyebrow.createSpan({ cls: "fp-stat-label", text: opts.label });
+	const card = parent.createDiv({ cls: "fpih-stat fpih-stat--multi fpih-card fpih-card--tight" });
+	const eyebrow = card.createDiv({ cls: "fpih-stat-eyebrow fpih-overline" });
+	if (opts.iconName) icon(eyebrow, opts.iconName, "fpih-stat-icon");
+	eyebrow.createSpan({ cls: "fpih-stat-label", text: opts.label });
 
-	const row = card.createDiv({ cls: "fp-stat-multi-row" });
+	const row = card.createDiv({ cls: "fpih-stat-multi-row" });
 	for (const item of opts.items) {
-		const cell = row.createDiv({ cls: "fp-stat-multi-item" });
-		cell.createDiv({ cls: "fp-stat-multi-label", text: item.label });
+		const cell = row.createDiv({ cls: "fpih-stat-multi-item" });
+		cell.createDiv({ cls: "fpih-stat-multi-label", text: item.label });
 		cell.createDiv({
 			cls: [
-				"fp-stat-multi-value",
-				item.money === false ? "" : "fp-money",
-				item.tone === "in" ? "fp-amount--in" : item.tone === "alarm" ? "fp-amount--alarm" : "",
+				"fpih-stat-multi-value",
+				item.money === false ? "" : "fpih-money",
+				item.tone === "in" ? "fpih-amount--in" : item.tone === "alarm" ? "fpih-amount--alarm" : "",
 			]
 				.filter(Boolean)
 				.join(" "),
 			text: item.value,
 		});
 	}
-	if (opts.foot) card.createDiv({ cls: "fp-stat-foot", text: opts.foot });
+	if (opts.foot) card.createDiv({ cls: "fpih-stat-foot", text: opts.foot });
 	return card;
 }
 
@@ -611,22 +611,22 @@ export type FootPart = string | { money: string };
 
 /**
  * Replaces a stat's footnote with mixed text/money spans. `renderStat`'s `sub` is a plain string, so
- * any money inside it would escape privacy redaction — this keeps the `.fp-money` contract intact
+ * any money inside it would escape privacy redaction — this keeps the `.fpih-money` contract intact
  * for the footnotes that carry a figure.
  */
 export function setStatFoot(card: HTMLElement, parts: FootPart[]): void {
-	const existing = card.querySelector(".fp-stat-foot") as HTMLElement | null;
-	const foot = existing ?? card.createDiv({ cls: "fp-stat-foot" });
+	const existing = card.querySelector(".fpih-stat-foot") as HTMLElement | null;
+	const foot = existing ?? card.createDiv({ cls: "fpih-stat-foot" });
 	foot.empty();
 	for (const part of parts) {
 		if (typeof part === "string") foot.createSpan({ text: part });
-		else foot.createSpan({ cls: "fp-money", text: part.money });
+		else foot.createSpan({ cls: "fpih-money", text: part.money });
 	}
 }
 
 /** A money figure that always carries the privacy hook. */
 export function moneySpan(parent: HTMLElement, text: string, cls?: string): HTMLElement {
-	return parent.createSpan({ cls: ["fp-money", cls].filter(Boolean).join(" "), text });
+	return parent.createSpan({ cls: ["fpih-money", cls].filter(Boolean).join(" "), text });
 }
 
 export interface EditableAmountOpts {
@@ -646,12 +646,12 @@ export interface EditableAmountOpts {
  * one-number edits the user makes while looking at the figure they change.
  */
 export function editableAmount(parent: HTMLElement, opts: EditableAmountOpts): HTMLElement {
-	const wrap = parent.createDiv({ cls: "fp-inline-edit" });
+	const wrap = parent.createDiv({ cls: "fpih-inline-edit" });
 
 	const renderTrigger = () => {
 		wrap.empty();
 		const btn = wrap.createEl("button", {
-			cls: "fp-btn fp-btn--ghost fp-inline-edit-trigger",
+			cls: "fpih-btn fpih-btn--ghost fpih-inline-edit-trigger",
 			attr: { type: "button" },
 		});
 		icon(btn, opts.value === undefined ? "plus" : "pencil");
@@ -662,7 +662,7 @@ export function editableAmount(parent: HTMLElement, opts: EditableAmountOpts): H
 	const renderEditor = () => {
 		wrap.empty();
 		const input = wrap.createEl("input", {
-			cls: "fp-input fp-inline-edit-input",
+			cls: "fpih-input fpih-inline-edit-input",
 			type: "text",
 			attr: {
 				inputmode: "decimal",
@@ -678,9 +678,9 @@ export function editableAmount(parent: HTMLElement, opts: EditableAmountOpts): H
 			await opts.onSave(parsed !== undefined && parsed >= 0 ? parsed : undefined);
 		};
 
-		const save = wrap.createEl("button", { cls: "fp-btn fp-btn--primary", text: "Save", attr: { type: "button" } });
+		const save = wrap.createEl("button", { cls: "fpih-btn fpih-btn--primary", text: "Save", attr: { type: "button" } });
 		save.addEventListener("click", () => void commit());
-		const cancel = wrap.createEl("button", { cls: "fp-btn fp-btn--ghost", text: "Cancel", attr: { type: "button" } });
+		const cancel = wrap.createEl("button", { cls: "fpih-btn fpih-btn--ghost", text: "Cancel", attr: { type: "button" } });
 		cancel.addEventListener("click", renderTrigger);
 
 		input.addEventListener("keydown", (ev: KeyboardEvent) => {

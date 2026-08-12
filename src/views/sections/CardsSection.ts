@@ -10,7 +10,7 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 	// A root of our own, not the shared view body: `render()` is reachable from wizard and modal
 	// callbacks that resolve after an await, by which time the user may have navigated. `container` is
 	// the view body and stays connected regardless; a root we created dies with the body's `.empty()`.
-	const root = container.createDiv({ cls: "fp-section" });
+	const root = container.createDiv({ cls: "fpih-section" });
 
 	function render(): void {
 		if (!root.isConnected) return;
@@ -18,14 +18,14 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 		const store = plugin.store;
 		const cards = store.cards;
 
-		const header = root.createDiv({ cls: "fp-section-header" });
+		const header = root.createDiv({ cls: "fpih-section-header" });
 		const headText = header.createDiv();
 		headText.createEl("h2", { text: "Cards" });
 		headText.createDiv({
-			cls: "fp-section-subtitle",
+			cls: "fpih-section-subtitle",
 			text: "Every payment card you carry, linked to the account it actually draws money from or borrows against.",
 		});
-		const addBtn = header.createEl("button", { cls: "fp-btn fp-btn--primary", attr: { type: "button" } });
+		const addBtn = header.createEl("button", { cls: "fpih-btn fpih-btn--primary", attr: { type: "button" } });
 		icon(addBtn, "plus");
 		addBtn.createSpan({ text: "Add card" });
 		addBtn.addEventListener("click", () => openCardWizard(plugin, { onSaved: () => render() }));
@@ -61,17 +61,17 @@ export function renderCardsSection(container: HTMLElement, plugin: FinancePlugin
 			return an.localeCompare(bn) || a.name.localeCompare(b.name);
 		});
 
-		const grid = root.createDiv({ cls: "fp-card-grid" });
+		const grid = root.createDiv({ cls: "fpih-card-grid" });
 		sorted.forEach((card) => renderCardTile(grid, card, accountById.get(card.accountId)?.name ?? "Unknown account"));
 	}
 
 	function renderCardTile(parent: HTMLElement, card: Card, accountName: string): void {
 		// A real <button>: the tile was a click-handler <div>, so it was neither focusable nor announced.
 		const tile = parent.createEl("button", {
-			cls: "fp-card-tile fp-card-tile-clickable",
+			cls: "fpih-card-tile fpih-card-tile-clickable",
 			attr: { type: "button", "aria-label": `${card.name} on ${accountName}` },
 		});
-		tile.createDiv({ cls: "fp-card-tile-account", text: accountName });
+		tile.createDiv({ cls: "fpih-card-tile-account", text: accountName });
 		renderCardVisual(tile, card);
 		tile.addEventListener("click", () => new CardDetailModal(plugin.app, plugin, card, accountName, () => render()).open());
 	}

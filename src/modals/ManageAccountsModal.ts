@@ -19,18 +19,18 @@ export class ManageAccountsModal extends Modal {
 	onOpen(): void {
 		// Registered so a portfolio switch can close it — see modalRegistry.
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
+		this.modalEl.addClass("fpih-wizard-modal");
 		this.render();
 	}
 
 	private render(): void {
 		const c = this.contentEl;
 		c.empty();
-		c.addClass("fp-account-modal");
+		c.addClass("fpih-account-modal");
 
-		const head = c.createDiv({ cls: "fp-detail-header" });
-		head.createDiv({ cls: "fp-detail-desc", text: "Manage accounts" });
-		const addBtn = head.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const head = c.createDiv({ cls: "fpih-detail-header" });
+		head.createDiv({ cls: "fpih-detail-desc", text: "Manage accounts" });
+		const addBtn = head.createEl("button", { cls: "fpih-btn fpih-btn-primary" });
 		icon(addBtn, "plus");
 		addBtn.createSpan({ text: "Add account" });
 		addBtn.addEventListener("click", () => {
@@ -42,22 +42,22 @@ export class ManageAccountsModal extends Modal {
 
 		const store = this.plugin.store;
 		if (store.accounts.length === 0) {
-			c.createEl("p", { cls: "fp-step-desc", text: "No accounts yet — add one above." });
+			c.createEl("p", { cls: "fpih-step-desc", text: "No accounts yet — add one above." });
 		} else {
-			const list = c.createDiv({ cls: "fp-account-list" });
+			const list = c.createDiv({ cls: "fpih-account-list" });
 			store.accounts.forEach((acc) => {
 				const stats = accountStats(store, acc.id);
-				const row = list.createDiv({ cls: "fp-account-row" });
-				icon(row, ACCOUNT_TYPE_META[acc.type].icon, "fp-account-row-icon");
-				const info = row.createDiv({ cls: "fp-account-row-info" });
-				info.createDiv({ cls: "fp-account-row-name", text: acc.name });
+				const row = list.createDiv({ cls: "fpih-account-row" });
+				icon(row, ACCOUNT_TYPE_META[acc.type].icon, "fpih-account-row-icon");
+				const info = row.createDiv({ cls: "fpih-account-row-info" });
+				info.createDiv({ cls: "fpih-account-row-name", text: acc.name });
 				info.createDiv({
-					cls: "fp-account-row-meta",
+					cls: "fpih-account-row-meta",
 					text: `${ACCOUNT_TYPE_META[acc.type].label}${acc.iban ? " · " + acc.iban : ""} · ${stats.count} transaction${stats.count === 1 ? "" : "s"}`,
 				});
-				row.createDiv({ cls: "fp-account-row-balance fp-money", text: formatEUR(stats.netWorth) });
+				row.createDiv({ cls: "fpih-account-row-balance fpih-money", text: formatEUR(stats.netWorth) });
 				const editBtn = row.createEl("button", {
-					cls: "fp-btn fp-btn-ghost fp-btn-icon",
+					cls: "fpih-btn fpih-btn-ghost fpih-btn-icon",
 					attr: { "aria-label": `Edit ${acc.name}`, title: "Edit — name, type, IBAN, opening balance" },
 				});
 				icon(editBtn, "pencil");
@@ -68,7 +68,7 @@ export class ManageAccountsModal extends Modal {
 					}, acc).open();
 				});
 				const removeBtn = row.createEl("button", {
-					cls: "fp-btn fp-btn-ghost fp-btn-icon",
+					cls: "fpih-btn fpih-btn-ghost fpih-btn-icon",
 					attr: { "aria-label": `Remove ${acc.name}` },
 				});
 				icon(removeBtn, "x");
@@ -76,9 +76,9 @@ export class ManageAccountsModal extends Modal {
 			});
 		}
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const closeBtn = right.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const closeBtn = right.createEl("button", { cls: "fpih-btn fpih-btn-primary" });
 		icon(closeBtn, "check");
 		closeBtn.createSpan({ text: "Done" });
 		closeBtn.addEventListener("click", () => this.close());

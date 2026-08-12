@@ -19,23 +19,23 @@ export function openCreatePortfolioWizard(plugin: FinancePlugin, onCreated?: (po
 			render: (c) => {
 				c.createEl("h3", { text: "Create a new portfolio" });
 				c.createEl("p", {
-					cls: "fp-step-desc",
+					cls: "fpih-step-desc",
 					text: "A portfolio is a fully separate set of accounts, transactions, categories, and subscriptions — use one per person or entity you manage, e.g. a parent or a client.",
 				});
-				const form = c.createDiv({ cls: "fp-form" });
-				const row = form.createDiv({ cls: "fp-form-row" });
+				const form = c.createDiv({ cls: "fpih-form" });
+				const row = form.createDiv({ cls: "fpih-form-row" });
 				row.createEl("label", { text: "Portfolio name" });
 				const input = row.createEl("input", { type: "text", attr: { placeholder: "e.g. Mom & Dad" } });
 				input.value = name;
 				input.addEventListener("input", () => (name = input.value));
 				setTimeout(() => input.focus(), 0);
 
-				const typesRow = form.createDiv({ cls: "fp-form-row" });
+				const typesRow = form.createDiv({ cls: "fpih-form-row" });
 				typesRow.createEl("label", { text: "Account types to include (optional)" });
-				const typeList = typesRow.createDiv({ cls: "fp-type-checkbox-list" });
+				const typeList = typesRow.createDiv({ cls: "fpih-type-checkbox-list" });
 				(Object.keys(ACCOUNT_TYPE_META) as AccountType[]).forEach((type) => {
-					const optRow = typeList.createDiv({ cls: "fp-type-checkbox-row" });
-					const inputId = `fp-portfolio-type-${type}`;
+					const optRow = typeList.createDiv({ cls: "fpih-type-checkbox-row" });
+					const inputId = `fpih-portfolio-type-${type}`;
 					const checkbox = optRow.createEl("input", { type: "checkbox", attr: { id: inputId } });
 					checkbox.checked = selectedTypes.has(type);
 					checkbox.addEventListener("change", () => {
@@ -43,11 +43,11 @@ export function openCreatePortfolioWizard(plugin: FinancePlugin, onCreated?: (po
 						else selectedTypes.delete(type);
 					});
 					const label = optRow.createEl("label", { attr: { for: inputId } });
-					icon(label, ACCOUNT_TYPE_META[type].icon, "fp-type-checkbox-icon");
+					icon(label, ACCOUNT_TYPE_META[type].icon, "fpih-type-checkbox-icon");
 					label.createSpan({ text: ACCOUNT_TYPE_META[type].label });
 				});
 				typesRow.createEl("p", {
-					cls: "fp-step-desc",
+					cls: "fpih-step-desc",
 					text: "We'll create one empty starter account per type you pick — rename them or add more later from \"Manage accounts…\".",
 				});
 			},
@@ -66,7 +66,7 @@ export function openCreatePortfolioWizard(plugin: FinancePlugin, onCreated?: (po
 								.join(", ")}.`
 						: " It'll start empty — add accounts from the sidebar whenever you're ready.";
 				c.createEl("p", {
-					cls: "fp-step-desc",
+					cls: "fpih-step-desc",
 					text: `"${name.trim()}" gets its own accounts, ledger, categories, and subscriptions — nothing here is shared with your other portfolios, and none of your existing data moves or changes.${typesText}`,
 				});
 			},

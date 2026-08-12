@@ -55,18 +55,18 @@ export function renderMeter(container: HTMLElement, opts: MeterOpts): HTMLElemen
 	const tone = opts.tone ?? (ratio > 1 ? "over" : ratio >= 0.8 ? "warn" : "ok");
 
 	const card = container.createDiv({
-		cls: `fp-meter fp-card fp-meter-card fp-meter--${tone}`,
+		cls: `fpih-meter fpih-card fpih-meter-card fpih-meter--${tone}`,
 	});
-	const head = card.createDiv({ cls: "fp-meter-head" });
-	head.createSpan({ cls: "fp-meter-label", text: opts.label });
-	head.createSpan({ cls: "fp-meter-value fp-money", text: opts.valueLabel });
+	const head = card.createDiv({ cls: "fpih-meter-head" });
+	head.createSpan({ cls: "fpih-meter-label", text: opts.label });
+	head.createSpan({ cls: "fpih-meter-value fpih-money", text: opts.valueLabel });
 
-	const track = card.createDiv({ cls: "fp-meter-track" });
-	const fill = track.createDiv({ cls: "fp-meter-fill" });
+	const track = card.createDiv({ cls: "fpih-meter-track" });
+	const fill = track.createDiv({ cls: "fpih-meter-fill" });
 	const pct = Math.max(0, Math.min(100, ratio * 100));
 	fill.style.width = `${pct}%`;
 	// The hatched tail starts where the fill caps, so "110% spent" is visible rather than clamped.
-	track.style.setProperty("--fp-meter-cap", `${pct}%`);
+	track.style.setProperty("--fpih-meter-cap", `${pct}%`);
 
 	track.setAttribute("role", "progressbar");
 	track.setAttribute("aria-valuemin", "0");
@@ -75,12 +75,12 @@ export function renderMeter(container: HTMLElement, opts: MeterOpts): HTMLElemen
 	track.setAttribute("aria-label", opts.label);
 
 	if (opts.pace !== undefined && opts.pace > 0 && opts.pace < 1) {
-		const marker = track.createDiv({ cls: "fp-meter-pace" });
+		const marker = track.createDiv({ cls: "fpih-meter-pace" });
 		marker.style.left = `${opts.pace * 100}%`;
 		marker.setAttribute("title", `Pace: ${Math.round(opts.pace * 100)}% through the period`);
 	}
 
-	if (opts.renderSub) opts.renderSub(card.createDiv({ cls: "fp-meter-sub" }));
-	else if (opts.sub) card.createDiv({ cls: "fp-meter-sub", text: opts.sub });
+	if (opts.renderSub) opts.renderSub(card.createDiv({ cls: "fpih-meter-sub" }));
+	else if (opts.sub) card.createDiv({ cls: "fpih-meter-sub", text: opts.sub });
 	return card;
 }

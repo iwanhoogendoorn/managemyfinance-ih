@@ -33,7 +33,7 @@ interface FeedItem {
 
 /**
  * Insight copy is the one place in the app where merchant names and exact amounts are interpolated
- * into a sentence, which is exactly what privacy mode cannot redact: CSS hides `.fp-money` spans, not
+ * into a sentence, which is exactly what privacy mode cannot redact: CSS hides `.fpih-money` spans, not
  * substrings. So the detectors hand back segments and this paints each one with the class it earns.
  *
  * The fallback — no parts — redacts the *whole* line rather than trusting a pre-formatted string. An
@@ -41,12 +41,12 @@ interface FeedItem {
  */
 function renderParts(host: HTMLElement, parts: InsightPart[] | undefined, plain: string): void {
 	if (!parts || parts.length === 0) {
-		host.addClass("fp-sensitive");
+		host.addClass("fpih-sensitive");
 		host.setText(plain);
 		return;
 	}
 	for (const part of parts) {
-		const cls = [part.money ? "fp-money" : "", part.sensitive ? "fp-sensitive" : ""].filter(Boolean).join(" ");
+		const cls = [part.money ? "fpih-money" : "", part.sensitive ? "fpih-sensitive" : ""].filter(Boolean).join(" ");
 		host.createSpan(cls ? { cls, text: part.text } : { text: part.text });
 	}
 }
@@ -175,7 +175,7 @@ export function renderInsightsFeed(container: HTMLElement, plugin: FinancePlugin
 			...categorizationItems(plugin).filter((i) => !dismissed.has(i.id)),
 		].sort((a, b) => b.impactEUR - a.impactEUR || severityRank(a.severity) - severityRank(b.severity) || (a.id < b.id ? -1 : 1));
 
-		const card = host.createDiv({ cls: "fp-card fp-insights-card" });
+		const card = host.createDiv({ cls: "fpih-card fpih-insights-card" });
 		cardHead(card, "Insights", { label: items.length > 0 ? `${items.length}` : undefined });
 
 		if (items.length === 0) {
@@ -188,13 +188,13 @@ export function renderInsightsFeed(container: HTMLElement, plugin: FinancePlugin
 			return;
 		}
 
-		const list = card.createDiv({ cls: "fp-insight-list" });
+		const list = card.createDiv({ cls: "fpih-insight-list" });
 		const shown = expanded ? items : items.slice(0, VISIBLE);
 		shown.forEach((item) => renderCard(list, item));
 
 		if (items.length > VISIBLE) {
 			const toggle = card.createEl("button", {
-				cls: "fp-btn fp-btn--ghost fp-insights-toggle",
+				cls: "fpih-btn fpih-btn--ghost fpih-insights-toggle",
 				text: expanded ? "Show less" : `Show all ${items.length}`,
 				attr: { type: "button" },
 			});
@@ -214,27 +214,27 @@ export function renderInsightsFeed(container: HTMLElement, plugin: FinancePlugin
 
 	const renderCard = (parent: HTMLElement, item: FeedItem): void => {
 		const currency = portfolioCurrency(plugin.store);
-		const row = parent.createDiv({ cls: `fp-insight fp-insight--${item.severity}` });
+		const row = parent.createDiv({ cls: `fpih-insight fpih-insight--${item.severity}` });
 
-		const glyph = row.createDiv({ cls: "fp-insight-icon" });
+		const glyph = row.createDiv({ cls: "fpih-insight-icon" });
 		icon(glyph, SEVERITY_ICON[item.severity]);
 
-		const body = row.createDiv({ cls: "fp-insight-body" });
-		renderParts(body.createDiv({ cls: "fp-insight-title" }), item.titleParts, item.title);
-		renderParts(body.createDiv({ cls: "fp-insight-detail" }), item.detailParts, item.detail);
+		const body = row.createDiv({ cls: "fpih-insight-body" });
+		renderParts(body.createDiv({ cls: "fpih-insight-title" }), item.titleParts, item.title);
+		renderParts(body.createDiv({ cls: "fpih-insight-detail" }), item.detailParts, item.detail);
 
-		const actions = row.createDiv({ cls: "fp-insight-actions" });
+		const actions = row.createDiv({ cls: "fpih-insight-actions" });
 		if (item.impactEUR > 0) {
-			actions.createSpan({ cls: "fp-insight-impact fp-money", text: money(item.impactEUR, currency) });
+			actions.createSpan({ cls: "fpih-insight-impact fpih-money", text: money(item.impactEUR, currency) });
 		}
 		if (item.run && item.actionLabel) {
-			const btn = actions.createEl("button", { cls: "fp-btn fp-btn--secondary", text: item.actionLabel, attr: { type: "button" } });
+			const btn = actions.createEl("button", { cls: "fpih-btn fpih-btn--secondary", text: item.actionLabel, attr: { type: "button" } });
 			btn.addEventListener("click", item.run);
 		}
 		// The accessible name deliberately omits the insight's own copy: `aria-label` is plain text
 		// outside CSS's reach, and every title here can carry a merchant name and an amount.
 		const close = actions.createEl("button", {
-			cls: "fp-btn fp-btn--ghost fp-btn--icon",
+			cls: "fpih-btn fpih-btn--ghost fpih-btn--icon",
 			attr: { type: "button", "aria-label": "Dismiss this insight" },
 		});
 		icon(close, "x");

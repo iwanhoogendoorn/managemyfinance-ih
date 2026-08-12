@@ -36,40 +36,40 @@ export class CreateAccountModal extends Modal {
 	onOpen(): void {
 		// Registered so a portfolio switch can close it — see modalRegistry.
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
+		this.modalEl.addClass("fpih-wizard-modal");
 		const c = this.contentEl;
-		c.addClass("fp-account-modal");
+		c.addClass("fpih-account-modal");
 
 		c.createEl("h3", { text: this.existing ? "Edit account" : "Create account" });
 		c.createEl("p", {
-			cls: "fp-step-desc",
+			cls: "fpih-step-desc",
 			text: this.existing
 				? "Change this account's details — its transactions stay attached either way."
 				: "A separate container for this account's transactions and totals — e.g. one per card or bank.",
 		});
 
-		const form = c.createDiv({ cls: "fp-form" });
+		const form = c.createDiv({ cls: "fpih-form" });
 
-		const nameRow = form.createDiv({ cls: "fp-form-row" });
+		const nameRow = form.createDiv({ cls: "fpih-form-row" });
 		nameRow.createEl("label", { text: "Name" });
 		const nameInput = nameRow.createEl("input", { type: "text", attr: { placeholder: "e.g. Amex Gold" } });
 		nameInput.value = this.name;
 		nameInput.addEventListener("input", () => (this.name = nameInput.value));
 
-		const typeRow = form.createDiv({ cls: "fp-form-row" });
+		const typeRow = form.createDiv({ cls: "fpih-form-row" });
 		typeRow.createEl("label", { text: "Type" });
 		const typeSelect = typeRow.createEl("select");
 		(Object.keys(ACCOUNT_TYPE_META) as AccountType[]).forEach((t) => typeSelect.createEl("option", { text: ACCOUNT_TYPE_META[t].label, value: t }));
 		typeSelect.value = this.type;
 		typeSelect.addEventListener("change", () => (this.type = typeSelect.value as AccountType));
 
-		const ibanRow = form.createDiv({ cls: "fp-form-row" });
+		const ibanRow = form.createDiv({ cls: "fpih-form-row" });
 		ibanRow.createEl("label", { text: "IBAN (optional)" });
 		const ibanInput = ibanRow.createEl("input", { type: "text", attr: { placeholder: "Auto-matches combined CSV/Excel exports" } });
 		ibanInput.value = this.iban;
 		ibanInput.addEventListener("input", () => (this.iban = ibanInput.value));
 
-		const balRow = form.createDiv({ cls: "fp-form-row" });
+		const balRow = form.createDiv({ cls: "fpih-form-row" });
 		balRow.createEl("label", { text: "Opening balance" });
 		// Text + inputmode, not type="number": a number input either rejects a Dutch "30,27" outright
 		// (en locale → field goes empty → balance silently saved as 0) or re-localizes it invisibly.
@@ -78,13 +78,13 @@ export class CreateAccountModal extends Modal {
 		balInput.value = this.openingBalance;
 		balInput.addEventListener("input", () => (this.openingBalance = balInput.value));
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const cancel = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Cancel" });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const cancel = left.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: "Cancel" });
 		cancel.addEventListener("click", () => this.close());
 
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const create = right.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const create = right.createEl("button", { cls: "fpih-btn fpih-btn-primary" });
 		icon(create, this.existing ? "check" : "plus");
 		create.createSpan({ text: this.existing ? "Save changes" : "Create account" });
 		create.addEventListener("click", () => void this.submit());

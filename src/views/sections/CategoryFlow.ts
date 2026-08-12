@@ -147,18 +147,18 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 	);
 	if (spendableIds.size === 0) return;
 
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	// Seeded with the default period's subtitle so `cardHead` places it inside the head's own left
 	// column; `render()` then just rewrites its text as the period changes.
 	const head = cardHead(card, opts.title ?? "Where the money went", { sub: periods[0].sub });
-	const subEl = head.querySelector<HTMLElement>(".fp-card-sub")!;
+	const subEl = head.querySelector<HTMLElement>(".fpih-card-sub")!;
 
-	const controls = head.createDiv({ cls: "fp-card-head-controls" });
-	const periodSelect = controls.createEl("select", { cls: "fp-select fp-select--sm", attr: { "aria-label": "Period" } });
+	const controls = head.createDiv({ cls: "fpih-card-head-controls" });
+	const periodSelect = controls.createEl("select", { cls: "fpih-select fpih-select--sm", attr: { "aria-label": "Period" } });
 	periods.forEach((p) => periodSelect.createEl("option", { text: p.label, value: p.key }));
-	const pills = controls.createDiv({ cls: "fp-pill-toggle", attr: { role: "group", "aria-label": "Filter categories" } });
+	const pills = controls.createDiv({ cls: "fpih-pill-toggle", attr: { role: "group", "aria-label": "Filter categories" } });
 
-	const list = card.createDiv({ cls: "fp-catbars" });
+	const list = card.createDiv({ cls: "fpih-catbars" });
 
 	let filter: "active" | "all" = "active";
 
@@ -191,7 +191,7 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 				return {
 					id,
 					label: cat?.name ?? (id === UNCAT_KEY ? "Uncategorized" : id),
-					color: cat?.color ?? "var(--fp-ink-muted)",
+					color: cat?.color ?? "var(--fpih-ink-muted)",
 					iconName: cat?.icon,
 					value,
 					mean,
@@ -223,7 +223,7 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 			] as const).forEach(([key, label, count]) => {
 				const btn = pills.createEl("button", { attr: { type: "button", "data-key": key } });
 				btn.createSpan({ text: label });
-				btn.createSpan({ cls: "fp-pill-toggle-count", text: String(count) });
+				btn.createSpan({ cls: "fpih-pill-toggle-count", text: String(count) });
 				btn.addEventListener("click", () => {
 					if (filter === key) return;
 					filter = key;
@@ -245,38 +245,38 @@ export function renderCategoryFlowCard(container: HTMLElement, plugin: FinancePl
 		const rows = source.slice(0, opts.limit ?? Infinity);
 
 		if (rows.length === 0) {
-			list.createDiv({ cls: "fp-card-sub", text: "No spending in this period." });
+			list.createDiv({ cls: "fpih-card-sub", text: "No spending in this period." });
 			return;
 		}
 
 		const max = Math.max(...rows.map((r) => Math.max(r.value, r.mean)), 1);
 
 		rows.forEach((r) => {
-			// Label only in `title`: the amount is already in the row's `.fp-money` cell, and a native
+			// Label only in `title`: the amount is already in the row's `.fpih-money` cell, and a native
 			// tooltip is browser chrome that no stylesheet — and so no privacy mode — can redact.
-			const row = list.createEl("button", { cls: "fp-catbar", attr: { type: "button", title: r.label } });
+			const row = list.createEl("button", { cls: "fpih-catbar", attr: { type: "button", title: r.label } });
 
-			const label = row.createDiv({ cls: "fp-catbar-label" });
-			if (r.iconName) icon(label, r.iconName, "fp-catbar-icon");
+			const label = row.createDiv({ cls: "fpih-catbar-label" });
+			if (r.iconName) icon(label, r.iconName, "fpih-catbar-icon");
 			label.createSpan({ text: r.label });
 
-			const track = row.createDiv({ cls: "fp-catbar-track" });
-			const fill = track.createDiv({ cls: "fp-catbar-fill" });
-			fill.style.setProperty("--fp-bar-color", r.color);
+			const track = row.createDiv({ cls: "fpih-catbar-track" });
+			const fill = track.createDiv({ cls: "fpih-catbar-fill" });
+			fill.style.setProperty("--fpih-bar-color", r.color);
 			fill.style.width = `${(r.value / max) * 100}%`;
 			if (period.compare && r.mean > 0) {
 				// A ghost tick, not a second bar: the comparison qualifies the figure, it doesn't
 				// compete with it.
-				const ghost = track.createDiv({ cls: "fp-catbar-ghost", attr: { title: `${COMPARISON_MONTHS}-month average` } });
+				const ghost = track.createDiv({ cls: "fpih-catbar-ghost", attr: { title: `${COMPARISON_MONTHS}-month average` } });
 				ghost.style.left = `${Math.min(100, (r.mean / max) * 100)}%`;
 			}
 
-			row.createDiv({ cls: "fp-catbar-value fp-money", text: money(r.value, currency) });
+			row.createDiv({ cls: "fpih-catbar-value fpih-money", text: money(r.value, currency) });
 
 			if (period.compare) {
 				const flat = Math.abs(r.delta) < 1;
-				const chip = row.createDiv({ cls: "fp-delta " + (flat ? "fp-delta--flat" : r.delta > 0 ? "fp-delta--bad" : "fp-delta--good") });
-				chip.createSpan({ cls: flat ? undefined : "fp-money", text: flat ? "on pace" : signedMoney(r.delta, currency) });
+				const chip = row.createDiv({ cls: "fpih-delta " + (flat ? "fpih-delta--flat" : r.delta > 0 ? "fpih-delta--bad" : "fpih-delta--good") });
+				chip.createSpan({ cls: flat ? undefined : "fpih-money", text: flat ? "on pace" : signedMoney(r.delta, currency) });
 			}
 
 			row.addEventListener("click", () =>

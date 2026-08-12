@@ -39,10 +39,10 @@ export class BudgetSetupModal extends Modal {
 	onOpen(): void {
 		// Registered so a portfolio switch can close it — see modalRegistry.
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
-		this.modalEl.addClass("fp-root");
-		this.modalEl.addClass("fp-budget-setup-modal");
-		this.contentEl.addClass("fp-account-modal");
+		this.modalEl.addClass("fpih-wizard-modal");
+		this.modalEl.addClass("fpih-root");
+		this.modalEl.addClass("fpih-budget-setup-modal");
+		this.contentEl.addClass("fpih-account-modal");
 
 		this.rows = this.buildRows();
 		this.bodyEl = this.contentEl.createDiv();
@@ -90,28 +90,28 @@ export class BudgetSetupModal extends Modal {
 		}
 
 		this.bodyEl.createEl("p", {
-			cls: "fp-step-desc",
+			cls: "fpih-step-desc",
 			text: "Based on your last 3 months. Adjust anything before saving — these are starting points, not verdicts.",
 		});
 
-		const list = this.bodyEl.createDiv({ cls: "fp-budget-setup-list" });
+		const list = this.bodyEl.createDiv({ cls: "fpih-budget-setup-list" });
 		this.rows.forEach((row) => this.renderRow(list, row));
 
-		const summary = this.bodyEl.createDiv({ cls: "fp-budget-setup-summary" });
+		const summary = this.bodyEl.createDiv({ cls: "fpih-budget-setup-summary" });
 		this.renderSummary(summary);
 
-		const footer = this.bodyEl.createDiv({ cls: "fp-wizard-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
+		const footer = this.bodyEl.createDiv({ cls: "fpih-wizard-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
 
-		const cancel = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Cancel", attr: { type: "button" } });
+		const cancel = left.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", text: "Cancel", attr: { type: "button" } });
 		cancel.addEventListener("click", () => this.close());
 
 		// Counted the same way `save()` counts: a checked row with the amount zeroed out writes nothing,
 		// so promising "Set 5 budgets" and then reporting 4 was the button describing a different set of
 		// rows than the one it acts on.
 		const count = this.rows.filter((r) => r.checked && r.value > 0).length;
-		const save = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+		const save = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", attr: { type: "button" } });
 		icon(save, "target");
 		const checked = this.rows.filter((r) => r.checked).length;
 		save.createSpan({
@@ -122,7 +122,7 @@ export class BudgetSetupModal extends Modal {
 	}
 
 	private renderRow(list: HTMLElement, row: BudgetRow): void {
-		const el = list.createDiv({ cls: "fp-budget-setup-row" + (row.checked ? " is-checked" : "") });
+		const el = list.createDiv({ cls: "fpih-budget-setup-row" + (row.checked ? " is-checked" : "") });
 
 		const check = el.createEl("input", { type: "checkbox" });
 		check.checked = row.checked;
@@ -133,17 +133,17 @@ export class BudgetSetupModal extends Modal {
 
 		categoryChip(el, row.category.name, row.category.color, row.category.icon);
 
-		const avg = el.createDiv({ cls: "fp-budget-setup-avg" });
+		const avg = el.createDiv({ cls: "fpih-budget-setup-avg" });
 		avg.createSpan({ text: "avg " });
-		avg.createSpan({ cls: "fp-money", text: formatMoney(row.suggested, "EUR", { decimals: 0 }) });
+		avg.createSpan({ cls: "fpih-money", text: formatMoney(row.suggested, "EUR", { decimals: 0 }) });
 		avg.createSpan({ text: "/mo" });
 		if (row.category.budget) {
-			avg.createSpan({ cls: "fp-budget-setup-existing", text: ` · currently ${formatMoney(row.category.budget, "EUR", { decimals: 0 })}` });
+			avg.createSpan({ cls: "fpih-budget-setup-existing", text: ` · currently ${formatMoney(row.category.budget, "EUR", { decimals: 0 })}` });
 		}
 
-		const inputWrap = el.createDiv({ cls: "fp-budget-input-wrap" });
-		inputWrap.createSpan({ cls: "fp-budget-input-prefix", text: "€" });
-		const input = inputWrap.createEl("input", { cls: "fp-budget-input", type: "text", attr: { inputmode: "decimal" } });
+		const inputWrap = el.createDiv({ cls: "fpih-budget-input-wrap" });
+		inputWrap.createSpan({ cls: "fpih-budget-input-prefix", text: "€" });
+		const input = inputWrap.createEl("input", { cls: "fpih-budget-input", type: "text", attr: { inputmode: "decimal" } });
 		input.value = String(row.value);
 		input.disabled = !row.checked;
 		input.addEventListener("input", () => {
@@ -160,20 +160,20 @@ export class BudgetSetupModal extends Modal {
 		const actual = selected.reduce((sum, r) => sum + r.suggested, 0);
 		const delta = actual - budgeted;
 
-		const line = container.createDiv({ cls: "fp-budget-setup-total" });
+		const line = container.createDiv({ cls: "fpih-budget-setup-total" });
 		line.createSpan({ text: "Budgeting " });
-		line.createSpan({ cls: "fp-money", text: formatMoney(budgeted, "EUR", { decimals: 0 }) });
+		line.createSpan({ cls: "fpih-money", text: formatMoney(budgeted, "EUR", { decimals: 0 }) });
 		line.createSpan({ text: "/mo against " });
-		line.createSpan({ cls: "fp-money", text: formatMoney(actual, "EUR", { decimals: 0 }) });
+		line.createSpan({ cls: "fpih-money", text: formatMoney(actual, "EUR", { decimals: 0 }) });
 		line.createSpan({ text: "/mo average spend" });
 
 		if (Math.abs(delta) < 1) {
-			container.createDiv({ cls: "fp-budget-setup-verdict", text: "— exactly your current pace." });
+			container.createDiv({ cls: "fpih-budget-setup-verdict", text: "— exactly your current pace." });
 			return;
 		}
-		const verdict = container.createDiv({ cls: "fp-budget-setup-verdict fp-tone-" + (delta > 0 ? "good" : "warn") });
+		const verdict = container.createDiv({ cls: "fpih-budget-setup-verdict fpih-tone-" + (delta > 0 ? "good" : "warn") });
 		verdict.createSpan({ text: "— " });
-		verdict.createSpan({ cls: "fp-money", text: formatMoney(Math.abs(delta), "EUR", { decimals: 0 }) });
+		verdict.createSpan({ cls: "fpih-money", text: formatMoney(Math.abs(delta), "EUR", { decimals: 0 }) });
 		verdict.createSpan({ text: delta > 0 ? "/mo tighter than your current pace." : "/mo looser than your current pace." });
 	}
 

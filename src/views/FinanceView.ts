@@ -31,7 +31,7 @@ const DEFAULT_NAV_ORDER = ["all-accounts", "categories", "budgets", "subscriptio
 
 /** Classes the section renderers put on the shared body element — stripped before every dispatch so
  *  they never outlive the page that added them. */
-const BODY_SECTION_CLASSES = ["fp-section"];
+const BODY_SECTION_CLASSES = ["fpih-section"];
 
 function possessive(name: string): string {
 	const trimmed = name.trim();
@@ -46,7 +46,7 @@ function possessive(name: string): string {
  *
  * The rail is deliberately zoned — brand, primary tabs, accounts (with balances), utility footer —
  * so the four different *kinds* of thing in it stop sharing one visual treatment. Its width is
- * driven by container queries on `.fp-shell`, not by `Platform.isMobile`: the same view is
+ * driven by container queries on `.fpih-shell`, not by `Platform.isMobile`: the same view is
  * full-screen and docked at 340px within one session.
  */
 export class FinanceView extends ItemView {
@@ -75,36 +75,36 @@ export class FinanceView extends ItemView {
 	async onOpen(): Promise<void> {
 		const root = this.contentEl;
 		root.empty();
-		// `.fp-root` is the token root; `.fp-workspace` is kept as an alias while modals and
+		// `.fpih-root` is the token root; `.fpih-workspace` is kept as an alias while modals and
 		// sections migrate onto it.
-		root.addClass("fp-workspace");
-		root.addClass("fp-root");
+		root.addClass("fpih-workspace");
+		root.addClass("fpih-root");
 		this.applyPrivacyClass();
 		this.applyNarrowOverride();
 
-		const shell = root.createDiv({ cls: "fp-shell" });
-		this.railEl = shell.createDiv({ cls: "fp-rail fp-nav" });
-		const content = shell.createDiv({ cls: "fp-content" });
-		this.bodyEl = content.createDiv({ cls: "fp-content-inner" });
+		const shell = root.createDiv({ cls: "fpih-shell" });
+		this.railEl = shell.createDiv({ cls: "fpih-rail fpih-nav" });
+		const content = shell.createDiv({ cls: "fpih-content" });
+		this.bodyEl = content.createDiv({ cls: "fpih-content-inner" });
 
-		const brandZone = this.railEl.createDiv({ cls: "fp-rail-brand" });
+		const brandZone = this.railEl.createDiv({ cls: "fpih-rail-brand" });
 		this.brandEl = brandZone.createEl("button", {
-			cls: "fp-nav-brand fp-nav-brand-switcher",
+			cls: "fpih-nav-brand fpih-nav-brand-switcher",
 			attr: { type: "button", "aria-haspopup": "menu", "aria-label": "Switch portfolio" },
 		});
-		icon(this.brandEl, "wallet", "fp-nav-brand-icon");
-		const brandText = this.brandEl.createDiv({ cls: "fp-nav-brand-text" });
-		this.brandTitleEl = brandText.createDiv({ cls: "fp-nav-brand-title" });
+		icon(this.brandEl, "wallet", "fpih-nav-brand-icon");
+		const brandText = this.brandEl.createDiv({ cls: "fpih-nav-brand-text" });
+		this.brandTitleEl = brandText.createDiv({ cls: "fpih-nav-brand-title" });
 		this.brandEl.addEventListener("click", () => this.openPortfolioMenu());
 		this.renderBrandTitle();
 
-		const railBody = this.railEl.createDiv({ cls: "fp-rail-body" });
+		const railBody = this.railEl.createDiv({ cls: "fpih-rail-body" });
 		this.tabsEl = railBody.createDiv({
-			cls: "fp-rail-tabs fp-nav-items",
+			cls: "fpih-rail-tabs fpih-nav-items",
 			attr: { role: "tablist", "aria-orientation": "vertical", "aria-label": "Finance sections" },
 		});
-		this.accountsEl = railBody.createDiv({ cls: "fp-rail-section" });
-		this.footerEl = this.railEl.createDiv({ cls: "fp-rail-footer" });
+		this.accountsEl = railBody.createDiv({ cls: "fpih-rail-section" });
+		this.footerEl = this.railEl.createDiv({ cls: "fpih-rail-footer" });
 
 		this.renderNav();
 		this.renderBody();
@@ -124,7 +124,7 @@ export class FinanceView extends ItemView {
 	}
 
 	/**
-	 * Layout is container-driven now (`@container fp-shell`), so this only handles the *manual*
+	 * Layout is container-driven now (`@container fpih-shell`), so this only handles the *manual*
 	 * override: "on" forces the narrow branch at any width (useful to preview it on desktop), "off"
 	 * never forces it, "auto" keeps the historical behaviour of following `Platform.isMobile` —
 	 * a phone's WebView reports a wide container in landscape but still wants the stacked layout.
@@ -132,17 +132,17 @@ export class FinanceView extends ItemView {
 	private applyNarrowOverride(): void {
 		const mode = this.plugin.settings.mobileLayout ?? "auto";
 		const force = mode === "on" || (mode !== "off" && Platform.isMobile);
-		this.contentEl.toggleClass("fp-force-narrow", force);
+		this.contentEl.toggleClass("fpih-force-narrow", force);
 	}
 
 	private renderBrandTitle(): void {
 		this.brandTitleEl.empty();
 		const name = this.plugin.activePortfolio?.name;
 		this.brandTitleEl.createSpan({
-			cls: "fp-nav-brand-title-text",
+			cls: "fpih-nav-brand-title-text",
 			text: name ? `${possessive(name)} Finance` : "Finance",
 		});
-		icon(this.brandTitleEl, "chevron-down", "fp-nav-brand-chevron");
+		icon(this.brandTitleEl, "chevron-down", "fpih-nav-brand-chevron");
 	}
 
 	private openPortfolioMenu(): void {
@@ -193,7 +193,7 @@ export class FinanceView extends ItemView {
 	/** Toggled on <body>, not the workspace root — modals (e.g. transaction/month detail) mount outside
 	 *  the view's own DOM subtree, so they only pick up privacy mode via a class shared that high up. */
 	private applyPrivacyClass(): void {
-		document.body.toggleClass("fp-privacy", !!this.plugin.settings.privacyMode);
+		document.body.toggleClass("fpih-privacy", !!this.plugin.settings.privacyMode);
 	}
 
 	private async togglePrivacy(): Promise<void> {
@@ -244,9 +244,9 @@ export class FinanceView extends ItemView {
 	/** The tail slot holds the balance and the drag grip in the same place — the grip fades in over
 	 *  the balance on hover, so the rail is not permanently cluttered with six grip icons. */
 	private navTail(item: HTMLElement, draggable: boolean, balance?: string): void {
-		const tail = item.createDiv({ cls: "fp-nav-tail" });
-		if (balance !== undefined) tail.createSpan({ cls: "fp-nav-balance fp-money", text: balance });
-		if (draggable) icon(tail, "grip-vertical", "fp-nav-drag-handle");
+		const tail = item.createDiv({ cls: "fpih-nav-tail" });
+		if (balance !== undefined) tail.createSpan({ cls: "fpih-nav-balance fpih-money", text: balance });
+		if (draggable) icon(tail, "grip-vertical", "fpih-nav-drag-handle");
 	}
 
 	/** Roving tabindex across the primary tabs: one stop in the tab order, arrows move within it. */
@@ -263,7 +263,7 @@ export class FinanceView extends ItemView {
 
 	private renderDraggableTab(def: NavTabDef, focusable: boolean): HTMLElement {
 		const item = this.tabsEl.createEl("button", {
-			cls: "fp-nav-item fp-nav-item-draggable" + (def.isActive ? " is-active" : ""),
+			cls: "fpih-nav-item fpih-nav-item-draggable" + (def.isActive ? " is-active" : ""),
 			attr: {
 				type: "button",
 				role: "tab",
@@ -274,8 +274,8 @@ export class FinanceView extends ItemView {
 				title: def.label,
 			},
 		});
-		icon(item, def.icon, "fp-nav-icon");
-		item.createSpan({ cls: "fp-nav-label", text: def.label });
+		icon(item, def.icon, "fpih-nav-icon");
+		item.createSpan({ cls: "fpih-nav-label", text: def.label });
 		this.navTail(item, true);
 		item.addEventListener("click", () => def.onClick());
 		this.wireDrag(item, def.id, (draggedId, targetId) => void this.reorderNavTabs(draggedId, targetId));
@@ -367,15 +367,15 @@ export class FinanceView extends ItemView {
 			// Balances in the rail: the single most useful thing a finance sidebar can show, and the
 			// group total answers "what am I worth" without leaving whatever page you are on.
 			const total = accounts.reduce((sum, a) => sum + netWorth(this.plugin.store, a.id), 0);
-			const head = this.accountsEl.createDiv({ cls: "fp-rail-section-head" });
-			head.createSpan({ cls: "fp-overline fp-nav-section-label", text: "Accounts" });
-			head.createSpan({ cls: "fp-rail-section-total fp-money", text: formatEUR(total) });
+			const head = this.accountsEl.createDiv({ cls: "fpih-rail-section-head" });
+			head.createSpan({ cls: "fpih-overline fpih-nav-section-label", text: "Accounts" });
+			head.createSpan({ cls: "fpih-rail-section-total fpih-money", text: formatEUR(total) });
 		}
 
 		accounts.forEach((acc) => {
 			const isActive = !activeView && activeAccountId === acc.id;
 			const item = this.accountsEl.createEl("button", {
-				cls: "fp-nav-item fp-rail-account fp-nav-item-draggable" + (isActive ? " is-active" : ""),
+				cls: "fpih-nav-item fpih-rail-account fpih-nav-item-draggable" + (isActive ? " is-active" : ""),
 				attr: {
 					type: "button",
 					draggable: "true",
@@ -385,10 +385,10 @@ export class FinanceView extends ItemView {
 					title: `${acc.name} · ${ACCOUNT_TYPE_META[acc.type].label}`,
 				},
 			});
-			icon(item, ACCOUNT_TYPE_META[acc.type].icon, "fp-nav-icon");
-			const textCol = item.createDiv({ cls: "fp-nav-item-text" });
-			textCol.createDiv({ cls: "fp-nav-label", text: acc.name });
-			textCol.createDiv({ cls: "fp-nav-item-type", text: ACCOUNT_TYPE_META[acc.type].label });
+			icon(item, ACCOUNT_TYPE_META[acc.type].icon, "fpih-nav-icon");
+			const textCol = item.createDiv({ cls: "fpih-nav-item-text" });
+			textCol.createDiv({ cls: "fpih-nav-label", text: acc.name });
+			textCol.createDiv({ cls: "fpih-nav-item-type", text: ACCOUNT_TYPE_META[acc.type].label });
 			this.navTail(item, true, formatEUR(netWorth(this.plugin.store, acc.id)));
 			item.addEventListener("click", () => void this.selectAccount(acc.id));
 			// Right-click → edit: the only other route to "change this account's type" is buried in
@@ -412,11 +412,11 @@ export class FinanceView extends ItemView {
 		});
 
 		const addItem = this.accountsEl.createEl("button", {
-			cls: "fp-nav-item fp-nav-item-ghost",
+			cls: "fpih-nav-item fpih-nav-item-ghost",
 			attr: { type: "button" },
 		});
-		icon(addItem, "plus", "fp-nav-icon");
-		addItem.createSpan({ cls: "fp-nav-label", text: "Add account" });
+		icon(addItem, "plus", "fpih-nav-icon");
+		addItem.createSpan({ cls: "fpih-nav-label", text: "Add account" });
 		addItem.addEventListener("click", () => {
 			new CreateAccountModal(this.app, this.plugin, (account) => void this.selectAccount(account.id)).open();
 		});
@@ -426,11 +426,11 @@ export class FinanceView extends ItemView {
 	 *  the tabs and the accounts, which made them read as destinations. */
 	private renderUtilityFooter(): void {
 		const manageItem = this.footerEl.createEl("button", {
-			cls: "fp-nav-util",
+			cls: "fpih-nav-util",
 			attr: { type: "button", title: "Manage accounts…", "aria-label": "Manage accounts" },
 		});
-		icon(manageItem, "settings", "fp-nav-icon");
-		manageItem.createSpan({ cls: "fp-nav-label", text: "Manage" });
+		icon(manageItem, "settings", "fpih-nav-icon");
+		manageItem.createSpan({ cls: "fpih-nav-label", text: "Manage" });
 		manageItem.addEventListener("click", () => {
 			new ManageAccountsModal(this.app, this.plugin, () => {
 				this.renderNav();
@@ -440,26 +440,26 @@ export class FinanceView extends ItemView {
 
 		const privacyOn = !!this.plugin.settings.privacyMode;
 		const privacyItem = this.footerEl.createEl("button", {
-			cls: "fp-nav-util" + (privacyOn ? " is-privacy-on" : ""),
+			cls: "fpih-nav-util" + (privacyOn ? " is-privacy-on" : ""),
 			attr: {
 				type: "button",
 				"aria-pressed": String(privacyOn),
 				title: "Redact every amount — hover one to peek. Useful when demoing the plugin.",
 			},
 		});
-		icon(privacyItem, privacyOn ? "eye-off" : "eye", "fp-nav-icon");
+		icon(privacyItem, privacyOn ? "eye-off" : "eye", "fpih-nav-icon");
 		// A constant one-word label: the footer shares its row with "Manage", and the previous
 		// "Amounts hidden" / "Hide amounts" truncated to an unreadable "Amounts …". State lives in
 		// the icon + aria-pressed + the is-privacy-on tint, not in label churn.
-		privacyItem.createSpan({ cls: "fp-nav-label", text: "Privacy" });
+		privacyItem.createSpan({ cls: "fpih-nav-label", text: "Privacy" });
 		privacyItem.addEventListener("click", () => void this.togglePrivacy());
 	}
 
 	private renderBody(): void {
 		this.bodyEl.empty();
 		// `.empty()` clears children, not the classes the sections put on the body itself. Every section
-		// adds `fp-section` and none removes it, so one visit to any of them left `.fp-section` on the
-		// shared body for the life of the view — after which `.fp-section .fp-step-desc` started
+		// adds `fpih-section` and none removes it, so one visit to any of them left `.fpih-section` on the
+		// shared body for the life of the view — after which `.fpih-section .fpih-step-desc` started
 		// applying to the setup view too, depending only on where you happened to have been.
 		for (const cls of BODY_SECTION_CLASSES) this.bodyEl.removeClass(cls);
 		// First run owns the whole body: a fresh install with no accounts has nothing to show on any

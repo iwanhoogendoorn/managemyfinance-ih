@@ -14,10 +14,10 @@ const NETWORK_TEXT: Partial<Record<Card["network"], string>> = {
  * replace the approach.
  */
 function renderNetworkMark(parent: HTMLElement, network: Card["network"]): void {
-	const mark = parent.createDiv({ cls: `fp-card-visual-network fp-card-network-${network}` });
+	const mark = parent.createDiv({ cls: `fpih-card-visual-network fpih-card-network-${network}` });
 	if (network === "mastercard") {
-		mark.createDiv({ cls: "fp-card-network-circle fp-card-network-circle-a" });
-		mark.createDiv({ cls: "fp-card-network-circle fp-card-network-circle-b" });
+		mark.createDiv({ cls: "fpih-card-network-circle fpih-card-network-circle-a" });
+		mark.createDiv({ cls: "fpih-card-network-circle fpih-card-network-circle-b" });
 	} else {
 		mark.createSpan({ text: NETWORK_TEXT[network] ?? "" });
 	}
@@ -35,36 +35,36 @@ export type CardVisualData = Pick<
 export function renderCardVisual(parent: HTMLElement, card: CardVisualData, cls?: string): HTMLElement {
 	const style = cardStyle(card);
 	const face = parent.createDiv({
-		cls: ["fp-card-visual", style.isLight ? "fp-card-visual-light" : "", cls].filter(Boolean).join(" "),
+		cls: ["fpih-card-visual", style.isLight ? "fpih-card-visual-light" : "", cls].filter(Boolean).join(" "),
 	});
-	face.style.setProperty("--fp-card-gradient", style.gradient);
-	face.style.setProperty("--fp-card-text", style.textColor);
+	face.style.setProperty("--fpih-card-gradient", style.gradient);
+	face.style.setProperty("--fpih-card-text", style.textColor);
 
-	const shine = face.createDiv({ cls: "fp-card-visual-shine" });
+	const shine = face.createDiv({ cls: "fpih-card-visual-shine" });
 
-	// Issuer, last four and cardholder name all carry `.fp-sensitive`: the Cards tab is the most
+	// Issuer, last four and cardholder name all carry `.fpih-sensitive`: the Cards tab is the most
 	// person-identifying screen in the plugin, and privacy mode existed to make a screen shareable.
-	const top = face.createDiv({ cls: "fp-card-visual-top" });
-	top.createDiv({ cls: "fp-card-visual-issuer fp-sensitive", text: card.issuer || card.product || "" });
-	if (card.isPrimary) top.createDiv({ cls: "fp-card-visual-primary", text: "PRIMARY" });
+	const top = face.createDiv({ cls: "fpih-card-visual-top" });
+	top.createDiv({ cls: "fpih-card-visual-issuer fpih-sensitive", text: card.issuer || card.product || "" });
+	if (card.isPrimary) top.createDiv({ cls: "fpih-card-visual-primary", text: "PRIMARY" });
 
-	const chipRow = face.createDiv({ cls: "fp-card-visual-chip-row" });
-	const chip = chipRow.createDiv({ cls: "fp-card-visual-chip" });
-	chip.createDiv({ cls: "fp-card-visual-chip-lines" });
-	chipRow.createDiv({ cls: "fp-card-visual-contactless" });
+	const chipRow = face.createDiv({ cls: "fpih-card-visual-chip-row" });
+	const chip = chipRow.createDiv({ cls: "fpih-card-visual-chip" });
+	chip.createDiv({ cls: "fpih-card-visual-chip-lines" });
+	chipRow.createDiv({ cls: "fpih-card-visual-contactless" });
 	face.createDiv({
-		cls: "fp-card-visual-number fp-sensitive",
+		cls: "fpih-card-visual-number fpih-sensitive",
 		text: card.last4 ? `•••• •••• •••• ${card.last4}` : "•••• •••• •••• ••••",
 	});
 
-	const bottom = face.createDiv({ cls: "fp-card-visual-bottom" });
-	const nameCol = bottom.createDiv({ cls: "fp-card-visual-name-col" });
-	nameCol.createDiv({ cls: "fp-card-visual-label", text: "CARDHOLDER" });
-	nameCol.createDiv({ cls: "fp-card-visual-name fp-sensitive", text: card.name });
+	const bottom = face.createDiv({ cls: "fpih-card-visual-bottom" });
+	const nameCol = bottom.createDiv({ cls: "fpih-card-visual-name-col" });
+	nameCol.createDiv({ cls: "fpih-card-visual-label", text: "CARDHOLDER" });
+	nameCol.createDiv({ cls: "fpih-card-visual-name fpih-sensitive", text: card.name });
 	if (card.expiry) {
-		const expCol = bottom.createDiv({ cls: "fp-card-visual-exp-col" });
-		expCol.createDiv({ cls: "fp-card-visual-label", text: "EXP" });
-		expCol.createDiv({ cls: "fp-card-visual-exp", text: card.expiry });
+		const expCol = bottom.createDiv({ cls: "fpih-card-visual-exp-col" });
+		expCol.createDiv({ cls: "fpih-card-visual-label", text: "EXP" });
+		expCol.createDiv({ cls: "fpih-card-visual-exp", text: card.expiry });
 	}
 	renderNetworkMark(bottom, card.network);
 

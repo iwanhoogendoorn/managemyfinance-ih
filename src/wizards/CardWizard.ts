@@ -6,7 +6,7 @@ import { renderCardVisual } from "../ui/cardVisual";
 import { WizardModal, WizardStep } from "./WizardModal";
 
 function formField(parent: HTMLElement, label: string, type: string, placeholder?: string, extraAttr?: Record<string, string>) {
-	const row = parent.createDiv({ cls: "fp-form-row" });
+	const row = parent.createDiv({ cls: "fpih-form-row" });
 	row.createEl("label", { text: label });
 	const attr = { ...(placeholder ? { placeholder } : {}), ...(extraAttr ?? {}) };
 	const input = row.createEl("input", { type, attr: Object.keys(attr).length ? attr : undefined });
@@ -14,7 +14,7 @@ function formField(parent: HTMLElement, label: string, type: string, placeholder
 }
 
 function formSelectField(parent: HTMLElement, label: string, options: { value: string; label: string }[]) {
-	const row = parent.createDiv({ cls: "fp-form-row" });
+	const row = parent.createDiv({ cls: "fpih-form-row" });
 	row.createEl("label", { text: label });
 	const select = row.createEl("select");
 	options.forEach((opt) => select.createEl("option", { text: opt.label, value: opt.value }));
@@ -62,10 +62,10 @@ export function openCardWizard(
 			render: (c) => {
 				c.createEl("h3", { text: existing ? `Edit "${existing.name}"` : "Add a card" });
 				c.createEl("p", {
-					cls: "fp-step-desc",
+					cls: "fpih-step-desc",
 					text: "Every card links to one of your accounts — that's what it draws money from (or borrows against).",
 				});
-				const grid = c.createDiv({ cls: "fp-sub-form-grid" });
+				const grid = c.createDiv({ cls: "fpih-sub-form-grid" });
 
 				const accountField = formSelectField(
 					grid,
@@ -115,11 +115,11 @@ export function openCardWizard(
 				notesField.input.value = notes;
 				notesField.input.addEventListener("input", () => (notes = notesField.input.value));
 
-				const primaryRow = c.createDiv({ cls: "fp-type-checkbox-row" });
-				const primaryCheckbox = primaryRow.createEl("input", { type: "checkbox", attr: { id: "fp-card-primary" } });
+				const primaryRow = c.createDiv({ cls: "fpih-type-checkbox-row" });
+				const primaryCheckbox = primaryRow.createEl("input", { type: "checkbox", attr: { id: "fpih-card-primary" } });
 				primaryCheckbox.checked = isPrimary;
 				primaryCheckbox.addEventListener("change", () => (isPrimary = primaryCheckbox.checked));
-				const primaryLabel = primaryRow.createEl("label", { attr: { for: "fp-card-primary" } });
+				const primaryLabel = primaryRow.createEl("label", { attr: { for: "fpih-card-primary" } });
 				primaryLabel.createSpan({ text: "This is the primary card for its account" });
 
 				setTimeout(() => nameField.input.focus(), 0);
@@ -136,10 +136,10 @@ export function openCardWizard(
 			render: (c) => {
 				c.createEl("h3", { text: "This is roughly how it'll look" });
 				c.createEl("p", {
-					cls: "fp-step-desc",
+					cls: "fpih-step-desc",
 					text: "A stylized approximation based on the card's tier and network — not your bank's actual card art.",
 				});
-				const previewWrap = c.createDiv({ cls: "fp-card-preview-wrap" });
+				const previewWrap = c.createDiv({ cls: "fpih-card-preview-wrap" });
 				renderCardVisual(previewWrap, { name: name.trim() || "Your card", product, issuer, network, cardType, last4, expiry, isPrimary });
 			},
 			nextLabel: existing ? "Save changes" : "Add card",

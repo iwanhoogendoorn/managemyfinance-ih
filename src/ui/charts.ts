@@ -13,7 +13,7 @@ const NS = "http://www.w3.org/2000/svg";
 let uidCounter = 0;
 function nextId(prefix: string): string {
 	uidCounter += 1;
-	return `fp-${prefix}-${uidCounter}`;
+	return `fpih-${prefix}-${uidCounter}`;
 }
 
 function svgEl<K extends keyof SVGElementTagNameMap>(name: K): SVGElementTagNameMap[K] {
@@ -23,7 +23,7 @@ function svgEl<K extends keyof SVGElementTagNameMap>(name: K): SVGElementTagName
 /** Local copy of ui/dom's `icon()`. charts.ts must NOT import dom.ts — dom.ts now imports
  *  `sparkline` from here for the unified stat component, and a cycle would follow. */
 function chartIcon(parent: HTMLElement, name: string, cls?: string): HTMLElement {
-	const span = parent.createSpan({ cls: ["fp-icon", cls].filter(Boolean).join(" ") });
+	const span = parent.createSpan({ cls: ["fpih-icon", cls].filter(Boolean).join(" ") });
 	setIcon(span, name);
 	return span;
 }
@@ -227,22 +227,22 @@ export function lineChart(container: HTMLElement, categories: string[], series: 
 	const formatTick = opts?.formatValue ?? formatCompact;
 	const smooth = opts?.smooth ?? categories.length >= 8;
 
-	const wrap = container.createDiv({ cls: "fp-chart" + (money ? " fp-chart-money" : "") });
+	const wrap = container.createDiv({ cls: "fpih-chart" + (money ? " fpih-chart-money" : "") });
 	const hidden = new Set<number>();
 
 	// Legend first: it is also the isolate control, and it must exist before the first draw so the
 	// plot can read `hidden`.
 	let legend: HTMLElement | undefined;
 	if (series.length >= 2) {
-		legend = wrap.createDiv({ cls: "fp-chart-legend" });
+		legend = wrap.createDiv({ cls: "fpih-chart-legend" });
 		series.forEach((s, i) => {
 			const item = legend!.createEl("button", {
-				cls: "fp-chart-legend-item",
+				cls: "fpih-chart-legend-item",
 				attr: { type: "button", "aria-pressed": "true", title: `Toggle ${s.label}` },
 			});
-			const key = item.createSpan({ cls: "fp-chart-key fp-chart-key--line fp-chart-swatch" });
-			key.style.setProperty("--fp-key", s.color);
-			key.style.setProperty("--fp-swatch-color", s.color);
+			const key = item.createSpan({ cls: "fpih-chart-key fpih-chart-key--line fpih-chart-swatch" });
+			key.style.setProperty("--fpih-key", s.color);
+			key.style.setProperty("--fpih-swatch-color", s.color);
 			item.createSpan({ text: s.label });
 			item.addEventListener("click", () => {
 				if (hidden.has(i)) hidden.delete(i);
@@ -253,7 +253,7 @@ export function lineChart(container: HTMLElement, categories: string[], series: 
 		});
 	}
 
-	const plot = wrap.createDiv({ cls: "fp-chart-plot" });
+	const plot = wrap.createDiv({ cls: "fpih-chart-plot" });
 	let lastSize: { w: number; h: number } | undefined;
 	const redraw = () => {
 		if (lastSize) drawLineChart(plot, categories, series, hidden, lastSize.w, lastSize.h, { formatValue, formatTick, money, smooth, area: !!opts?.area, title: opts?.title, description: opts?.description });
@@ -272,7 +272,7 @@ export function lineChart(container: HTMLElement, categories: string[], series: 
 interface DrawOpts {
 	formatValue: (n: number) => string;
 	formatTick: (n: number) => string;
-	/** Mirrors the wrapper's `fp-chart-money` class, so the tooltip value opts out of redaction too. */
+	/** Mirrors the wrapper's `fpih-chart-money` class, so the tooltip value opts out of redaction too. */
 	money: boolean;
 	smooth: boolean;
 	area: boolean;
@@ -318,7 +318,7 @@ function drawLineChart(
 	const scaleX = (i: number) => padLeft + (categories.length <= 1 ? plotW / 2 : (i / (categories.length - 1)) * plotW);
 
 	const svg = svgEl("svg");
-	svg.setAttribute("class", "fp-chart-svg");
+	svg.setAttribute("class", "fpih-chart-svg");
 	// width/height attributes AND an identical viewBox — one CSS pixel per user unit.
 	svg.setAttribute("width", String(width));
 	svg.setAttribute("height", String(height));
@@ -340,13 +340,13 @@ function drawLineChart(
 		line.setAttribute("y1", String(y));
 		line.setAttribute("y2", String(y));
 		line.setAttribute("shape-rendering", "crispEdges");
-		line.setAttribute("class", t === 0 ? "fp-chart-baseline" : "fp-chart-grid");
+		line.setAttribute("class", t === 0 ? "fpih-chart-baseline" : "fpih-chart-grid");
 		svg.appendChild(line);
 
 		const label = svgEl("text");
 		label.setAttribute("x", String(padLeft - 6));
 		label.setAttribute("y", String(y));
-		label.setAttribute("class", "fp-chart-axis");
+		label.setAttribute("class", "fpih-chart-axis");
 		label.setAttribute("text-anchor", "end");
 		label.setAttribute("dominant-baseline", "middle");
 		label.textContent = o.formatTick(t);
@@ -361,7 +361,7 @@ function drawLineChart(
 		const label = svgEl("text");
 		label.setAttribute("x", String(scaleX(i)));
 		label.setAttribute("y", String(height - padBottom + 16));
-		label.setAttribute("class", "fp-chart-axis");
+		label.setAttribute("class", "fpih-chart-axis");
 		label.setAttribute("text-anchor", i === lastIdx && step > 1 ? "end" : "middle");
 		label.textContent = cat;
 		svg.appendChild(label);
@@ -394,7 +394,7 @@ function drawLineChart(
 		const pts = points(s);
 		const baselineY = padTop + plotH;
 		const area = svgEl("path");
-		area.setAttribute("class", "fp-chart-area");
+		area.setAttribute("class", "fpih-chart-area");
 		area.setAttribute(
 			"d",
 			(o.smooth ? monotonePath(pts) : polyPath(pts)) +
@@ -410,20 +410,20 @@ function drawLineChart(
 		const pts = points(s);
 		const path = svgEl("path");
 		path.setAttribute("d", o.smooth ? monotonePath(pts) : polyPath(pts));
-		path.setAttribute("class", "fp-chart-line");
+		path.setAttribute("class", "fpih-chart-line");
 		path.setAttribute("vector-effect", "non-scaling-stroke");
-		path.style.setProperty("--fp-line-color", s.color);
+		path.style.setProperty("--fpih-line-color", s.color);
 		svg.appendChild(path);
 	});
 
 	// --- Rule 5: markers are selective — last point of every series, plus the focus series' extremes.
-	const marker = (x: number, y: number, color: string, cls = "fp-chart-dot") => {
+	const marker = (x: number, y: number, color: string, cls = "fpih-chart-dot") => {
 		const dot = svgEl("circle");
 		dot.setAttribute("cx", String(x));
 		dot.setAttribute("cy", String(y));
 		dot.setAttribute("r", "4");
 		dot.setAttribute("class", cls);
-		dot.style.setProperty("--fp-line-color", color);
+		dot.style.setProperty("--fpih-line-color", color);
 		svg.appendChild(dot);
 	};
 	visible.forEach((s, si) => {
@@ -455,16 +455,16 @@ function drawLineChart(
 		labels.forEach((l) => {
 			if (Math.abs(l.y - l.natural) > 0.5) {
 				const leader = svgEl("path");
-				leader.setAttribute("class", "fp-chart-leader");
+				leader.setAttribute("class", "fpih-chart-leader");
 				leader.setAttribute("d", `M${xEnd + 4},${l.natural}H${xEnd + 8}L${xEnd + 12},${l.y}H${xEnd + 15}`);
 				svg.appendChild(leader);
 			}
 			const text = svgEl("text");
 			text.setAttribute("x", String(xEnd + 17));
 			text.setAttribute("y", String(l.y));
-			text.setAttribute("class", "fp-chart-end-label");
+			text.setAttribute("class", "fpih-chart-end-label");
 			text.setAttribute("dominant-baseline", "middle");
-			text.style.setProperty("--fp-line-color", l.color);
+			text.style.setProperty("--fpih-line-color", l.color);
 			text.textContent = l.text;
 			svg.appendChild(text);
 		});
@@ -474,22 +474,22 @@ function drawLineChart(
 	const crosshair = svgEl("line");
 	crosshair.setAttribute("y1", String(padTop));
 	crosshair.setAttribute("y2", String(padTop + plotH));
-	crosshair.setAttribute("class", "fp-chart-crosshair");
+	crosshair.setAttribute("class", "fpih-chart-crosshair");
 	crosshair.style.display = "none";
 	svg.appendChild(crosshair);
 
 	const hoverLayer = svgEl("g");
-	hoverLayer.setAttribute("class", "fp-chart-hover");
+	hoverLayer.setAttribute("class", "fpih-chart-hover");
 	svg.appendChild(hoverLayer);
 
-	const tooltip = plot.createDiv({ cls: "fp-chart-tooltip" });
+	const tooltip = plot.createDiv({ cls: "fpih-chart-tooltip" });
 
 	const hitRect = svgEl("rect");
 	hitRect.setAttribute("x", String(padLeft));
 	hitRect.setAttribute("y", String(padTop));
 	hitRect.setAttribute("width", String(plotW));
 	hitRect.setAttribute("height", String(plotH));
-	hitRect.setAttribute("class", "fp-chart-hit");
+	hitRect.setAttribute("class", "fpih-chart-hit");
 	hitRect.setAttribute("tabindex", "0");
 	hitRect.setAttribute("focusable", "true");
 	hitRect.setAttribute("aria-label", "Chart data. Use left and right arrow keys to step through periods.");
@@ -516,19 +516,19 @@ function drawLineChart(
 			dot.setAttribute("cx", String(x));
 			dot.setAttribute("cy", String(scaleY(s.values[activeIdx])));
 			dot.setAttribute("r", "4");
-			dot.setAttribute("class", "fp-chart-dot");
-			dot.style.setProperty("--fp-line-color", s.color);
+			dot.setAttribute("class", "fpih-chart-dot");
+			dot.style.setProperty("--fpih-line-color", s.color);
 			hoverLayer.appendChild(dot);
 		});
 
 		tooltip.empty();
-		tooltip.createDiv({ cls: "fp-chart-tooltip-title", text: categories[activeIdx] });
+		tooltip.createDiv({ cls: "fpih-chart-tooltip-title", text: categories[activeIdx] });
 		visible.forEach((s) => {
-			const row = tooltip.createDiv({ cls: "fp-chart-tooltip-row" });
-			const swatch = row.createSpan({ cls: "fp-chart-swatch" });
-			swatch.style.setProperty("--fp-swatch-color", s.color);
+			const row = tooltip.createDiv({ cls: "fpih-chart-tooltip-row" });
+			const swatch = row.createSpan({ cls: "fpih-chart-swatch" });
+			swatch.style.setProperty("--fpih-swatch-color", s.color);
 			row.createSpan({ text: s.label });
-			row.createSpan({ cls: "fp-chart-tooltip-value" + (o.money ? " fp-money" : ""), text: o.formatValue(s.values[activeIdx]) });
+			row.createSpan({ cls: "fpih-chart-tooltip-value" + (o.money ? " fpih-money" : ""), text: o.formatValue(s.values[activeIdx]) });
 		});
 		tooltip.addClass("is-visible");
 
@@ -589,20 +589,20 @@ export function groupedColumnChart(
 	// Axis ticks follow `formatValue` the way lineChart's do. Hardcoding `formatCompact` rendered the
 	// credit-utilization axis (ratios 0…0.5) as "0 0 0 0 0 1", and sized padLeft off those strings.
 	const formatTick = opts?.formatValue ?? formatCompact;
-	const wrap = container.createDiv({ cls: "fp-chart" + (money ? " fp-chart-money" : "") });
+	const wrap = container.createDiv({ cls: "fpih-chart" + (money ? " fpih-chart-money" : "") });
 
 	if (series.length >= 2) {
-		const legend = wrap.createDiv({ cls: "fp-chart-legend" });
+		const legend = wrap.createDiv({ cls: "fpih-chart-legend" });
 		series.forEach((s) => {
-			const item = legend.createDiv({ cls: "fp-chart-legend-item" });
-			const key = item.createSpan({ cls: "fp-chart-key fp-chart-key--area fp-chart-swatch" });
-			key.style.setProperty("--fp-key", s.color);
-			key.style.setProperty("--fp-swatch-color", s.color);
+			const item = legend.createDiv({ cls: "fpih-chart-legend-item" });
+			const key = item.createSpan({ cls: "fpih-chart-key fpih-chart-key--area fpih-chart-swatch" });
+			key.style.setProperty("--fpih-key", s.color);
+			key.style.setProperty("--fpih-swatch-color", s.color);
 			item.createSpan({ text: s.label });
 		});
 	}
 
-	const plot = wrap.createDiv({ cls: "fp-chart-plot" });
+	const plot = wrap.createDiv({ cls: "fpih-chart-plot" });
 	mountResponsiveChart(
 		plot,
 		(width, height) => {
@@ -623,7 +623,7 @@ export function groupedColumnChart(
 			const zeroY = scaleY(0);
 
 			const svg = svgEl("svg");
-			svg.setAttribute("class", "fp-chart-svg");
+			svg.setAttribute("class", "fpih-chart-svg");
 			svg.setAttribute("width", String(width));
 			svg.setAttribute("height", String(height));
 			svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -642,13 +642,13 @@ export function groupedColumnChart(
 				line.setAttribute("y1", String(y));
 				line.setAttribute("y2", String(y));
 				line.setAttribute("shape-rendering", "crispEdges");
-				line.setAttribute("class", t === 0 ? "fp-chart-baseline" : "fp-chart-grid");
+				line.setAttribute("class", t === 0 ? "fpih-chart-baseline" : "fpih-chart-grid");
 				svg.appendChild(line);
 
 				const label = svgEl("text");
 				label.setAttribute("x", String(padLeft - 6));
 				label.setAttribute("y", String(y));
-				label.setAttribute("class", "fp-chart-axis");
+				label.setAttribute("class", "fpih-chart-axis");
 				label.setAttribute("text-anchor", "end");
 				label.setAttribute("dominant-baseline", "middle");
 				label.textContent = formatTick(t);
@@ -657,17 +657,17 @@ export function groupedColumnChart(
 
 			// A DOM tooltip rather than a native `<title>` carrying the amount: an OS tooltip is drawn by
 			// the browser chrome, so no stylesheet can redact it and privacy mode leaked every column's
-			// exact figure on hover. This one is ordinary DOM, so `.fp-money` covers it.
-			const tooltip = plot.createDiv({ cls: "fp-chart-tooltip" });
+			// exact figure on hover. This one is ordinary DOM, so `.fpih-money` covers it.
+			const tooltip = plot.createDiv({ cls: "fpih-chart-tooltip" });
 			const showTip = (cat: string, s: ChartSeries, v: number, x: number, y: number) => {
 				tooltip.empty();
-				tooltip.createDiv({ cls: "fp-chart-tooltip-title", text: cat });
-				const row = tooltip.createDiv({ cls: "fp-chart-tooltip-row" });
-				const swatch = row.createSpan({ cls: "fp-chart-swatch" });
-				swatch.style.setProperty("--fp-swatch-color", s.color);
+				tooltip.createDiv({ cls: "fpih-chart-tooltip-title", text: cat });
+				const row = tooltip.createDiv({ cls: "fpih-chart-tooltip-row" });
+				const swatch = row.createSpan({ cls: "fpih-chart-swatch" });
+				swatch.style.setProperty("--fpih-swatch-color", s.color);
 				row.createSpan({ text: s.label });
-				// `fp-money` only on a money chart — redacting a utilization percentage would be wrong.
-				row.createSpan({ cls: "fp-chart-tooltip-value" + (money ? " fp-money" : ""), text: formatValue(v) });
+				// `fpih-money` only on a money chart — redacting a utilization percentage would be wrong.
+				row.createSpan({ cls: "fpih-chart-tooltip-value" + (money ? " fpih-money" : ""), text: formatValue(v) });
 				tooltip.addClass("is-visible");
 				const flip = x / width > 0.6;
 				tooltip.style.left = `${x + (flip ? -8 : 8)}px`;
@@ -692,8 +692,8 @@ export function groupedColumnChart(
 					const barX = groupX + si * (barW + 2);
 					const bar = svgEl("path");
 					bar.setAttribute("d", roundedTopBar(barX, y, barW, h, 4));
-					bar.setAttribute("class", "fp-chart-column");
-					bar.style.setProperty("--fp-bar-color", s.color);
+					bar.setAttribute("class", "fpih-chart-column");
+					bar.style.setProperty("--fpih-bar-color", s.color);
 					// Label only — the figure lives in the tooltip below, where privacy mode can reach it.
 					const t = svgEl("title");
 					t.textContent = `${cat} · ${s.label}`;
@@ -707,7 +707,7 @@ export function groupedColumnChart(
 					const label = svgEl("text");
 					label.setAttribute("x", String(padLeft + slot * ci + slot / 2));
 					label.setAttribute("y", String(height - padBottom + 16));
-					label.setAttribute("class", "fp-chart-axis");
+					label.setAttribute("class", "fpih-chart-axis");
 					label.setAttribute("text-anchor", "middle");
 					label.textContent = cat;
 					svg.appendChild(label);
@@ -747,7 +747,7 @@ export function sparkline(
 	svg.setAttribute("width", String(width));
 	svg.setAttribute("height", String(height));
 	svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-	svg.setAttribute("class", "fp-sparkline");
+	svg.setAttribute("class", "fpih-sparkline");
 	svg.setAttribute("role", "img");
 	svg.setAttribute("aria-hidden", "true");
 	container.appendChild(svg);
@@ -756,15 +756,15 @@ export function sparkline(
 
 	if (opts?.area) {
 		const area = svgEl("path");
-		area.setAttribute("class", "fp-sparkline-area");
+		area.setAttribute("class", "fpih-sparkline-area");
 		area.setAttribute("d", `${polyPath(pts)}L${pts[pts.length - 1].x},${height}L${pts[0].x},${height}Z`);
-		area.style.setProperty("--fp-line-color", accentColor);
+		area.style.setProperty("--fpih-line-color", accentColor);
 		svg.appendChild(area);
 	}
 
 	const line = svgEl("path");
 	line.setAttribute("d", polyPath(pts));
-	line.setAttribute("class", "fp-sparkline-line");
+	line.setAttribute("class", "fpih-sparkline-line");
 	line.setAttribute("vector-effect", "non-scaling-stroke");
 	svg.appendChild(line);
 
@@ -773,8 +773,8 @@ export function sparkline(
 	dot.setAttribute("cx", String(scaleX(lastIdx)));
 	dot.setAttribute("cy", String(scaleY(values[lastIdx])));
 	dot.setAttribute("r", "2.5");
-	dot.setAttribute("class", "fp-sparkline-dot");
-	dot.style.setProperty("--fp-line-color", accentColor);
+	dot.setAttribute("class", "fpih-sparkline-dot");
+	dot.style.setProperty("--fpih-line-color", accentColor);
 	svg.appendChild(dot);
 }
 
@@ -794,28 +794,28 @@ export function stackedShareBar(
 	const formatValue = opts?.formatValue ?? ((n: number) => String(n));
 	const total = segments.reduce((sum, s) => sum + Math.max(0, s.value), 0);
 
-	const wrap = container.createDiv({ cls: "fp-share-bar-wrap" });
-	const bar = wrap.createDiv({ cls: "fp-share-bar" });
-	const legend = wrap.createDiv({ cls: "fp-share-bar-legend" });
+	const wrap = container.createDiv({ cls: "fpih-share-bar-wrap" });
+	const bar = wrap.createDiv({ cls: "fpih-share-bar" });
+	const legend = wrap.createDiv({ cls: "fpih-share-bar-legend" });
 
 	const legendItems: HTMLElement[] = [];
 	segments.forEach((s) => {
 		const pct = total > 0 ? (Math.max(0, s.value) / total) * 100 : 0;
-		const item = legend.createDiv({ cls: "fp-share-bar-legend-item" });
-		const swatch = item.createSpan({ cls: "fp-chart-swatch" });
-		swatch.style.setProperty("--fp-swatch-color", s.color);
-		item.createSpan({ cls: "fp-share-bar-legend-label", text: s.label });
-		item.createSpan({ cls: "fp-share-bar-legend-value fp-money", text: `${formatValue(s.value)} · ${pct.toFixed(0)}%` });
+		const item = legend.createDiv({ cls: "fpih-share-bar-legend-item" });
+		const swatch = item.createSpan({ cls: "fpih-chart-swatch" });
+		swatch.style.setProperty("--fpih-swatch-color", s.color);
+		item.createSpan({ cls: "fpih-share-bar-legend-label", text: s.label });
+		item.createSpan({ cls: "fpih-share-bar-legend-value fpih-money", text: `${formatValue(s.value)} · ${pct.toFixed(0)}%` });
 		legendItems.push(item);
 	});
 
 	segments.forEach((s, i) => {
 		const pct = total > 0 ? Math.max(0, s.value) / total : 0;
 		if (pct <= 0) return;
-		const seg = bar.createDiv({ cls: "fp-share-bar-seg" });
+		const seg = bar.createDiv({ cls: "fpih-share-bar-seg" });
 		seg.style.width = `${pct * 100}%`;
-		seg.style.setProperty("--fp-seg-color", s.color);
-		// Label and share only. The euro figure is already in the legend row, in a `.fp-money` span
+		seg.style.setProperty("--fpih-seg-color", s.color);
+		// Label and share only. The euro figure is already in the legend row, in a `.fpih-money` span
 		// privacy mode can redact — a native tooltip is browser chrome and no stylesheet reaches it.
 		seg.setAttribute("title", `${s.label} — ${(pct * 100).toFixed(0)}%`);
 		seg.addEventListener("mouseenter", () => legendItems[i]?.addClass("is-highlight"));
@@ -834,38 +834,38 @@ export function barChart(
 	opts?: { formatValue?: (n: number) => string; onRowClick?: (index: number) => void }
 ): void {
 	const formatValue = opts?.formatValue ?? ((n: number) => EUR.format(n));
-	const wrap = container.createDiv({ cls: "fp-barchart" });
+	const wrap = container.createDiv({ cls: "fpih-barchart" });
 	const max = Math.max(...rows.map((r) => r.value), 1);
 	rows.forEach((r, i) => {
 		const share = max > 0 ? (r.value / max) * 100 : 0;
 		// The mark is the hit target here (no crosshair), so identity + value live on the row itself.
 		// With onRowClick the row becomes a real button so it's focusable and announced.
 		//
-		// Label only in `title`/`aria-label`: the value is right there in the row's own `.fp-money`
+		// Label only in `title`/`aria-label`: the value is right there in the row's own `.fpih-money`
 		// cell, which privacy mode redacts — a native tooltip and an accessible name are both outside
 		// CSS's reach, so repeating the amount there would print it in plain text with amounts hidden.
 		const row = opts?.onRowClick
 			? wrap.createEl("button", {
-					cls: "fp-barchart-row fp-barchart-row--clickable",
+					cls: "fpih-barchart-row fpih-barchart-row--clickable",
 					attr: { type: "button", title: r.label, "aria-label": r.label },
 			  })
 			: wrap.createDiv({
-					cls: "fp-barchart-row",
+					cls: "fpih-barchart-row",
 					attr: { title: r.label, "aria-label": r.label },
 			  });
 		if (opts?.onRowClick) row.addEventListener("click", () => opts.onRowClick!(i));
-		const labelEl = row.createDiv({ cls: "fp-barchart-label" });
-		if (r.iconName) chartIcon(labelEl, r.iconName, "fp-barchart-icon");
+		const labelEl = row.createDiv({ cls: "fpih-barchart-label" });
+		if (r.iconName) chartIcon(labelEl, r.iconName, "fpih-barchart-icon");
 		labelEl.createSpan({ text: r.label });
 
-		const track = row.createDiv({ cls: "fp-barchart-track" });
-		const fill = track.createDiv({ cls: "fp-barchart-fill" });
-		fill.style.setProperty("--fp-bar-color", r.color);
+		const track = row.createDiv({ cls: "fpih-barchart-track" });
+		const fill = track.createDiv({ cls: "fpih-barchart-fill" });
+		fill.style.setProperty("--fpih-bar-color", r.color);
 		// Percentage width, not a 2% floor: a min-width in CSS keeps a near-zero bar visible
 		// without overstating it.
 		fill.style.width = `${share}%`;
 
-		row.createDiv({ cls: "fp-barchart-value fp-money", text: formatValue(r.value) });
+		row.createDiv({ cls: "fpih-barchart-value fpih-money", text: formatValue(r.value) });
 	});
 }
 
@@ -879,8 +879,8 @@ export function barChart(
  * pretending to be a third state.
  */
 export function microbar(parent: HTMLElement, ratio: number, color: string): HTMLElement {
-	const bar = parent.createDiv({ cls: "fp-microbar" });
-	bar.style.setProperty("--fp-microbar-w", `${Math.max(0, Math.min(1, ratio)) * 100}%`);
-	bar.style.setProperty("--fp-microbar-color", color);
+	const bar = parent.createDiv({ cls: "fpih-microbar" });
+	bar.style.setProperty("--fpih-microbar-w", `${Math.max(0, Math.min(1, ratio)) * 100}%`);
+	bar.style.setProperty("--fpih-microbar-color", color);
 	return bar;
 }

@@ -13,7 +13,7 @@ export class FinanceSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.addClass("fp-workspace");
+		containerEl.addClass("fpih-workspace");
 
 		new Setting(containerEl).setName("Import transactions").setDesc("Bring in a bank or broker CSV export.").addButton((b) =>
 			b.setButtonText("Import").onClick(() => openImportWizard(this.plugin))
@@ -83,7 +83,7 @@ export class FinanceSettingTab extends PluginSettingTab {
 		containerEl.createEl("h3", { text: "Accounts" });
 		const store = this.plugin.store;
 		if (store.accounts.length === 0) {
-			containerEl.createEl("p", { cls: "fp-step-desc", text: "No accounts yet — add one below." });
+			containerEl.createEl("p", { cls: "fpih-step-desc", text: "No accounts yet — add one below." });
 		} else {
 			store.accounts.forEach((acc) => {
 				const desc = `${ACCOUNT_TYPE_META[acc.type].label} · ${acc.currency}${acc.iban ? ` · ${acc.iban}` : ""}`;
@@ -126,9 +126,9 @@ export class FinanceSettingTab extends PluginSettingTab {
 			);
 
 		containerEl.createEl("h3", { text: "Categories" });
-		const grid = containerEl.createDiv({ cls: "fp-category-grid" });
+		const grid = containerEl.createDiv({ cls: "fpih-category-grid" });
 		store.categories.forEach((cat) => {
-			grid.createDiv({ cls: "fp-badge fp-tone-neutral", text: cat.name });
+			grid.createDiv({ cls: "fpih-badge fpih-tone-neutral", text: cat.name });
 		});
 	}
 }

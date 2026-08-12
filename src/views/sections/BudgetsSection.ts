@@ -41,7 +41,7 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 	// Every re-render below is reachable from an `await`, and by the time one resolves the user may
 	// have navigated: `container` is the view's body and is *always* connected, so it can't tell us
 	// whether we still own the page. A root we created can — it dies with the body's next `.empty()`.
-	const root = container.createDiv({ cls: "fp-section" });
+	const root = container.createDiv({ cls: "fpih-section" });
 
 	// Stepping to 1970 renders today's limits against zero spend for a month that never existed.
 	const firstTxDate = store.transactions.reduce<string | undefined>(
@@ -70,14 +70,14 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 
 		/* ---------- header + month stepper ---------- */
 
-		const header = root.createDiv({ cls: "fp-section-header" });
+		const header = root.createDiv({ cls: "fpih-section-header" });
 		const headText = header.createDiv();
 		headText.createEl("h2", { text: "Budgets" });
-		headText.createDiv({ cls: "fp-section-subtitle", text: "Monthly limits per category — resets each month, no rollover." });
+		headText.createDiv({ cls: "fpih-section-subtitle", text: "Monthly limits per category — resets each month, no rollover." });
 
-		const stepper = header.createDiv({ cls: "fp-month-stepper" });
+		const stepper = header.createDiv({ cls: "fpih-month-stepper" });
 		const step = (delta: number, label: string, iconName: string) => {
-			const btn = stepper.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": label } });
+			const btn = stepper.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn--icon", attr: { type: "button", "aria-label": label } });
 			icon(btn, iconName);
 			btn.addEventListener("click", () => {
 				month = shiftMonth(month, delta);
@@ -88,14 +88,14 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		const prev = step(-1, "Previous month", "chevron-left");
 		// Nothing was budgeted before the ledger starts, and nothing was spent there either.
 		if (month <= earliestMonth) prev.setAttr("disabled", "true");
-		stepper.createSpan({ cls: "fp-month-stepper-label", text: formatMonth(month) });
+		stepper.createSpan({ cls: "fpih-month-stepper-label", text: formatMonth(month) });
 		const next = step(1, "Next month", "chevron-right");
 		// There is nothing to budget in the future, and nothing to score there either.
 		if (month >= monthOf(todayIso(today))) next.setAttr("disabled", "true");
 
 		if (!editable) {
 			root.createDiv({
-				cls: "fp-card-note",
+				cls: "fpih-card-note",
 				text: `Read-only — ${formatMonth(month)} is scored against your current limits. Budgets aren't kept per month, so step back to ${formatMonth(
 					thisMonth
 				)} to change one.`,
@@ -130,14 +130,14 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 
 		const group = (title: string, items: CategoryBudgetStatus[]) => {
 			if (items.length === 0) return;
-			const head = root.createDiv({ cls: "fp-group-head" });
+			const head = root.createDiv({ cls: "fpih-group-head" });
 			head.createSpan({ text: title });
-			head.createSpan({ cls: "fp-group-head-count", text: String(items.length) });
-			const grid = root.createDiv({ cls: "fp-budget-grid" });
+			head.createSpan({ cls: "fpih-group-head-count", text: String(items.length) });
+			const grid = root.createDiv({ cls: "fpih-budget-grid" });
 			items.forEach((s) => {
 				const category = categoryById.get(s.categoryId);
 				if (category) {
-					const card = grid.createDiv({ cls: "fp-card fp-card--tight fp-budget-card" });
+					const card = grid.createDiv({ cls: "fpih-card fpih-card--tight fpih-budget-card" });
 					cardsByCategory.set(category.id, card);
 					drawBudgetCard(card, category, s, currency, editable);
 				}
@@ -155,19 +155,19 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 			.sort((a, b) => (b.suggestion ?? 0) - (a.suggestion ?? 0));
 
 		if (unbudgeted.length > 0) {
-			const card = root.createDiv({ cls: "fp-card" });
+			const card = root.createDiv({ cls: "fpih-card" });
 			// Eighteen empty cards padding the page is not a list of options, it's noise. A chip row
 			// keeps them one click away without pretending they're all decisions to make today.
 			cardHead(card, "Not budgeted", {
 				sub: editable ? "Suggested from your last 3 months — click to set a limit" : "Suggested from your last 3 months",
 			});
-			const chips = card.createDiv({ cls: "fp-suggest-chips" });
+			const chips = card.createDiv({ cls: "fpih-suggest-chips" });
 			unbudgeted.forEach(({ category, suggestion }) => {
-				const chip = chips.createEl("button", { cls: "fp-suggest-chip", attr: { type: "button" } });
-				chip.style.setProperty("--fp-chip-color", category.color);
-				if (category.icon) icon(chip, category.icon, "fp-chip-icon");
+				const chip = chips.createEl("button", { cls: "fpih-suggest-chip", attr: { type: "button" } });
+				chip.style.setProperty("--fpih-chip-color", category.color);
+				if (category.icon) icon(chip, category.icon, "fpih-chip-icon");
 				chip.createSpan({ text: category.name });
-				chip.createSpan({ cls: "fp-suggest-chip-value fp-money", text: money(suggestion!, currency) });
+				chip.createSpan({ cls: "fpih-suggest-chip-value fpih-money", text: money(suggestion!, currency) });
 				if (editable) chip.addEventListener("click", () => void saveBudget(category, String(suggestion), { structural: true }));
 				else chip.setAttr("disabled", "true");
 			});
@@ -185,7 +185,7 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		const summary = budgetSummary(store, categories, month, today);
 		const budgetedCount = statuses.length;
 
-		const kpis = statsHost.createDiv({ cls: "fp-stat-grid" });
+		const kpis = statsHost.createDiv({ cls: "fpih-stat-grid" });
 		const budgetedCard = renderStat(kpis, {
 			label: "Budgeted",
 			value: money(summary.totalBudget, currency),
@@ -259,17 +259,17 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		editable: boolean
 	): void {
 		card.empty();
-		card.className = `fp-card fp-card--tight fp-budget-card fp-tone-${status.tone}`;
+		card.className = `fpih-card fpih-card--tight fpih-budget-card fpih-tone-${status.tone}`;
 
-		const top = card.createDiv({ cls: "fp-budget-card-top" });
+		const top = card.createDiv({ cls: "fpih-budget-card-top" });
 		categoryChip(top, category.name, category.color, category.icon);
 
-		const inputWrap = top.createDiv({ cls: "fp-budget-input-wrap" });
-		inputWrap.createSpan({ cls: "fp-budget-input-prefix", text: "€" });
+		const inputWrap = top.createDiv({ cls: "fpih-budget-input-wrap" });
+		inputWrap.createSpan({ cls: "fpih-budget-input-prefix", text: "€" });
 		const input = inputWrap.createEl("input", {
 			// Text, not number: a number input rejects the Dutch comma decimal outright in an en locale.
 			type: "text",
-			cls: "fp-budget-input",
+			cls: "fpih-budget-input",
 			attr: { placeholder: "0", inputmode: "decimal", "aria-label": `Monthly budget for ${category.name}` },
 		});
 		input.value = category.budget ? String(category.budget) : "";
@@ -283,31 +283,31 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 			input.setAttr("title", "Budgets aren't kept per month — switch to the current month to change this limit.");
 		}
 
-		const track = card.createDiv({ cls: "fp-meter-track" });
-		const fill = track.createDiv({ cls: "fp-meter-fill" });
+		const track = card.createDiv({ cls: "fpih-meter-track" });
+		const fill = track.createDiv({ cls: "fpih-meter-fill" });
 		const filled = Math.max(0, Math.min(100, status.pct * 100));
 		fill.style.width = `${filled}%`;
-		track.style.setProperty("--fp-meter-cap", `${filled}%`);
-		card.toggleClass("fp-meter--over", status.pct > 1);
-		card.toggleClass("fp-meter--warn", status.pct <= 1 && status.tone === "warn");
+		track.style.setProperty("--fpih-meter-cap", `${filled}%`);
+		card.toggleClass("fpih-meter--over", status.pct > 1);
+		card.toggleClass("fpih-meter--warn", status.pct <= 1 && status.tone === "warn");
 		if (status.elapsed > 0 && status.elapsed < 1) {
-			const pace = track.createDiv({ cls: "fp-meter-pace" });
+			const pace = track.createDiv({ cls: "fpih-meter-pace" });
 			pace.style.left = `${status.elapsed * 100}%`;
 			pace.setAttr("title", `${Math.round(status.elapsed * 100)}% through the month`);
 		}
 
-		const sub = card.createDiv({ cls: "fp-budget-card-sub" });
-		sub.createSpan({ cls: "fp-money", text: `${money(status.spent, currency)} of ${money(status.budget, currency)}` });
+		const sub = card.createDiv({ cls: "fpih-budget-card-sub" });
+		sub.createSpan({ cls: "fpih-money", text: `${money(status.spent, currency)} of ${money(status.budget, currency)}` });
 		// Color never carries the meaning alone — the word does.
 		sub.createSpan({
-			cls: "fp-budget-remaining fp-money",
+			cls: "fpih-budget-remaining fpih-money",
 			text: status.remaining >= 0 ? `${money(status.remaining, currency)} left` : `${money(-status.remaining, currency)} over`,
 		});
 
 		if (status.pct < 1 && status.pace >= 1) {
-			const projection = card.createDiv({ cls: "fp-budget-projection" });
+			const projection = card.createDiv({ cls: "fpih-budget-projection" });
 			projection.createSpan({ text: "On pace for " });
-			projection.createSpan({ cls: "fp-money", text: money(status.projected, currency) });
+			projection.createSpan({ cls: "fpih-money", text: money(status.projected, currency) });
 			projection.createSpan({ text: " by month end." });
 		}
 	}

@@ -11,18 +11,18 @@ export class ManagePortfoliosModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.modalEl.addClass("fp-wizard-modal");
+		this.modalEl.addClass("fpih-wizard-modal");
 		this.render();
 	}
 
 	private render(): void {
 		const c = this.contentEl;
 		c.empty();
-		c.addClass("fp-account-modal");
+		c.addClass("fpih-account-modal");
 
-		const head = c.createDiv({ cls: "fp-detail-header" });
-		head.createDiv({ cls: "fp-detail-desc", text: "Manage portfolios" });
-		const addBtn = head.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const head = c.createDiv({ cls: "fpih-detail-header" });
+		head.createDiv({ cls: "fpih-detail-desc", text: "Manage portfolios" });
+		const addBtn = head.createEl("button", { cls: "fpih-btn fpih-btn-primary" });
 		icon(addBtn, "plus");
 		addBtn.createSpan({ text: "New portfolio" });
 		addBtn.addEventListener("click", () => {
@@ -31,31 +31,31 @@ export class ManagePortfoliosModal extends Modal {
 		});
 
 		const portfolios = this.plugin.settings.portfolios ?? [];
-		const list = c.createDiv({ cls: "fp-account-list" });
+		const list = c.createDiv({ cls: "fpih-account-list" });
 		portfolios.forEach((p) => {
-			const row = list.createDiv({ cls: "fp-account-row" });
-			icon(row, "briefcase", "fp-account-row-icon");
+			const row = list.createDiv({ cls: "fpih-account-row" });
+			icon(row, "briefcase", "fpih-account-row-icon");
 			const nameInput = row.createEl("input", { type: "text" });
 			nameInput.value = p.name;
 			nameInput.addEventListener("change", () => void this.rename(p.id, nameInput.value));
 
 			if (p.id === this.plugin.settings.activePortfolioId) {
-				row.createDiv({ cls: "fp-account-row-meta", text: "Active" });
+				row.createDiv({ cls: "fpih-account-row-meta", text: "Active" });
 			}
 
-			const removeBtn = row.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+			const removeBtn = row.createEl("button", { cls: "fpih-btn fpih-btn-ghost fpih-btn-icon" });
 			icon(removeBtn, "x");
 			removeBtn.addEventListener("click", () => this.remove(p.id, p.name, p.folder));
 		});
 
 		c.createEl("p", {
-			cls: "fp-step-desc",
+			cls: "fpih-step-desc",
 			text: "Removing a portfolio asks whether to keep or delete its folder — nothing happens without confirming.",
 		});
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const closeBtn = right.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const closeBtn = right.createEl("button", { cls: "fpih-btn fpih-btn-primary" });
 		icon(closeBtn, "check");
 		closeBtn.createSpan({ text: "Done" });
 		closeBtn.addEventListener("click", () => this.close());

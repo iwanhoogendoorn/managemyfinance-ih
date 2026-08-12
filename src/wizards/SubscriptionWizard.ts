@@ -21,7 +21,7 @@ function formField(
 	placeholder?: string,
 	extraAttr?: Record<string, string>
 ): { row: HTMLElement; input: HTMLInputElement } {
-	const row = parent.createDiv({ cls: "fp-form-row" });
+	const row = parent.createDiv({ cls: "fpih-form-row" });
 	row.createEl("label", { text: label });
 	const attr = { ...(placeholder ? { placeholder } : {}), ...(extraAttr ?? {}) };
 	const input = row.createEl("input", { type, attr: Object.keys(attr).length ? attr : undefined });
@@ -29,7 +29,7 @@ function formField(
 }
 
 function formSelectField(parent: HTMLElement, label: string, options: string[]): { row: HTMLElement; select: HTMLSelectElement } {
-	const row = parent.createDiv({ cls: "fp-form-row" });
+	const row = parent.createDiv({ cls: "fpih-form-row" });
 	row.createEl("label", { text: label });
 	const select = row.createEl("select");
 	options.forEach((opt) => select.createEl("option", { text: opt, value: opt }));
@@ -41,7 +41,7 @@ function formSelectFieldVL(
 	label: string,
 	options: { value: string; label: string }[]
 ): { row: HTMLElement; select: HTMLSelectElement } {
-	const row = parent.createDiv({ cls: "fp-form-row" });
+	const row = parent.createDiv({ cls: "fpih-form-row" });
 	row.createEl("label", { text: label });
 	const select = row.createEl("select");
 	options.forEach((opt) => select.createEl("option", { text: opt.label, value: opt.value }));
@@ -93,7 +93,7 @@ export function openSubscriptionWizard(
 			icon: "repeat",
 			render: (c) => {
 				c.createEl("h3", { text: existing ? `Edit "${existing.name}"` : "What are you subscribing to?" });
-				const grid = c.createDiv({ cls: "fp-sub-form-grid" });
+				const grid = c.createDiv({ cls: "fpih-sub-form-grid" });
 
 				const nameField = formField(grid, "Name (company)", "text", "e.g. Suno");
 				nameField.input.value = name;
@@ -148,7 +148,7 @@ export function openSubscriptionWizard(
 			icon: "calendar",
 			render: (c) => {
 				c.createEl("h3", { text: "When does it renew?" });
-				const grid = c.createDiv({ cls: "fp-sub-form-grid" });
+				const grid = c.createDiv({ cls: "fpih-sub-form-grid" });
 
 				const nextDueField = formField(grid, "Next due date", "date");
 				nextDueField.input.value = nextDueDate;
@@ -167,7 +167,7 @@ export function openSubscriptionWizard(
 				notesField.input.addEventListener("input", () => (notes = notesField.input.value));
 
 				const monthly = monthlyCost({ cost: parseFloat(cost) || 0, billingCycle } as Subscription);
-				c.createDiv({ cls: "fp-sub-form-preview fp-money", text: `≈ ${formatEUR(monthly)}/mo · ${formatEUR(monthly * 12)}/yr` });
+				c.createDiv({ cls: "fpih-sub-form-preview fpih-money", text: `≈ ${formatEUR(monthly)}/mo · ${formatEUR(monthly * 12)}/yr` });
 
 				setTimeout(() => nextDueField.input.focus(), 0);
 			},

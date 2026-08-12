@@ -67,11 +67,11 @@ function renderTrustBar(container: HTMLElement, plugin: FinancePlugin): void {
 	const share = uncategorizedShare(store);
 	const tone = share.share >= 0.3 ? "is-bad" : share.share >= 0.15 ? "is-warn" : "";
 
-	const bar = container.createDiv({ cls: `fp-trustbar ${tone}`.trim() });
+	const bar = container.createDiv({ cls: `fpih-trustbar ${tone}`.trim() });
 	// The range, not just the end date: "through 11 Aug" alone can't tell you whether the figures
 	// below rest on six years of history or on one import that landed last week.
 	bar.createSpan({ text: coverage.from ? `Data ${formatCoverage(coverage)}` : "No transactions imported yet" });
-	bar.createSpan({ cls: "fp-trustbar-sep", text: "·" });
+	bar.createSpan({ cls: "fpih-trustbar-sep", text: "·" });
 	bar.createSpan({ text: `${store.accounts.length} account${store.accounts.length === 1 ? "" : "s"}` });
 
 	// Every total on this page is a 1:1 sum across whatever currencies the accounts are in, stamped
@@ -79,9 +79,9 @@ function renderTrustBar(container: HTMLElement, plugin: FinancePlugin): void {
 	// the whole page, which is exactly what this bar is for.
 	const currencies = new Set(store.accounts.map((a) => a.currency || "EUR"));
 	if (currencies.size > 1) {
-		bar.createSpan({ cls: "fp-trustbar-sep", text: "·" });
+		bar.createSpan({ cls: "fpih-trustbar-sep", text: "·" });
 		bar.createSpan({
-			cls: "fp-trustbar-flag",
+			cls: "fpih-trustbar-flag",
 			text: `mixed currencies (${Array.from(currencies).sort().join(", ")}) summed 1:1`,
 		});
 	}
@@ -92,9 +92,9 @@ function renderTrustBar(container: HTMLElement, plugin: FinancePlugin): void {
 	// it just quoted. Before, a portfolio-wide 3-month number opened one account's entire history.
 	const { from, to } = ttmWindow(new Date(), 3);
 	const destination = store.accounts.find((a) => a.id === busiestAccountId(store));
-	bar.createSpan({ cls: "fp-trustbar-sep", text: "·" });
+	bar.createSpan({ cls: "fpih-trustbar-sep", text: "·" });
 	const link = bar.createEl("button", {
-		cls: "fp-trustbar-link",
+		cls: "fpih-trustbar-link",
 		text: destination
 			? `${pct(share.share)} of trailing 3-month spend uncategorized — review in ${destination.name}`
 			: `${pct(share.share)} of trailing 3-month spend uncategorized`,
@@ -151,7 +151,7 @@ function renderHeroRow(container: HTMLElement, plugin: FinancePlugin, series: Re
 	const prev = balances[balances.length - 2]?.balance;
 	const worthDelta = last !== undefined && prev !== undefined && prev !== 0 ? (last - prev) / Math.abs(prev) : undefined;
 
-	const grid = container.createDiv({ cls: "fp-stat-grid" });
+	const grid = container.createDiv({ cls: "fpih-stat-grid" });
 
 	const worthCard = renderStat(grid, {
 		label: "Net worth",
@@ -160,7 +160,7 @@ function renderHeroRow(container: HTMLElement, plugin: FinancePlugin, series: Re
 		iconName: "wallet",
 		delta: worthDelta === undefined ? undefined : { value: worthDelta },
 		sparklineValues: balances.map((b) => b.balance),
-		sparklineColor: "var(--fp-series-worth)",
+		sparklineColor: "var(--fpih-series-worth)",
 	});
 	if (worth.atCost > 0) {
 		setStatFoot(worthCard, ["incl. ", { money: money(worth.atCost, currency) }, " still valued at cost"]);
@@ -182,7 +182,7 @@ function renderHeroRow(container: HTMLElement, plugin: FinancePlugin, series: Re
 		value: signedMoney(m0.net, currency),
 		iconName: "arrow-left-right",
 		sparklineValues: netByMonth,
-		sparklineColor: "var(--fp-series-net)",
+		sparklineColor: "var(--fpih-series-net)",
 	});
 	setStatFoot(cashflowCard, ["projected ", { money: money(projection.projected, currency) }, " at month end"]);
 
@@ -224,22 +224,22 @@ function renderProjection(container: HTMLElement, plugin: FinancePlugin, series:
 		valueLabel: money(p.projected, currency),
 		tone,
 		renderSub: (el) => {
-			const line = el.createDiv({ cls: "fp-projection-line" });
+			const line = el.createDiv({ cls: "fpih-projection-line" });
 			const part = (label: string, value: string) => {
-				const item = line.createSpan({ cls: "fp-projection-part" });
-				item.createSpan({ cls: "fp-money", text: value });
-				item.createSpan({ cls: "fp-projection-part-label", text: ` ${label}` });
+				const item = line.createSpan({ cls: "fpih-projection-part" });
+				item.createSpan({ cls: "fpih-money", text: value });
+				item.createSpan({ cls: "fpih-projection-part-label", text: ` ${label}` });
 			};
 			part("now", money(p.current, currency));
 			if (p.scheduledIn > 0) part("expected in", money(p.scheduledIn, currency));
 			part("committed out", money(p.scheduledOut, currency));
 			part(`everyday spend (${p.remainingDays}d left)`, money(p.discretionary, currency));
 
-			const verdict = el.createDiv({ cls: "fp-projection-verdict" });
+			const verdict = el.createDiv({ cls: "fpih-projection-verdict" });
 			if (p.projected < 0) {
 				verdict.createSpan({ text: "On this pace the balance runs out before the month does." });
 			} else {
-				verdict.createSpan({ cls: "fp-money", text: money(Math.max(0, p.safeToSpend), currency) });
+				verdict.createSpan({ cls: "fpih-money", text: money(Math.max(0, p.safeToSpend), currency) });
 				verdict.createSpan({ text: " safe to spend on top of your usual — keeps one week of buffer." });
 			}
 		},
@@ -257,7 +257,7 @@ function renderBudgetStrip(container: HTMLElement, plugin: FinancePlugin, today:
 	const categories = store.categories.filter((c) => !c.archived);
 	const summary = budgetSummary(store, categories, month, today);
 
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	cardHead(card, "Budget health", { sub: `Pace-adjusted for ${pct(summary.elapsed)} through the month` });
 
 	if (summary.totalBudget <= 0) {
@@ -287,7 +287,7 @@ function renderBudgetStrip(container: HTMLElement, plugin: FinancePlugin, today:
 			el.createSpan({ text: parts.join(" · ") });
 			if (summary.unbudgetedSpend > 0) {
 				el.createSpan({ text: " · " });
-				el.createSpan({ cls: "fp-money", text: money(summary.unbudgetedSpend, currency) });
+				el.createSpan({ cls: "fpih-money", text: money(summary.unbudgetedSpend, currency) });
 				el.createSpan({ text: " spent in categories with no limit" });
 			}
 		},
@@ -297,33 +297,33 @@ function renderBudgetStrip(container: HTMLElement, plugin: FinancePlugin, today:
 		.sort((a, b) => b.pace - a.pace)
 		.slice(0, 5);
 	const categoryById = new Map(categories.map((c) => [c.id, c]));
-	const list = card.createDiv({ cls: "fp-budget-strip" });
+	const list = card.createDiv({ cls: "fpih-budget-strip" });
 	statuses.forEach((s) => {
 		const cat = categoryById.get(s.categoryId);
-		const row = list.createDiv({ cls: `fp-budget-strip-row fp-tone-${s.tone}` });
-		const head = row.createDiv({ cls: "fp-budget-strip-head" });
-		head.createSpan({ cls: "fp-budget-strip-name", text: cat?.name ?? s.categoryId });
-		const value = head.createSpan({ cls: "fp-budget-strip-value" });
-		value.createSpan({ cls: "fp-money", text: money(s.spent, currency) });
+		const row = list.createDiv({ cls: `fpih-budget-strip-row fpih-tone-${s.tone}` });
+		const head = row.createDiv({ cls: "fpih-budget-strip-head" });
+		head.createSpan({ cls: "fpih-budget-strip-name", text: cat?.name ?? s.categoryId });
+		const value = head.createSpan({ cls: "fpih-budget-strip-value" });
+		value.createSpan({ cls: "fpih-money", text: money(s.spent, currency) });
 		value.createSpan({ text: " of " });
-		value.createSpan({ cls: "fp-money", text: money(s.budget, currency) });
+		value.createSpan({ cls: "fpih-money", text: money(s.budget, currency) });
 
-		const track = row.createDiv({ cls: "fp-meter-track fp-budget-strip-track" });
-		const fill = track.createDiv({ cls: "fp-meter-fill" });
+		const track = row.createDiv({ cls: "fpih-meter-track fpih-budget-strip-track" });
+		const fill = track.createDiv({ cls: "fpih-meter-fill" });
 		const filled = Math.max(0, Math.min(100, s.pct * 100));
 		fill.style.width = `${filled}%`;
-		track.style.setProperty("--fp-meter-cap", `${filled}%`);
+		track.style.setProperty("--fpih-meter-cap", `${filled}%`);
 		if (s.elapsed > 0 && s.elapsed < 1) {
-			const pace = track.createDiv({ cls: "fp-meter-pace" });
+			const pace = track.createDiv({ cls: "fpih-meter-pace" });
 			pace.style.left = `${s.elapsed * 100}%`;
 		}
 		row.createDiv({
-			cls: "fp-budget-strip-foot",
+			cls: "fpih-budget-strip-foot",
 			text: s.remaining >= 0 ? `${money(s.remaining, currency)} left` : `${money(-s.remaining, currency)} over`,
-		}).addClass("fp-money");
+		}).addClass("fpih-money");
 	});
 
-	const open = card.createEl("button", { cls: "fp-btn fp-btn--ghost", text: "Open budgets", attr: { type: "button" } });
+	const open = card.createEl("button", { cls: "fpih-btn fpih-btn--ghost", text: "Open budgets", attr: { type: "button" } });
 	open.addEventListener("click", () => void goToView(plugin, "budgets"));
 }
 
@@ -342,7 +342,7 @@ function renderNext30(container: HTMLElement, plugin: FinancePlugin, series: Rec
 	const payments = committedPayments(store.subscriptions, series, until, liquidAccountIds(store), today);
 
 	const total = payments.reduce((sum, c) => sum + c.amount, 0);
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	cardHead(card, "Next 30 days", {
 		label: payments.length > 0 ? `${payments.length} payment${payments.length === 1 ? "" : "s"}` : undefined,
 		sub: payments.length > 0 ? `${money(total, currency)} committed before ${formatDay(until, { short: true })}` : undefined,
@@ -358,11 +358,11 @@ function renderNext30(container: HTMLElement, plugin: FinancePlugin, series: Rec
 		return;
 	}
 
-	const wrap = card.createDiv({ cls: "fp-table-scroll" });
-	const table = wrap.createEl("table", { cls: "fp-table fp-table--dense" });
+	const wrap = card.createDiv({ cls: "fpih-table-scroll" });
+	const table = wrap.createEl("table", { cls: "fpih-table fpih-table--dense" });
 	const thead = table.createEl("thead").createEl("tr");
 	["Date", "Payment", "Amount", "Balance after"].forEach((h, i) =>
-		thead.createEl("th", { text: h, cls: i >= 2 ? "fp-table-num" : undefined, attr: { scope: "col" } })
+		thead.createEl("th", { text: h, cls: i >= 2 ? "fpih-table-num" : undefined, attr: { scope: "col" } })
 	);
 	const tbody = table.createEl("tbody");
 
@@ -372,18 +372,18 @@ function renderNext30(container: HTMLElement, plugin: FinancePlugin, series: Rec
 	payments.forEach((c) => {
 		running -= c.amount;
 		const tr = tbody.createEl("tr");
-		const dateCell = tr.createEl("td", { cls: "fp-cell-date" });
+		const dateCell = tr.createEl("td", { cls: "fpih-cell-date" });
 		dateCell.createSpan({ text: formatDay(c.date, { short: true }) });
-		dateCell.createSpan({ cls: "fp-next30-rel", text: ` ${relativeDays(daysBetween(now, c.date))}` });
+		dateCell.createSpan({ cls: "fpih-next30-rel", text: ` ${relativeDays(daysBetween(now, c.date))}` });
 		const nameCell = tr.createEl("td");
 		nameCell.createSpan({ text: c.label });
-		if (c.source === "recurring") nameCell.createSpan({ cls: "fp-next30-tag", text: "detected" });
-		tr.createEl("td", { cls: "fp-amount fp-money", text: money(-c.amount, currency, 2) });
-		tr.createEl("td", { cls: "fp-amount fp-money" + (running < 0 ? " fp-amount--alarm" : ""), text: money(running, currency) });
+		if (c.source === "recurring") nameCell.createSpan({ cls: "fpih-next30-tag", text: "detected" });
+		tr.createEl("td", { cls: "fpih-amount fpih-money", text: money(-c.amount, currency, 2) });
+		tr.createEl("td", { cls: "fpih-amount fpih-money" + (running < 0 ? " fpih-amount--alarm" : ""), text: money(running, currency) });
 	});
 
 	if (p.projected < 0) {
-		card.createDiv({ cls: "fp-card-note is-bad", text: "These commitments take the projected balance below zero before month end." });
+		card.createDiv({ cls: "fpih-card-note is-bad", text: "These commitments take the projected balance below zero before month end." });
 	}
 }
 
@@ -415,16 +415,16 @@ function renderAccountsOverview(container: HTMLElement, plugin: FinancePlugin, t
 	const assetTotal = assets.reduce((sum, r) => sum + r.balance, 0);
 	const liabilityTotal = liabilities.reduce((sum, r) => sum + r.balance, 0);
 
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	cardHead(card, "Accounts");
 
 	// Assets / Liabilities / Net as three explicit figures. The old chart filtered to `worth > 0`,
 	// so credit-card debt silently vanished from a card titled "Accounts overview".
-	const totals = card.createDiv({ cls: "fp-account-totals" });
+	const totals = card.createDiv({ cls: "fpih-account-totals" });
 	const totalItem = (label: string, value: number, cls?: string) => {
-		const item = totals.createDiv({ cls: "fp-account-total" });
-		item.createDiv({ cls: "fp-overline", text: label });
-		item.createDiv({ cls: `fp-account-total-value fp-money ${cls ?? ""}`.trim(), text: money(value, currency) });
+		const item = totals.createDiv({ cls: "fpih-account-total" });
+		item.createDiv({ cls: "fpih-overline", text: label });
+		item.createDiv({ cls: `fpih-account-total-value fpih-money ${cls ?? ""}`.trim(), text: money(value, currency) });
 	};
 	totalItem("Assets", assetTotal);
 	totalItem("Liabilities", liabilityTotal, liabilityTotal < 0 ? "is-liability" : undefined);
@@ -438,17 +438,17 @@ function renderAccountsOverview(container: HTMLElement, plugin: FinancePlugin, t
 		);
 	}
 
-	const wrap = card.createDiv({ cls: "fp-table-scroll" });
-	const table = wrap.createEl("table", { cls: "fp-table" });
+	const wrap = card.createDiv({ cls: "fpih-table-scroll" });
+	const table = wrap.createEl("table", { cls: "fpih-table" });
 	const thead = table.createEl("thead").createEl("tr");
 	thead.createEl("th", { text: "Account", attr: { scope: "col" } });
 	thead.createEl("th", { text: "Type", attr: { scope: "col" } });
-	["Balance", "Δ 30 days", "Data from → to"].forEach((h) => thead.createEl("th", { text: h, cls: "fp-table-num", attr: { scope: "col" } }));
+	["Balance", "Δ 30 days", "Data from → to"].forEach((h) => thead.createEl("th", { text: h, cls: "fpih-table-num", attr: { scope: "col" } }));
 	const tbody = table.createEl("tbody");
 
 	const group = (label: string, items: typeof rows) => {
 		if (items.length === 0) return;
-		const header = tbody.createEl("tr", { cls: "fp-table-group" });
+		const header = tbody.createEl("tr", { cls: "fpih-table-group" });
 		header.createEl("td", { text: label, attr: { colspan: "5" } });
 		items.forEach((r) => renderAccountRow(tbody, plugin, r, currency, now));
 	};
@@ -463,7 +463,7 @@ function renderAccountRow(
 	currency: string,
 	now: string
 ): void {
-	const tr = tbody.createEl("tr", { cls: "fp-table-row-clickable", attr: { tabindex: "0" } });
+	const tr = tbody.createEl("tr", { cls: "fpih-table-row-clickable", attr: { tabindex: "0" } });
 	const open = () => void goToAccount(plugin, row.account.id);
 	tr.addEventListener("click", open);
 	tr.addEventListener("keydown", (ev: KeyboardEvent) => {
@@ -473,28 +473,28 @@ function renderAccountRow(
 		}
 	});
 
-	const nameCell = tr.createEl("td").createDiv({ cls: "fp-accounts-overview-name" });
-	icon(nameCell, ACCOUNT_TYPE_META[row.account.type].icon, "fp-accounts-overview-icon");
+	const nameCell = tr.createEl("td").createDiv({ cls: "fpih-accounts-overview-name" });
+	icon(nameCell, ACCOUNT_TYPE_META[row.account.type].icon, "fpih-accounts-overview-icon");
 	nameCell.createSpan({ text: row.account.name });
 
 	tr.createEl("td", { text: ACCOUNT_TYPE_META[row.account.type].label });
-	tr.createEl("td", { text: money(row.balance, currency), cls: "fp-table-num fp-money" });
+	tr.createEl("td", { text: money(row.balance, currency), cls: "fpih-table-num fpih-money" });
 	tr.createEl("td", {
 		text: row.count === 0 ? "—" : signedMoney(row.delta30, currency),
-		cls: "fp-table-num fp-money" + (row.delta30 > 0 ? " fp-amount--in" : ""),
+		cls: "fpih-table-num fpih-money" + (row.delta30 > 0 ? " fpih-amount--in" : ""),
 	});
 
 	// The window this account's figures actually rest on, plus a stale-import warning on the end
 	// date — a forgotten re-import makes every total on this page wrong by whatever it has missed.
 	const staleDays = row.lastActivity ? daysBetween(row.lastActivity, now) : undefined;
 	const stale = staleDays !== undefined && staleDays > 45;
-	const cell = tr.createEl("td", { cls: "fp-table-num fp-coverage-cell" + (stale ? " fp-cell-stale" : "") });
+	const cell = tr.createEl("td", { cls: "fpih-table-num fpih-coverage-cell" + (stale ? " fpih-cell-stale" : "") });
 	if (!row.coverage.from) {
 		cell.createSpan({ text: "—" });
 	} else {
 		cell.createSpan({ text: formatCoverage(row.coverage, { short: true }) });
 		cell.createDiv({
-			cls: "fp-coverage-meta",
+			cls: "fpih-coverage-meta",
 			text: stale ? `${staleDays}d since last import` : `${row.count.toLocaleString("en-IE")} transactions`,
 		});
 	}
@@ -527,13 +527,13 @@ function renderFi(container: HTMLElement, plugin: FinancePlugin, today: Date): v
 		renderSub:
 			fiNumber > 0
 				? (el) => {
-						el.createSpan({ cls: "fp-money", text: money(worth, currency) });
+						el.createSpan({ cls: "fpih-money", text: money(worth, currency) });
 						el.createSpan({ text: " of " });
-						el.createSpan({ cls: "fp-money", text: money(fiNumber, currency) });
+						el.createSpan({ cls: "fpih-money", text: money(fiNumber, currency) });
 						el.createSpan({ text: ` (${plugin.settings.fiMultiplier}× trailing-12-month expenses)` });
 						if (yearsToFi !== undefined && monthlyContribution > 0) {
 							el.createSpan({ text: " · " });
-							el.createSpan({ cls: "fp-money", text: money(monthlyContribution, currency) });
+							el.createSpan({ cls: "fpih-money", text: money(monthlyContribution, currency) });
 							el.createSpan({
 								text: `/mo saved → ${yearsToFi.toFixed(1)} years at ${(plugin.settings.expectedReturn * 100).toFixed(0)}% return`,
 							});
@@ -548,8 +548,8 @@ function renderFi(container: HTMLElement, plugin: FinancePlugin, today: Date): v
    ========================================================================== */
 
 function renderHistoryTable(panel: HTMLElement, plugin: FinancePlugin, years: YearSummary[], fiMultiplier: number): void {
-	const wrap = panel.createDiv({ cls: "fp-table-scroll" });
-	const table = wrap.createEl("table", { cls: "fp-table fp-table-metrics" });
+	const wrap = panel.createDiv({ cls: "fpih-table-scroll" });
+	const table = wrap.createEl("table", { cls: "fpih-table fpih-table-metrics" });
 	yearHeaderRow(
 		table,
 		years.map((y) => y.year),
@@ -558,7 +558,7 @@ function renderHistoryTable(panel: HTMLElement, plugin: FinancePlugin, years: Ye
 	const tbody = table.createEl("tbody");
 
 	// `formatEUR` is passed by reference on purpose: `metricRow` detects money by identity to attach
-	// the privacy hook, and wrapping it would silently drop `.fp-money` from every cell.
+	// the privacy hook, and wrapping it would silently drop `.fpih-money` from every cell.
 	metricRow(tbody, "Total income", years.map((y) => y.income), formatEUR, { heat: "normal" });
 	deltaRow(tbody, years.map((y) => y.income));
 
@@ -589,28 +589,28 @@ function renderHistoryTable(panel: HTMLElement, plugin: FinancePlugin, years: Ye
 function renderHistoryChart(panel: HTMLElement, years: YearSummary[]): void {
 	const categories = years.map((y) => y.year);
 
-	panel.createEl("h4", { cls: "fp-chart-heading", text: "Net worth" });
-	lineChart(panel, categories, [{ label: "Net worth (EOY)", color: "var(--fp-series-worth)", values: years.map((y) => y.netWorthEOY) }], {
+	panel.createEl("h4", { cls: "fpih-chart-heading", text: "Net worth" });
+	lineChart(panel, categories, [{ label: "Net worth (EOY)", color: "var(--fpih-series-worth)", values: years.map((y) => y.netWorthEOY) }], {
 		area: true,
 		title: "Net worth at end of year",
 		description: `Year-end net worth from ${categories[0]} to ${categories[categories.length - 1]}.`,
 	});
 
-	panel.createEl("h4", { cls: "fp-chart-heading", text: "Income vs expenses" });
+	panel.createEl("h4", { cls: "fpih-chart-heading", text: "Income vs expenses" });
 	lineChart(
 		panel,
 		categories,
 		[
-			{ label: "Income", color: "var(--fp-series-income)", values: years.map((y) => y.income) },
-			{ label: "Expenses", color: "var(--fp-series-expenses)", values: years.map((y) => y.expenses) },
-			{ label: "Net savings", color: "var(--fp-series-net)", values: years.map((y) => y.net) },
+			{ label: "Income", color: "var(--fpih-series-income)", values: years.map((y) => y.income) },
+			{ label: "Expenses", color: "var(--fpih-series-expenses)", values: years.map((y) => y.expenses) },
+			{ label: "Net savings", color: "var(--fpih-series-net)", values: years.map((y) => y.net) },
 		],
 		{ title: "Income, expenses and net savings by year", description: "Annual totals, transfers excluded." }
 	);
 }
 
 function renderHistory(container: HTMLElement, plugin: FinancePlugin, years: YearSummary[]): void {
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	cardHead(card, "Historical performance", { sub: `${years[0].year}–${years[years.length - 1].year} · the current year is still partial` });
 	tabSwitcher(card, [
 		{ label: "Table", render: (panel) => renderHistoryTable(panel, plugin, years, plugin.settings.fiMultiplier) },

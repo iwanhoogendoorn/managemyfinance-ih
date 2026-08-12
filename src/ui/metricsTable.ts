@@ -38,33 +38,33 @@ export function metricRow(
 	format: (n: number) => string,
 	opts?: { emphasize?: boolean; heat?: "normal" | "invert" }
 ): void {
-	const tr = tbody.createEl("tr", { cls: opts?.emphasize ? "fp-table-row-emphasis" : undefined });
+	const tr = tbody.createEl("tr", { cls: opts?.emphasize ? "fpih-table-row-emphasis" : undefined });
 	tr.createEl("td", { text: label });
 	const peak = Math.max(...values.map((v) => Math.abs(v)), 0);
 	const money = format === formatEUR;
-	const barColor = opts?.heat === "invert" ? "var(--fp-neg-fill)" : "var(--fp-pos-fill)";
+	const barColor = opts?.heat === "invert" ? "var(--fpih-neg-fill)" : "var(--fpih-pos-fill)";
 	values.forEach((v) => {
-		const cell = tr.createEl("td", { cls: "fp-table-num" });
-		// `.fp-money` rides the number, not the cell: privacy redaction paints a block behind its
+		const cell = tr.createEl("td", { cls: "fpih-table-num" });
+		// `.fpih-money` rides the number, not the cell: privacy redaction paints a block behind its
 		// element, and on the `<td>` that block would swallow the microbar too.
-		cell.createSpan({ cls: money ? "fp-money" : undefined, text: format(v) });
+		cell.createSpan({ cls: money ? "fpih-money" : undefined, text: format(v) });
 		if (opts?.heat && peak > 0) microbar(cell, Math.abs(v) / peak, barColor);
 	});
 }
 
 /** A "Δ YoY" row under a metric row: blank for the first year, a colored % change for the rest. */
 export function deltaRow(tbody: HTMLTableSectionElement, values: number[], opts?: { invert?: boolean; label?: string }): void {
-	const tr = tbody.createEl("tr", { cls: "fp-table-row-delta" });
+	const tr = tbody.createEl("tr", { cls: "fpih-table-row-delta" });
 	tr.createEl("td", { text: opts?.label ?? "Δ YoY" });
 	values.forEach((v, i) => {
-		const cell = tr.createEl("td", { cls: "fp-table-num" });
+		const cell = tr.createEl("td", { cls: "fpih-table-num" });
 		const change = yoy(v, values[i - 1]);
 		if (change === undefined) {
 			cell.setText("—");
 			return;
 		}
 		const good = opts?.invert ? change <= 0 : change >= 0;
-		cell.addClass(good ? "fp-delta-good" : "fp-delta-bad");
+		cell.addClass(good ? "fpih-delta-good" : "fpih-delta-bad");
 		cell.setText(formatPct(change));
 	});
 }
@@ -77,13 +77,13 @@ export function yearHeaderRow(table: HTMLTableElement, years: string[], opts?: {
 	const thead = table.createEl("thead").createEl("tr");
 	thead.createEl("th", { text: "" });
 	years.forEach((y) => {
-		const th = thead.createEl("th", { cls: "fp-table-num" });
+		const th = thead.createEl("th", { cls: "fpih-table-num" });
 		if (opts?.onClick) {
 			// A real <button>, so the drilldown is focusable, announced and keyboard-operable —
 			// a click handler on a bare <th> is none of those.
 			const onClick = opts.onClick;
 			const btn = th.createEl("button", {
-				cls: "fp-table-year-clickable",
+				cls: "fpih-table-year-clickable",
 				text: y,
 				attr: { type: "button", "aria-label": `Open ${y} details` },
 			});

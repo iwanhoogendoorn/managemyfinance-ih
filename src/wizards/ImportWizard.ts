@@ -226,20 +226,20 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 			render: (c, api) => {
 				c.createEl("h3", { text: "Pick a file to import" });
 				c.createEl("p", {
-					cls: "fp-step-desc",
+					cls: "fpih-step-desc",
 					text: "Drag a CSV or Excel (.xlsx) export here, or click to browse for one.",
 				});
 
 				// B1: a wizard that tells you to close it and go elsewhere is a dead end. Zero accounts
 				// is fixable right here, and the wizard picks the new account up without reopening.
 				if (store.accounts.length === 0) {
-					const notice = c.createDiv({ cls: "fp-import-blocker fp-card fp-card--tight" });
-					notice.createDiv({ cls: "fp-import-blocker-title", text: "You'll need an account first" });
+					const notice = c.createDiv({ cls: "fpih-import-blocker fpih-card fpih-card--tight" });
+					notice.createDiv({ cls: "fpih-import-blocker-title", text: "You'll need an account first" });
 					notice.createDiv({
-						cls: "fp-step-desc",
+						cls: "fpih-step-desc",
 						text: "Transactions live inside an account — create one now and this import continues where it left off.",
 					});
-					const createBtn = notice.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+					const createBtn = notice.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", attr: { type: "button" } });
 					icon(createBtn, "plus");
 					createBtn.createSpan({ text: "Create an account" });
 					createBtn.addEventListener("click", () => {
@@ -252,15 +252,15 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					});
 				}
 
-				const dropzone = c.createDiv({ cls: "fp-dropzone" + (selectedFile ? " has-file" : "") });
-				icon(dropzone, selectedFile ? "file-check-2" : "upload", "fp-dropzone-icon");
-				dropzone.createDiv({ cls: "fp-dropzone-text", text: selectedFile ?? "Drop a CSV or Excel file here" });
+				const dropzone = c.createDiv({ cls: "fpih-dropzone" + (selectedFile ? " has-file" : "") });
+				icon(dropzone, selectedFile ? "file-check-2" : "upload", "fpih-dropzone-icon");
+				dropzone.createDiv({ cls: "fpih-dropzone-text", text: selectedFile ?? "Drop a CSV or Excel file here" });
 				dropzone.createDiv({
-					cls: "fp-dropzone-subtext",
+					cls: "fpih-dropzone-subtext",
 					text: selectedFile ? "Click, or drop another file, to replace it" : "or click to browse",
 				});
 
-				const fileInput = c.createEl("input", { cls: "fp-file-input-hidden", attr: { type: "file", accept: ".csv,.xlsx" } });
+				const fileInput = c.createEl("input", { cls: "fpih-file-input-hidden", attr: { type: "file", accept: ".csv,.xlsx" } });
 
 				async function handleFile(file: File): Promise<void> {
 					if (file.name.toLowerCase().endsWith(".xlsx")) await loadXlsx(file.name, await file.arrayBuffer());
@@ -286,7 +286,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				});
 
 				if (loadError) {
-					const errorRow = c.createDiv({ cls: "fp-format-row" });
+					const errorRow = c.createDiv({ cls: "fpih-format-row" });
 					badge(errorRow, `Couldn't read "${selectedFile}": ${loadError}`, "bad");
 				}
 			},
@@ -298,7 +298,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 			icon: "table",
 			render: (c) => {
 				c.createEl("h3", { text: "Preview & format" });
-				const formatRow = c.createDiv({ cls: "fp-format-row" });
+				const formatRow = c.createDiv({ cls: "fpih-format-row" });
 				const hasUnknown = tables.some((t) => t.format === "unknown");
 				if (tables.length === 0) {
 					badge(formatRow, "Couldn't find any data in this file", "bad");
@@ -316,7 +316,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				const showMapping = mappableHeaders().length > 0;
 
 				if (hasUnknown) {
-					const accountRow = c.createDiv({ cls: "fp-setting-row" });
+					const accountRow = c.createDiv({ cls: "fpih-setting-row" });
 					accountRow.createSpan({ text: "Import into account: " });
 					const accSelect = accountRow.createEl("select");
 					store.accounts.forEach((acc) => {
@@ -328,16 +328,16 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 
 				if (showMapping) {
 					c.createEl("p", {
-						cls: "fp-step-desc",
+						cls: "fpih-step-desc",
 						text: hasUnknown
 							? "We didn't recognize this file's columns — pick which of your file's columns holds each piece of data. Date, Description, and Amount are required; everything else is optional."
 							: "Column mapping (auto-detected) — review or override which column holds each piece of data before importing.",
 					});
 
-					const mapGrid = c.createDiv({ cls: "fp-column-mapping-grid" });
+					const mapGrid = c.createDiv({ cls: "fpih-column-mapping-grid" });
 					const headers = mappableHeaders();
 					COLUMN_MAPPING_FIELDS.forEach((field) => {
-						const row = mapGrid.createDiv({ cls: "fp-form-row" });
+						const row = mapGrid.createDiv({ cls: "fpih-form-row" });
 						row.createEl("label", { text: field.label });
 						const select = row.createEl("select");
 						select.createEl("option", { text: "— none —", value: "" });
@@ -347,7 +347,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 						});
 						select.addEventListener("change", () => (mapping[field.key] = select.value));
 					});
-					const dvRow = mapGrid.createDiv({ cls: "fp-form-row" });
+					const dvRow = mapGrid.createDiv({ cls: "fpih-form-row" });
 					dvRow.createEl("label", { text: "Value that means \"money out\" (only used if Debit/Credit is mapped)" });
 					const dvInput = dvRow.createEl("input", { type: "text", attr: { placeholder: "e.g. Debit, DR, -" } });
 					dvInput.value = mapping.debitValue;
@@ -357,13 +357,13 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				if (hasIng) {
 					if (ibans.length > 1) {
 						c.createEl("p", {
-							cls: "fp-step-desc",
+							cls: "fpih-step-desc",
 							text: "This export covers multiple ING accounts — map each IBAN to one of your Finance accounts.",
 						});
-						const mapWrap = c.createDiv({ cls: "fp-iban-map" });
+						const mapWrap = c.createDiv({ cls: "fpih-iban-map" });
 						ibans.forEach((iban) => {
-							const row = mapWrap.createDiv({ cls: "fp-setting-row" });
-							row.createSpan({ text: iban, cls: "fp-iban-label" });
+							const row = mapWrap.createDiv({ cls: "fpih-setting-row" });
+							row.createSpan({ text: iban, cls: "fpih-iban-label" });
 							const select = row.createEl("select");
 							select.createEl("option", { text: "Choose account…", value: "" });
 							store.accounts.forEach((acc) => {
@@ -376,11 +376,11 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 							});
 						});
 						c.createEl("p", {
-							cls: "fp-step-desc",
+							cls: "fpih-step-desc",
 							text: "Don't see an account? Add it (with its IBAN) from the sidebar, then come back to this step.",
 						});
 					} else {
-						const accountRow = c.createDiv({ cls: "fp-setting-row" });
+						const accountRow = c.createDiv({ cls: "fpih-setting-row" });
 						accountRow.createSpan({ text: "ING account: " });
 						const select = accountRow.createEl("select");
 						store.accounts.forEach((acc) => {
@@ -396,7 +396,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				}
 
 				if (hasTradeRepublic) {
-					const trRow = c.createDiv({ cls: "fp-setting-row" });
+					const trRow = c.createDiv({ cls: "fpih-setting-row" });
 					trRow.createSpan({ text: "Trade Republic account: " });
 					const trSelect = trRow.createEl("select");
 					store.accounts.forEach((acc) => {
@@ -409,7 +409,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				const totalRows = tables.reduce((sum, t) => sum + t.rows.length, 0);
 				tables.forEach((t) => {
 					c.createEl("h4", { text: `${t.sheetName} — ${FORMAT_LABEL[t.format]} (${t.rows.length} rows)` });
-					const table = c.createEl("table", { cls: "fp-preview-table" });
+					const table = c.createEl("table", { cls: "fpih-preview-table" });
 					const thead = table.createEl("thead").createEl("tr");
 					t.headers.forEach((h) => thead.createEl("th", { text: h }));
 					const tbody = table.createEl("tbody");
@@ -419,7 +419,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					});
 				});
 				if (tables.length > 0) {
-					c.createEl("p", { cls: "fp-step-desc", text: `${totalRows} rows found across ${tables.length} sheet${tables.length === 1 ? "" : "s"}.` });
+					c.createEl("p", { cls: "fpih-step-desc", text: `${totalRows} rows found across ${tables.length} sheet${tables.length === 1 ? "" : "s"}.` });
 				}
 			},
 			canGoNext: () => {
@@ -445,7 +445,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 
 				const needCount = reviewGroups.reduce((sum, g) => sum + g.transactions.length, 0);
 				c.createEl("p", {
-					cls: "fp-step-desc",
+					cls: "fpih-step-desc",
 					text:
 						`${autoCategorized} auto-categorized · ${needCount} need a category, across ${reviewGroups.length} merchant${reviewGroups.length === 1 ? "" : "s"}` +
 						(dupes.length > 0 ? ` · ${dupes.length} duplicate${dupes.length === 1 ? "" : "s"} already excluded` : ""),
@@ -457,7 +457,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					// "every row is already in your ledger", which sends the user looking for rows that
 					// were never read.
 					c.createEl("p", {
-						cls: "fp-step-desc",
+						cls: "fpih-step-desc",
 						text:
 							parsed.length === 0
 								? "No rows could be read from this file — check the column mapping on the previous step."
@@ -468,24 +468,24 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					return;
 				}
 
-				const list = c.createDiv({ cls: "fp-merchant-list" });
+				const list = c.createDiv({ cls: "fpih-merchant-list" });
 				reviewGroups.forEach((group) => {
 					const decision = decisions.get(group.key)!;
 					const pattern = deriveRulePattern(group.transactions);
-					const card = list.createDiv({ cls: "fp-merchant-card fp-card fp-card--tight" });
+					const card = list.createDiv({ cls: "fpih-merchant-card fpih-card fpih-card--tight" });
 
-					const top = card.createDiv({ cls: "fp-merchant-top" });
-					top.createDiv({ cls: "fp-merchant-name fp-sensitive", text: group.displayName });
-					const stats = top.createDiv({ cls: "fp-merchant-stats" });
+					const top = card.createDiv({ cls: "fpih-merchant-top" });
+					top.createDiv({ cls: "fpih-merchant-name fpih-sensitive", text: group.displayName });
+					const stats = top.createDiv({ cls: "fpih-merchant-stats" });
 					stats.createSpan({ text: `${group.transactions.length} txn${group.transactions.length === 1 ? "" : "s"} · ` });
-					stats.createSpan({ cls: "fp-money", text: formatMoney(group.total) });
+					stats.createSpan({ cls: "fpih-money", text: formatMoney(group.total) });
 					card.createDiv({
-						cls: "fp-merchant-range",
+						cls: "fpih-merchant-range",
 						text: dateRangeLabel(group.transactions),
 					});
 
-					const controls = card.createDiv({ cls: "fp-merchant-controls" });
-					const select = controls.createEl("select", { cls: "fp-select" });
+					const controls = card.createDiv({ cls: "fpih-merchant-controls" });
+					const select = controls.createEl("select", { cls: "fpih-select" });
 					select.createEl("option", { text: "Uncategorized", value: "" });
 					store.categories.forEach((cat) => {
 						const opt = select.createEl("option", { text: cat.name, value: cat.id });
@@ -493,7 +493,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					});
 					select.addEventListener("change", () => (decision.categoryId = select.value || undefined));
 
-					const ruleLabel = controls.createEl("label", { cls: "fp-merchant-rule" });
+					const ruleLabel = controls.createEl("label", { cls: "fpih-merchant-rule" });
 					const check = ruleLabel.createEl("input", { type: "checkbox" });
 					check.checked = decision.makeRule && !!pattern;
 					check.disabled = !pattern;
@@ -508,8 +508,8 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					});
 				});
 
-				const skipRow = c.createDiv({ cls: "fp-merchant-skip" });
-				const skipBtn = skipRow.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Skip the rest →", attr: { type: "button" } });
+				const skipRow = c.createDiv({ cls: "fpih-merchant-skip" });
+				const skipBtn = skipRow.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", text: "Skip the rest →", attr: { type: "button" } });
 				skipBtn.addEventListener("click", () => api.next());
 			},
 			onNext: () => applyDecisions(),
@@ -520,15 +520,15 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 			icon: "check-circle-2",
 			render: (c) => {
 				c.createEl("h3", { text: "Ready to import" });
-				const stats = c.createDiv({ cls: "fp-import-stats" });
-				stats.createDiv({ cls: "fp-import-stat", text: `${parsed.length} rows parsed` });
-				stats.createDiv({ cls: "fp-import-stat", text: `${fresh.length} new` });
-				stats.createDiv({ cls: "fp-import-stat", text: `${dupes.length} duplicate — will be skipped` });
+				const stats = c.createDiv({ cls: "fpih-import-stats" });
+				stats.createDiv({ cls: "fpih-import-stat", text: `${parsed.length} rows parsed` });
+				stats.createDiv({ cls: "fpih-import-stat", text: `${fresh.length} new` });
+				stats.createDiv({ cls: "fpih-import-stat", text: `${dupes.length} duplicate — will be skipped` });
 
 				const rules = pendingRules();
 				if (rules.length > 0) {
 					c.createEl("p", {
-						cls: "fp-step-desc",
+						cls: "fpih-step-desc",
 						text: `${rules.length} merchant rule${rules.length === 1 ? "" : "s"} will be saved, so these merchants categorize themselves next time.`,
 					});
 				}
@@ -536,25 +536,25 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				if (dupes.length > 0) {
 					// The id hashes accountId|date|amount|description|counterparty, so two genuinely
 					// identical same-day purchases collapse into one. The user deserves to see which.
-					const details = c.createEl("details", { cls: "fp-dupe-details" });
+					const details = c.createEl("details", { cls: "fpih-dupe-details" });
 					details.createEl("summary", { text: `${dupes.length} duplicate${dupes.length === 1 ? "" : "s"} — show` });
 					details.createEl("p", {
-						cls: "fp-step-desc",
+						cls: "fpih-step-desc",
 						text: "Already in your ledger, matched on account, date, amount and description. Two identical same-day purchases look like one row here.",
 					});
-					const wrap = details.createDiv({ cls: "fp-table-scroll" });
-					const table = wrap.createEl("table", { cls: "fp-table fp-table--dense" });
+					const wrap = details.createDiv({ cls: "fpih-table-scroll" });
+					const table = wrap.createEl("table", { cls: "fpih-table fpih-table--dense" });
 					const head = table.createEl("thead").createEl("tr");
 					["Date", "Description", "Amount"].forEach((h) => head.createEl("th", { text: h }));
 					const tbody = table.createEl("tbody");
 					dupes.slice(0, 100).forEach((tx) => {
 						const tr = tbody.createEl("tr");
 						tr.createEl("td", { text: tx.date });
-						tr.createEl("td", { cls: "fp-sensitive", text: tx.description });
-						tr.createEl("td", { cls: "fp-table-num" }).createSpan({ cls: "fp-money", text: formatMoney(tx.amount, tx.currency || "EUR") });
+						tr.createEl("td", { cls: "fpih-sensitive", text: tx.description });
+						tr.createEl("td", { cls: "fpih-table-num" }).createSpan({ cls: "fpih-money", text: formatMoney(tx.amount, tx.currency || "EUR") });
 					});
 					if (dupes.length > 100) {
-						details.createEl("p", { cls: "fp-step-desc", text: `+ ${dupes.length - 100} more not listed.` });
+						details.createEl("p", { cls: "fpih-step-desc", text: `+ ${dupes.length - 100} more not listed.` });
 					}
 				}
 			},
@@ -594,15 +594,15 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 			render: (c, api) => {
 				if (importError) {
 					c.createEl("h3", { text: "The import didn't finish" });
-					const errRow = c.createDiv({ cls: "fp-format-row" });
+					const errRow = c.createDiv({ cls: "fpih-format-row" });
 					badge(errRow, importError, "bad");
 					c.createEl("p", {
-						cls: "fp-step-desc",
+						cls: "fpih-step-desc",
 						text: `Nothing was lost — your ledger files live under "${plugin.settings.dataFolder}/data/ledger". Fix whatever the message points at and run the import again.`,
 					});
-					const footer = c.createDiv({ cls: "fp-wizard-footer" });
-					const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-					const close = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", text: "Close", attr: { type: "button" } });
+					const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+					const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+					const close = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", text: "Close", attr: { type: "button" } });
 					close.addEventListener("click", () => api.close());
 					return;
 				}
@@ -621,20 +621,20 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 
 				if (result.added === 0 && result.skipped > 0) {
 					c.createEl("p", {
-						cls: "fp-step-desc",
+						cls: "fpih-step-desc",
 						text: `Nothing new — all ${result.skipped} row${result.skipped === 1 ? "" : "s"} were already in your ledger.`,
 					});
 				} else if (result.added === 0) {
-					c.createEl("p", { cls: "fp-step-desc", text: "No rows could be read from this file." });
+					c.createEl("p", { cls: "fpih-step-desc", text: "No rows could be read from this file." });
 				}
 
 				const candidates = detectRecurring(store, store.subscriptions, plugin.settings.dismissedSubscriptionKeys ?? []);
 
-				const statRow = c.createDiv({ cls: "fp-done-stats" });
+				const statRow = c.createDiv({ cls: "fpih-done-stats" });
 				const stat = (value: string, label: string, tone?: string): void => {
-					const cell = statRow.createDiv({ cls: "fp-done-stat" + (tone ? ` fp-tone-${tone}` : "") });
-					cell.createDiv({ cls: "fp-done-stat-value", text: value });
-					cell.createDiv({ cls: "fp-done-stat-label", text: label });
+					const cell = statRow.createDiv({ cls: "fpih-done-stat" + (tone ? ` fpih-tone-${tone}` : "") });
+					cell.createDiv({ cls: "fpih-done-stat-value", text: value });
+					cell.createDiv({ cls: "fpih-done-stat-label", text: label });
 				};
 				stat(String(result.added), "added");
 				stat(String(result.skipped), "duplicates skipped");
@@ -645,12 +645,12 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 
 				const range = dateRangeLabel(imported);
 				if (range) {
-					c.createEl("p", { cls: "fp-step-desc", text: `Covers ${range} · ${reviewGroups.length} merchant${reviewGroups.length === 1 ? "" : "s"} reviewed.` });
+					c.createEl("p", { cls: "fpih-step-desc", text: `Covers ${range} · ${reviewGroups.length} merchant${reviewGroups.length === 1 ? "" : "s"} reviewed.` });
 				}
 
-				const footer = c.createDiv({ cls: "fp-wizard-footer" });
-				const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-				const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
+				const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+				const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+				const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
 
 				/** Awaited before navigating: a host that owns the workspace body (first-run setup) has
 				 *  to release it first, or the destination is painted over by the host's own screen. */
@@ -660,7 +660,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				};
 
 				if (needCategory > 0) {
-					const review = left.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+					const review = left.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", attr: { type: "button" } });
 					icon(review, "tags");
 					review.createSpan({ text: `Review ${needCategory} uncategorized` });
 					review.addEventListener("click", async () => {
@@ -671,7 +671,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				}
 
 				if (candidates.length > 0) {
-					const subs = left.createEl("button", { cls: "fp-btn fp-btn--secondary fp-btn-secondary", attr: { type: "button" } });
+					const subs = left.createEl("button", { cls: "fpih-btn fpih-btn--secondary fpih-btn-secondary", attr: { type: "button" } });
 					icon(subs, "repeat");
 					subs.createSpan({ text: `${candidates.length} possible subscriptions` });
 					subs.addEventListener("click", async () => {
@@ -689,7 +689,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 				// as well, and that is exactly where the user wanted to look.
 				const ledgerRows = imported.length > 0 ? imported : dupes;
 				if (ledgerRows.length > 0) {
-					const ledger = right.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Go to ledger", attr: { type: "button" } });
+					const ledger = right.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", text: "Go to ledger", attr: { type: "button" } });
 					ledger.addEventListener("click", async () => {
 						const accountId = ledgerRows[0]?.accountId;
 						await finishWith("ledger");
@@ -707,7 +707,7 @@ export function openImportWizard(plugin: FinancePlugin, opts: ImportWizardOption
 					});
 				}
 
-				const done = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", text: "Done", attr: { type: "button" } });
+				const done = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", text: "Done", attr: { type: "button" } });
 				done.addEventListener("click", () => void finishWith("none"));
 			},
 		},

@@ -242,7 +242,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 		});
 		// A cash account will never have an export — manual entry is its only door in, so it has to
 		// be offered right here, not hidden behind a filter bar that only renders once rows exist.
-		const manual = empty.createEl("button", { cls: "fp-btn fp-btn--ghost", attr: { type: "button" } });
+		const manual = empty.createEl("button", { cls: "fpih-btn fpih-btn--ghost", attr: { type: "button" } });
 		icon(manual, "plus");
 		manual.createSpan({ text: "Add one manually" });
 		manual.addEventListener("click", () => new AddTransactionModal(plugin.app, plugin).open());
@@ -257,60 +257,60 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 
 	/* ---------- filter bar (design §2.3.6: one row, above everything it scopes) ---------- */
 
-	const bar = container.createDiv({ cls: "fp-filterbar" });
+	const bar = container.createDiv({ cls: "fpih-filterbar" });
 
 	const search = bar.createEl("input", {
 		type: "search",
-		cls: "fp-input fp-filterbar-search",
+		cls: "fpih-input fpih-filterbar-search",
 		attr: { placeholder: "Search description or counterparty…", "aria-label": "Search transactions" },
 	});
 	search.value = filterState.search;
 
 	let accountSelect: HTMLSelectElement | undefined;
 	if (showAccountColumn) {
-		accountSelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by account" } });
+		accountSelect = bar.createEl("select", { cls: "fpih-select", attr: { "aria-label": "Filter by account" } });
 		accountSelect.createEl("option", { text: "All accounts", value: "" });
 		store.accounts.forEach((a) => accountSelect!.createEl("option", { text: a.name, value: a.id }));
 		accountSelect.value = accountById.has(filterState.accountId) ? filterState.accountId : "";
 	}
 
-	const categorySelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by category" } });
+	const categorySelect = bar.createEl("select", { cls: "fpih-select", attr: { "aria-label": "Filter by category" } });
 	categorySelect.createEl("option", { text: "All categories", value: "" });
 	categorySelect.createEl("option", { text: "Uncategorized", value: UNCATEGORIZED });
 	fillCategorySelect(categorySelect, store.categories, { includeArchived: true });
 	categorySelect.value = filterState.categoryId === UNCATEGORIZED || categoryById.has(filterState.categoryId) ? filterState.categoryId : "";
 
-	const presetSelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by date range" } });
+	const presetSelect = bar.createEl("select", { cls: "fpih-select", attr: { "aria-label": "Filter by date range" } });
 	(Object.keys(PRESET_LABEL) as LedgerDatePreset[]).forEach((p) => presetSelect.createEl("option", { text: PRESET_LABEL[p], value: p }));
 	presetSelect.value = filterState.preset;
 
 	// Two bare date inputs are a poor default; they only appear once the user asks for a custom window.
-	const customWrap = bar.createDiv({ cls: "fp-daterange-custom-inline" });
-	const dateFrom = customWrap.createEl("input", { type: "date", cls: "fp-input", attr: { "aria-label": "From date" } });
+	const customWrap = bar.createDiv({ cls: "fpih-daterange-custom-inline" });
+	const dateFrom = customWrap.createEl("input", { type: "date", cls: "fpih-input", attr: { "aria-label": "From date" } });
 	dateFrom.value = filterState.dateFrom;
-	customWrap.createSpan({ cls: "fp-filter-date-sep", text: "→" });
-	const dateTo = customWrap.createEl("input", { type: "date", cls: "fp-input", attr: { "aria-label": "To date" } });
+	customWrap.createSpan({ cls: "fpih-filter-date-sep", text: "→" });
+	const dateTo = customWrap.createEl("input", { type: "date", cls: "fpih-input", attr: { "aria-label": "To date" } });
 	dateTo.value = filterState.dateTo;
 
 	// Period picker: shown only for the four "pick a specific one" presets. Year/quarter get prev/next
 	// arrows around a computed label (there's no native input for either); month/week use the browser's
 	// own <input type="month"|"week"> — Obsidian runs on Chromium, which supports both natively — plus
 	// the same prev/next arrows for quick browsing, matching the ◀ month ▶ pattern used elsewhere in the app.
-	const periodWrap = bar.createDiv({ cls: "fp-period-picker" });
-	const periodPrev = periodWrap.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": "Previous period" } });
+	const periodWrap = bar.createDiv({ cls: "fpih-period-picker" });
+	const periodPrev = periodWrap.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn--icon", attr: { type: "button", "aria-label": "Previous period" } });
 	icon(periodPrev, "chevron-left");
-	const periodLabelEl = periodWrap.createSpan({ cls: "fp-period-picker-label" });
-	const periodMonthInput = periodWrap.createEl("input", { type: "month", cls: "fp-input fp-period-picker-input", attr: { "aria-label": "Pick a month" } });
-	const periodWeekInput = periodWrap.createEl("input", { type: "week", cls: "fp-input fp-period-picker-input", attr: { "aria-label": "Pick a week" } });
-	const periodNext = periodWrap.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": "Next period" } });
+	const periodLabelEl = periodWrap.createSpan({ cls: "fpih-period-picker-label" });
+	const periodMonthInput = periodWrap.createEl("input", { type: "month", cls: "fpih-input fpih-period-picker-input", attr: { "aria-label": "Pick a month" } });
+	const periodWeekInput = periodWrap.createEl("input", { type: "week", cls: "fpih-input fpih-period-picker-input", attr: { "aria-label": "Pick a week" } });
+	const periodNext = periodWrap.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn--icon", attr: { type: "button", "aria-label": "Next period" } });
 	icon(periodNext, "chevron-right");
 
-	const stats = bar.createDiv({ cls: "fp-filterbar-stats" });
+	const stats = bar.createDiv({ cls: "fpih-filterbar-stats" });
 
 	// Manual entry lives where the rows live — commanding "add-transaction" from the palette works
 	// too, but the ledger is where you notice something is missing.
 	const addBtn = bar.createEl("button", {
-		cls: "fp-btn fp-btn--secondary fp-filterbar-add",
+		cls: "fpih-btn fpih-btn--secondary fpih-filterbar-add",
 		attr: { type: "button", "aria-label": "Add transaction manually" },
 	});
 	icon(addBtn, "plus");
@@ -319,12 +319,12 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 		new AddTransactionModal(plugin.app, plugin).open();
 	});
 
-	const chips = bar.createDiv({ cls: "fp-filterbar-chips" });
+	const chips = bar.createDiv({ cls: "fpih-filterbar-chips" });
 
 	/* ---------- table ---------- */
 
-	const tableCard = container.createDiv({ cls: "fp-card fp-card--flush fp-ledger-table-wrap fp-table-scroll" });
-	const table = tableCard.createEl("table", { cls: "fp-table fp-ledger-table" });
+	const tableCard = container.createDiv({ cls: "fpih-card fpih-card--flush fpih-ledger-table-wrap fpih-table-scroll" });
+	const table = tableCard.createEl("table", { cls: "fpih-table fpih-ledger-table" });
 	const thead = table.createEl("thead").createEl("tr");
 
 	const columns: { id: LedgerSortColumn; label: string; num?: boolean }[] = [
@@ -345,17 +345,17 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 			const indicator = sortIndicators.get(col.id);
 			if (!indicator) return;
 			indicator.empty();
-			if (active) icon(indicator, sortState.direction === "asc" ? "chevron-up" : "chevron-down", "fp-th-sort-icon");
+			if (active) icon(indicator, sortState.direction === "asc" ? "chevron-up" : "chevron-down", "fpih-th-sort-icon");
 		});
 	}
 	columns.forEach((col) => {
 		const th = thead.createEl("th", {
-			cls: "fp-th-sort" + (col.num ? " fp-table-num" : ""),
+			cls: "fpih-th-sort" + (col.num ? " fpih-table-num" : ""),
 			attr: { "aria-sort": "none", scope: "col" },
 		});
 		// A real <button>, so sorting is focusable, announced and keyboard-operable.
-		const btn = th.createEl("button", { cls: "fp-th-sort-btn", text: col.label, attr: { type: "button" } });
-		const indicator = btn.createSpan({ cls: "fp-th-sort-indicator" });
+		const btn = th.createEl("button", { cls: "fpih-th-sort-btn", text: col.label, attr: { type: "button" } });
+		const indicator = btn.createSpan({ cls: "fpih-th-sort-indicator" });
 		headerCells.set(col.id, th);
 		sortIndicators.set(col.id, indicator);
 		btn.addEventListener("click", () => {
@@ -371,7 +371,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 	updateSortIndicators();
 
 	const tbody = table.createEl("tbody");
-	const footer = container.createDiv({ cls: "fp-ledger-footer" });
+	const footer = container.createDiv({ cls: "fpih-ledger-footer" });
 
 	function compareTransactions(a: Transaction, b: Transaction): number {
 		const dir = sortState.direction === "asc" ? 1 : -1;
@@ -394,7 +394,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 	}
 
 	function appendRow(t: Transaction): void {
-		const tr = tbody.createEl("tr", { cls: "fp-ledger-row", attr: { tabindex: "0" } });
+		const tr = tbody.createEl("tr", { cls: "fpih-ledger-row", attr: { tabindex: "0" } });
 		const open = () => new TransactionDetailModal(plugin.app, plugin, t).open();
 		tr.addEventListener("click", open);
 		tr.addEventListener("keydown", (ev: KeyboardEvent) => {
@@ -409,8 +409,8 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 			(sibling as HTMLElement | null)?.focus?.();
 		});
 
-		tr.createEl("td", { text: t.date, cls: "fp-cell-date" });
-		tr.createEl("td", { text: t.description, cls: "fp-sensitive" });
+		tr.createEl("td", { text: t.date, cls: "fpih-cell-date" });
+		tr.createEl("td", { text: t.description, cls: "fpih-sensitive" });
 		if (showAccountColumn) tr.createEl("td", { text: accountById.get(t.accountId)?.name ?? "—" });
 		const catCell = tr.createEl("td");
 		const cat = t.categoryId ? categoryById.get(t.categoryId) : undefined;
@@ -418,7 +418,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 		else badge(catCell, "Uncategorized", "warn");
 		// Outgoings stay in normal ink — the minus sign already says "out". Only income is colored.
 		tr.createEl("td", {
-			cls: "fp-amount fp-money" + (t.amount > 0 ? " fp-amount--in" : ""),
+			cls: "fpih-amount fpih-money" + (t.amount > 0 ? " fpih-amount--in" : ""),
 			text: money(t.amount, t.currency || totalsCurrency, 2),
 		});
 	}
@@ -426,9 +426,9 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 	/* ---------- active-filter chips ---------- */
 
 	function addChip(label: string, onClear: () => void): void {
-		const chip = chips.createDiv({ cls: "fp-filter-chip" });
-		chip.createSpan({ cls: "fp-filter-chip-label", text: label });
-		const clear = chip.createEl("button", { cls: "fp-filter-chip-clear", attr: { type: "button", "aria-label": `Remove filter: ${label}` } });
+		const chip = chips.createDiv({ cls: "fpih-filter-chip" });
+		chip.createSpan({ cls: "fpih-filter-chip-label", text: label });
+		const clear = chip.createEl("button", { cls: "fpih-filter-chip-clear", attr: { type: "button", "aria-label": `Remove filter: ${label}` } });
 		icon(clear, "x");
 		clear.addEventListener("click", onClear);
 	}
@@ -475,7 +475,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 			});
 		}
 		if (!any) return;
-		const clearAll = chips.createEl("button", { cls: "fp-btn fp-btn--ghost fp-filter-clear-all", text: "Clear all", attr: { type: "button" } });
+		const clearAll = chips.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-filter-clear-all", text: "Clear all", attr: { type: "button" } });
 		clearAll.addEventListener("click", () => {
 			search.value = "";
 			if (accountSelect) accountSelect.value = "";
@@ -549,14 +549,14 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 		const total = filtered.reduce((sum, t) => sum + t.amount, 0);
 		stats.empty();
 		stats.createSpan({ text: `${filtered.length.toLocaleString("en-IE")} of ${scopedTransactions.length.toLocaleString("en-IE")} transactions · ` });
-		stats.createSpan({ cls: "fp-money", text: money(total, totalsCurrency, 2) });
+		stats.createSpan({ cls: "fpih-money", text: money(total, totalsCurrency, 2) });
 
 		// Seeing the uncategorized count is what starts the review habit; hiding it behind a
 		// <select> is why nobody ever did.
 		const uncategorized = scopedTransactions.filter((t) => !t.categoryId).length;
 		if (uncategorized > 0 && categoryFilter !== UNCATEGORIZED) {
 			const chip = stats.createEl("button", {
-				cls: "fp-uncat-chip",
+				cls: "fpih-uncat-chip",
 				attr: { type: "button", title: "Show only uncategorized transactions" },
 			});
 			icon(chip, "alert-triangle");
@@ -597,11 +597,11 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin): voi
 
 		// The old `slice(0, 200)` was silent, so a user with 1,400 transactions believed they had 200.
 		footer.createSpan({
-			cls: "fp-ledger-footer-count",
+			cls: "fpih-ledger-footer-count",
 			text: `Showing ${shown.toLocaleString("en-IE")} of ${filtered.length.toLocaleString("en-IE")}`,
 		});
 		if (shown < filtered.length) {
-			const more = footer.createEl("button", { cls: "fp-btn fp-btn--secondary", text: "Load more", attr: { type: "button" } });
+			const more = footer.createEl("button", { cls: "fpih-btn fpih-btn--secondary", text: "Load more", attr: { type: "button" } });
 			more.addEventListener("click", () => {
 				visibleCount += PAGE_SIZE;
 				draw();

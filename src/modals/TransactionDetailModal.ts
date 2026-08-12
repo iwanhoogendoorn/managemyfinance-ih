@@ -9,9 +9,9 @@ function formatAmount(tx: Transaction): string {
 }
 
 function row(container: HTMLElement, label: string, value: string | HTMLElement, opts?: { sensitive?: boolean }): void {
-	const r = container.createDiv({ cls: "fp-detail-row" });
-	r.createDiv({ cls: "fp-detail-label", text: label });
-	const valueEl = r.createDiv({ cls: "fp-detail-value" + (opts?.sensitive ? " fp-sensitive" : "") });
+	const r = container.createDiv({ cls: "fpih-detail-row" });
+	r.createDiv({ cls: "fpih-detail-label", text: label });
+	const valueEl = r.createDiv({ cls: "fpih-detail-value" + (opts?.sensitive ? " fpih-sensitive" : "") });
 	if (typeof value === "string") valueEl.setText(value);
 	else valueEl.appendChild(value);
 }
@@ -45,38 +45,38 @@ export class TransactionDetailModal extends Modal {
 	onOpen(): void {
 		// Registered so a portfolio switch can close it — see modalRegistry.
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
-		this.modalEl.addClass("fp-root");
+		this.modalEl.addClass("fpih-wizard-modal");
+		this.modalEl.addClass("fpih-root");
 		const c = this.contentEl;
-		c.addClass("fp-detail-modal");
+		c.addClass("fpih-detail-modal");
 
 		const store = this.plugin.store;
 		const account = store.accounts.find((a) => a.id === this.tx.accountId);
 
-		const head = c.createDiv({ cls: "fp-detail-header" });
-		head.createDiv({ cls: "fp-detail-desc fp-sensitive", text: this.tx.description || "(no description)" });
+		const head = c.createDiv({ cls: "fpih-detail-header" });
+		head.createDiv({ cls: "fpih-detail-desc fpih-sensitive", text: this.tx.description || "(no description)" });
 		const amount = head.createDiv({
-			cls: "fp-cell-amount fp-detail-amount fp-money " + (this.tx.amount < 0 ? "is-negative" : "is-positive"),
+			cls: "fpih-cell-amount fpih-detail-amount fpih-money " + (this.tx.amount < 0 ? "is-negative" : "is-positive"),
 		});
 		amount.setText(formatAmount(this.tx));
 
-		const body = c.createDiv({ cls: "fp-detail-body" });
+		const body = c.createDiv({ cls: "fpih-detail-body" });
 		row(body, "Date", this.tx.date);
 		row(body, "Account", account?.name ?? this.tx.accountId);
 		row(body, "Counterparty", this.tx.counterparty || "—", { sensitive: true });
 
-		const catRow = body.createDiv({ cls: "fp-detail-row" });
-		catRow.createDiv({ cls: "fp-detail-label", text: "Category" });
-		this.renderCategory(catRow.createDiv({ cls: "fp-detail-value" }));
+		const catRow = body.createDiv({ cls: "fpih-detail-row" });
+		catRow.createDiv({ cls: "fpih-detail-label", text: "Category" });
+		this.renderCategory(catRow.createDiv({ cls: "fpih-detail-value" }));
 
 		row(body, "Type", this.tx.type || "—");
 		if (this.tx.code) row(body, "Code", this.tx.code);
 		row(body, "Source", this.tx.source);
 		row(body, "Currency", this.tx.currency);
 
-		const attachRow = body.createDiv({ cls: "fp-detail-row" });
-		attachRow.createDiv({ cls: "fp-detail-label", text: "Attachment" });
-		const attachValue = attachRow.createDiv({ cls: "fp-detail-value" });
+		const attachRow = body.createDiv({ cls: "fpih-detail-row" });
+		attachRow.createDiv({ cls: "fpih-detail-label", text: "Attachment" });
+		const attachValue = attachRow.createDiv({ cls: "fpih-detail-value" });
 		this.renderAttachment(attachValue);
 
 		if (this.tx.ticker || this.tx.assetClass || this.tx.shares !== undefined) {
@@ -94,13 +94,13 @@ export class TransactionDetailModal extends Modal {
 
 		if (this.tx.raw) {
 			body.createEl("h4", { text: "Raw notification" });
-			const rawBox = body.createDiv({ cls: "fp-detail-raw fp-sensitive" });
+			const rawBox = body.createDiv({ cls: "fpih-detail-raw fpih-sensitive" });
 			rawBox.setText(this.tx.raw);
 		}
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const closeBtn = right.createEl("button", { cls: "fp-btn fp-btn-primary" });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const closeBtn = right.createEl("button", { cls: "fpih-btn fpih-btn-primary" });
 		icon(closeBtn, "check");
 		closeBtn.createSpan({ text: "Close" });
 		closeBtn.addEventListener("click", () => this.close());
@@ -121,7 +121,7 @@ export class TransactionDetailModal extends Modal {
 		// Full "Food › Restaurants" path on the chip: a subcategory's own name loses its heading, and
 		// "Restaurants" alone doesn't tell you which parent's budget it lands in.
 		if (category) categoryChip(container, categoryPathLabel(store.categories, category.id) ?? category.name, category.color, category.icon);
-		const select = container.createEl("select", { cls: "fp-setup-select" });
+		const select = container.createEl("select", { cls: "fpih-setup-select" });
 		select.createEl("option", { text: category ? "Change category…" : "Set category…", value: "" });
 		fillCategorySelect(select, store.categories);
 		if (this.tx.categoryId) select.value = this.tx.categoryId;
@@ -143,16 +143,16 @@ export class TransactionDetailModal extends Modal {
 
 		if (path) {
 			const file = this.app.vault.getAbstractFileByPath(path);
-			container.createSpan({ text: file ? path : `${path} (missing)`, cls: file ? undefined : "fp-sensitive" });
+			container.createSpan({ text: file ? path : `${path} (missing)`, cls: file ? undefined : "fpih-sensitive" });
 
-			const openBtn = container.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+			const openBtn = container.createEl("button", { cls: "fpih-btn fpih-btn-ghost fpih-btn-icon" });
 			icon(openBtn, "external-link");
 			openBtn.disabled = !file;
 			openBtn.addEventListener("click", async () => {
 				await this.app.workspace.openLinkText(path, "", true);
 			});
 
-			const clearBtn = container.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+			const clearBtn = container.createEl("button", { cls: "fpih-btn fpih-btn-ghost fpih-btn-icon" });
 			icon(clearBtn, "x");
 			clearBtn.addEventListener("click", async () => {
 				await store.updateTransaction(this.tx.id, { attachmentPath: undefined });
@@ -162,7 +162,7 @@ export class TransactionDetailModal extends Modal {
 				this.renderAttachment(container);
 			});
 		} else {
-			const attachBtn = container.createEl("button", { cls: "fp-btn fp-btn-secondary" });
+			const attachBtn = container.createEl("button", { cls: "fpih-btn fpih-btn-secondary" });
 			icon(attachBtn, "paperclip");
 			attachBtn.createSpan({ text: "Attach file" });
 			attachBtn.addEventListener("click", () => {

@@ -158,7 +158,7 @@ export default class FinancePlugin extends Plugin {
 	private async togglePrivacyMode(): Promise<void> {
 		this.settings.privacyMode = !this.settings.privacyMode;
 		await this.saveSettings();
-		document.body.toggleClass("fp-privacy", !!this.settings.privacyMode);
+		document.body.toggleClass("fpih-privacy", !!this.settings.privacyMode);
 		this.refreshViews();
 		new Notice(this.settings.privacyMode ? "Amounts hidden" : "Amounts visible");
 	}
@@ -179,10 +179,10 @@ export default class FinancePlugin extends Plugin {
 	}
 
 	onunload(): void {
-		// Views are torn down by Obsidian, but `fp-privacy` lives on <body> (modals mount outside the
+		// Views are torn down by Obsidian, but `fpih-privacy` lives on <body> (modals mount outside the
 		// view), so nothing else would ever take it off — leaving every amount in the app blurred for
 		// the rest of the session after the plugin is disabled.
-		document.body.removeClass("fp-privacy");
+		document.body.removeClass("fpih-privacy");
 	}
 
 	async loadSettings(): Promise<void> {

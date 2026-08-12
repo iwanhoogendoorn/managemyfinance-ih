@@ -110,7 +110,7 @@ export function renderSetupView(container: HTMLElement, plugin: FinancePlugin, o
 		state.created = [];
 		state.imported = undefined;
 	}
-	const root = container.createDiv({ cls: "fp-setup" });
+	const root = container.createDiv({ cls: "fpih-setup" });
 
 	const rerender = (): void => renderSetupView(container, plugin, onDone);
 
@@ -141,7 +141,7 @@ export function renderSetupView(container: HTMLElement, plugin: FinancePlugin, o
 
 	renderStepper(root, state.step);
 
-	const body = root.createDiv({ cls: "fp-setup-body" });
+	const body = root.createDiv({ cls: "fpih-setup-body" });
 	switch (state.step) {
 		case "welcome":
 			renderWelcome(body, plugin, goTo, finish);
@@ -162,17 +162,17 @@ export function renderSetupView(container: HTMLElement, plugin: FinancePlugin, o
 }
 
 function renderStepper(root: HTMLElement, current: StepId): void {
-	const stepsEl = root.createDiv({ cls: "fp-wizard-steps fp-setup-steps" });
+	const stepsEl = root.createDiv({ cls: "fpih-wizard-steps fpih-setup-steps" });
 	const currentIdx = STEPS.indexOf(current);
 	STEPS.forEach((id, i) => {
-		const cls = ["fp-wizard-step"];
+		const cls = ["fpih-wizard-step"];
 		if (i === currentIdx) cls.push("is-active");
 		if (i < currentIdx) cls.push("is-done");
 		const dot = stepsEl.createDiv({ cls: cls.join(" ") });
-		const circle = dot.createDiv({ cls: "fp-wizard-step-circle" });
+		const circle = dot.createDiv({ cls: "fpih-wizard-step-circle" });
 		icon(circle, i < currentIdx ? "check" : STEP_META[id].icon);
-		dot.createDiv({ cls: "fp-wizard-step-label", text: STEP_META[id].title });
-		if (i < STEPS.length - 1) stepsEl.createDiv({ cls: "fp-wizard-step-line" + (i < currentIdx ? " is-done" : "") });
+		dot.createDiv({ cls: "fpih-wizard-step-label", text: STEP_META[id].title });
+		if (i < STEPS.length - 1) stepsEl.createDiv({ cls: "fpih-wizard-step-line" + (i < currentIdx ? " is-done" : "") });
 	});
 }
 
@@ -181,19 +181,19 @@ function footer(
 	parent: HTMLElement,
 	opts: { back?: () => void; skip: () => void; skipLabel?: string; primary?: { label: string; icon?: string; onClick: () => void; disabled?: boolean } }
 ): void {
-	const bar = parent.createDiv({ cls: "fp-wizard-footer" });
-	const left = bar.createDiv({ cls: "fp-wizard-footer-left" });
-	const right = bar.createDiv({ cls: "fp-wizard-footer-right" });
+	const bar = parent.createDiv({ cls: "fpih-wizard-footer" });
+	const left = bar.createDiv({ cls: "fpih-wizard-footer-left" });
+	const right = bar.createDiv({ cls: "fpih-wizard-footer-right" });
 
 	if (opts.back) {
-		const back = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Back", attr: { type: "button" } });
+		const back = left.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", text: "Back", attr: { type: "button" } });
 		back.addEventListener("click", opts.back);
 	}
-	const skip = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: opts.skipLabel ?? "Skip setup", attr: { type: "button" } });
+	const skip = left.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", text: opts.skipLabel ?? "Skip setup", attr: { type: "button" } });
 	skip.addEventListener("click", opts.skip);
 
 	if (opts.primary) {
-		const btn = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+		const btn = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", attr: { type: "button" } });
 		if (opts.primary.icon) icon(btn, opts.primary.icon);
 		btn.createSpan({ text: opts.primary.label });
 		btn.disabled = !!opts.primary.disabled;
@@ -204,21 +204,21 @@ function footer(
 // ---------- A1 · Welcome & portfolio name ----------
 
 function renderWelcome(body: HTMLElement, plugin: FinancePlugin, goTo: (step: StepId) => void, finish: () => Promise<void>): void {
-	const head = body.createDiv({ cls: "fp-setup-head" });
-	icon(head, "wallet", "fp-welcome-icon");
+	const head = body.createDiv({ cls: "fpih-setup-head" });
+	icon(head, "wallet", "fpih-welcome-icon");
 	head.createEl("h2", { text: "Welcome to Finance" });
 	head.createEl("p", {
-		cls: "fp-setup-lede",
+		cls: "fpih-setup-lede",
 		text: "Everything stays in your vault — plain JSON and CSV. No accounts, no network, no sync.",
 	});
 
-	const form = body.createDiv({ cls: "fp-form fp-setup-form" });
-	const row = form.createDiv({ cls: "fp-form-row" });
+	const form = body.createDiv({ cls: "fpih-form fpih-setup-form" });
+	const row = form.createDiv({ cls: "fpih-form-row" });
 	row.createEl("label", { text: "Whose finances are these?" });
-	const input = row.createEl("input", { cls: "fp-input", type: "text", attr: { placeholder: "e.g. Alex" } });
+	const input = row.createEl("input", { cls: "fpih-input", type: "text", attr: { placeholder: "e.g. Alex" } });
 	input.value = plugin.activePortfolio?.name ?? "";
 	row.createDiv({
-		cls: "fp-setup-explainer",
+		cls: "fpih-setup-explainer",
 		text: "A portfolio is a fully separate set of accounts, transactions and subscriptions. You can add more later.",
 	});
 
@@ -252,22 +252,22 @@ function renderCategories(
 ): void {
 	body.createEl("h2", { text: "Start with a standard category set?" });
 	body.createEl("p", {
-		cls: "fp-setup-lede",
+		cls: "fpih-setup-lede",
 		text: "26 categories (Food, Auto & Transport, Bills & Utilities, …) plus around 200 keyword rules that recognise common merchants automatically — so most of your first import categorizes itself.",
 	});
 
-	const choices = body.createDiv({ cls: "fp-setup-choices" });
+	const choices = body.createDiv({ cls: "fpih-setup-choices" });
 	const choice = (value: boolean, title: string, description: string): void => {
-		const label = choices.createEl("label", { cls: "fp-setup-choice" + (state.useStandardCategories === value ? " is-active" : "") });
-		const radio = label.createEl("input", { type: "radio", attr: { name: "fp-setup-categories" } });
+		const label = choices.createEl("label", { cls: "fpih-setup-choice" + (state.useStandardCategories === value ? " is-active" : "") });
+		const radio = label.createEl("input", { type: "radio", attr: { name: "fpih-setup-categories" } });
 		radio.checked = state.useStandardCategories === value;
 		radio.addEventListener("change", () => {
 			state.useStandardCategories = value;
 			rerender();
 		});
-		const text = label.createDiv({ cls: "fp-setup-choice-text" });
-		text.createDiv({ cls: "fp-setup-choice-title", text: title });
-		text.createDiv({ cls: "fp-setup-choice-desc", text: description });
+		const text = label.createDiv({ cls: "fpih-setup-choice-text" });
+		text.createDiv({ cls: "fpih-setup-choice-title", text: title });
+		text.createDiv({ cls: "fpih-setup-choice-desc", text: description });
 	};
 	choice(true, "Use the standard set (recommended)", "Categories and merchant rules, installed now. Nothing is overwritten — you can rename, add and remove any of them later.");
 	choice(false, "Start with an empty set", "Build your own categories as you go.");
@@ -303,7 +303,7 @@ function renderAccount(
 ): void {
 	body.createEl("h2", { text: "Add your first account" });
 	body.createEl("p", {
-		cls: "fp-setup-lede",
+		cls: "fpih-setup-lede",
 		text: "An account is a container for one card or bank — its transactions and its balance.",
 	});
 
@@ -312,15 +312,15 @@ function renderAccount(
 	let iban = "";
 	let openingBalance = "0";
 
-	const form = body.createDiv({ cls: "fp-form fp-setup-form" });
+	const form = body.createDiv({ cls: "fpih-form fpih-setup-form" });
 
-	const typeRow = form.createDiv({ cls: "fp-form-row" });
+	const typeRow = form.createDiv({ cls: "fpih-form-row" });
 	typeRow.createEl("label", { text: "Account type" });
-	const chips = typeRow.createDiv({ cls: "fp-setup-type-chips" });
+	const chips = typeRow.createDiv({ cls: "fpih-setup-type-chips" });
 	const chipEls = new Map<AccountType, HTMLElement>();
 	(Object.keys(ACCOUNT_TYPE_META) as AccountType[]).forEach((t) => {
 		const chip = chips.createEl("button", {
-			cls: "fp-btn fp-btn--chip fp-btn-chip" + (t === type ? " is-active" : ""),
+			cls: "fpih-btn fpih-btn--chip fpih-btn-chip" + (t === type ? " is-active" : ""),
 			attr: { type: "button", "aria-pressed": String(t === type) },
 		});
 		icon(chip, ACCOUNT_TYPE_META[t].icon);
@@ -335,37 +335,37 @@ function renderAccount(
 		chipEls.set(t, chip);
 	});
 
-	const nameRow = form.createDiv({ cls: "fp-form-row" });
+	const nameRow = form.createDiv({ cls: "fpih-form-row" });
 	nameRow.createEl("label", { text: "Name" });
-	const nameInput = nameRow.createEl("input", { cls: "fp-input", type: "text", attr: { placeholder: "e.g. ING Checking" } });
+	const nameInput = nameRow.createEl("input", { cls: "fpih-input", type: "text", attr: { placeholder: "e.g. ING Checking" } });
 	nameInput.addEventListener("input", () => (name = nameInput.value));
 
-	const ibanRow = form.createDiv({ cls: "fp-form-row" });
+	const ibanRow = form.createDiv({ cls: "fpih-form-row" });
 	ibanRow.createEl("label", { text: "IBAN (optional)" });
-	const ibanInput = ibanRow.createEl("input", { cls: "fp-input", type: "text", attr: { placeholder: "NL00 INGB 0000 0000 00" } });
+	const ibanInput = ibanRow.createEl("input", { cls: "fpih-input", type: "text", attr: { placeholder: "NL00 INGB 0000 0000 00" } });
 	ibanInput.addEventListener("input", () => (iban = ibanInput.value));
 	ibanRow.createDiv({
-		cls: "fp-setup-explainer",
+		cls: "fpih-setup-explainer",
 		text: "Set this and a combined multi-account export files its rows to the right account automatically, with no mapping step.",
 	});
 
-	const balRow = form.createDiv({ cls: "fp-form-row" });
+	const balRow = form.createDiv({ cls: "fpih-form-row" });
 	balRow.createEl("label", { text: "Opening balance" });
-	const balInput = balRow.createEl("input", { cls: "fp-input", type: "number", attr: { step: "0.01" } });
+	const balInput = balRow.createEl("input", { cls: "fpih-input", type: "number", attr: { step: "0.01" } });
 	balInput.value = openingBalance;
 	balInput.addEventListener("input", () => (openingBalance = balInput.value));
 	balRow.createDiv({
-		cls: "fp-setup-explainer",
+		cls: "fpih-setup-explainer",
 		text: "The balance before your first imported transaction. Leave it at 0 if your export covers the account's full history — a wrong number here shifts every net-worth figure by exactly that much.",
 	});
 
 	if (state.created.length > 0) {
-		const added = body.createDiv({ cls: "fp-setup-added" });
+		const added = body.createDiv({ cls: "fpih-setup-added" });
 		state.created.forEach((account) => {
-			const row = added.createDiv({ cls: "fp-setup-added-row" });
+			const row = added.createDiv({ cls: "fpih-setup-added-row" });
 			icon(row, "check");
 			row.createSpan({ text: `${account.name} · ${ACCOUNT_TYPE_META[account.type].label}` });
-			if (account.openingBalance) row.createSpan({ cls: "fp-money", text: ` · ${formatMoney(account.openingBalance)}` });
+			if (account.openingBalance) row.createSpan({ cls: "fpih-money", text: ` · ${formatMoney(account.openingBalance)}` });
 		});
 	}
 
@@ -389,13 +389,13 @@ function renderAccount(
 		return account;
 	};
 
-	const bar = body.createDiv({ cls: "fp-wizard-footer" });
-	const left = bar.createDiv({ cls: "fp-wizard-footer-left" });
-	const right = bar.createDiv({ cls: "fp-wizard-footer-right" });
+	const bar = body.createDiv({ cls: "fpih-wizard-footer" });
+	const left = bar.createDiv({ cls: "fpih-wizard-footer-left" });
+	const right = bar.createDiv({ cls: "fpih-wizard-footer-right" });
 
-	const back = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Back", attr: { type: "button" } });
+	const back = left.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", text: "Back", attr: { type: "button" } });
 	back.addEventListener("click", () => goTo("categories"));
-	const skip = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", text: "Skip setup", attr: { type: "button" } });
+	const skip = left.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", text: "Skip setup", attr: { type: "button" } });
 	skip.addEventListener("click", () => void finish());
 
 	// "Every step can be skipped" was not true of this one: with nothing entered, Continue only ever
@@ -403,21 +403,21 @@ function renderAccount(
 	// skips the step without ending the flow, so the rest of setup is still reachable.
 	if (state.created.length === 0) {
 		const without = left.createEl("button", {
-			cls: "fp-btn fp-btn--ghost fp-btn-ghost",
+			cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost",
 			text: "Continue without an account",
 			attr: { type: "button" },
 		});
 		without.addEventListener("click", () => goTo("import"));
 	}
 
-	const another = right.createEl("button", { cls: "fp-btn fp-btn--secondary fp-btn-secondary", attr: { type: "button" } });
+	const another = right.createEl("button", { cls: "fpih-btn fpih-btn--secondary fpih-btn-secondary", attr: { type: "button" } });
 	icon(another, "plus");
 	another.createSpan({ text: "Add another" });
 	another.addEventListener("click", async () => {
 		if (await createAccount()) rerender();
 	});
 
-	const next = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+	const next = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", attr: { type: "button" } });
 	icon(next, "arrow-right");
 	next.createSpan({ text: "Continue" });
 	next.addEventListener("click", async () => {
@@ -440,15 +440,15 @@ function renderAccount(
 function renderImport(body: HTMLElement, plugin: FinancePlugin, state: SetupState, goTo: (step: StepId) => void, finish: () => Promise<void>): void {
 	body.createEl("h2", { text: "Bring in your transactions" });
 	body.createEl("p", {
-		cls: "fp-setup-lede",
+		cls: "fpih-setup-lede",
 		text: "A CSV or Excel export from your bank or broker. ING and Trade Republic are recognised automatically; anything else gets a quick column-mapping step.",
 	});
 
-	const launcher = body.createDiv({ cls: "fp-setup-import" });
-	const openBtn = launcher.createEl("button", { cls: "fp-dropzone fp-setup-dropzone", attr: { type: "button" } });
-	icon(openBtn, "upload", "fp-dropzone-icon");
-	openBtn.createDiv({ cls: "fp-dropzone-text", text: "Import a file" });
-	openBtn.createDiv({ cls: "fp-dropzone-subtext", text: "Opens the import wizard — drop a file or browse" });
+	const launcher = body.createDiv({ cls: "fpih-setup-import" });
+	const openBtn = launcher.createEl("button", { cls: "fpih-dropzone fpih-setup-dropzone", attr: { type: "button" } });
+	icon(openBtn, "upload", "fpih-dropzone-icon");
+	openBtn.createDiv({ cls: "fpih-dropzone-text", text: "Import a file" });
+	openBtn.createDiv({ cls: "fpih-dropzone-subtext", text: "Opens the import wizard — drop a file or browse" });
 	openBtn.addEventListener("click", () => {
 		openImportWizard(plugin, {
 			onDone: async (outcome) => {
@@ -481,13 +481,13 @@ function renderImport(body: HTMLElement, plugin: FinancePlugin, state: SetupStat
 // ---------- A5 · Done ----------
 
 function renderDone(body: HTMLElement, plugin: FinancePlugin, state: SetupState, finish: () => Promise<void>): void {
-	const head = body.createDiv({ cls: "fp-setup-head" });
-	icon(head, "party-popper", "fp-welcome-icon");
+	const head = body.createDiv({ cls: "fpih-setup-head" });
+	icon(head, "party-popper", "fpih-welcome-icon");
 	head.createEl("h2", { text: "Setup complete — your dashboard is ready" });
 
-	const summary = body.createDiv({ cls: "fp-setup-summary" });
+	const summary = body.createDiv({ cls: "fpih-setup-summary" });
 	const line = (iconName: string, text: string): void => {
-		const row = summary.createDiv({ cls: "fp-setup-summary-row" });
+		const row = summary.createDiv({ cls: "fpih-setup-summary-row" });
 		icon(row, iconName);
 		row.createSpan({ text });
 	};
@@ -502,9 +502,9 @@ function renderDone(body: HTMLElement, plugin: FinancePlugin, state: SetupState,
 		line("info", "No transactions yet — use Import from the sidebar whenever you're ready.");
 	}
 
-	const bar = body.createDiv({ cls: "fp-wizard-footer" });
-	const right = bar.createDiv({ cls: "fp-wizard-footer-right" });
-	const done = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+	const bar = body.createDiv({ cls: "fpih-wizard-footer" });
+	const right = bar.createDiv({ cls: "fpih-wizard-footer-right" });
+	const done = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", attr: { type: "button" } });
 	icon(done, "check");
 	done.createSpan({ text: "Go to my dashboard" });
 	done.addEventListener("click", () => void finish());

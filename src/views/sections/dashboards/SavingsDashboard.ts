@@ -64,7 +64,7 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 
 	/* ---------- stats ---------- */
 
-	const grid = container.createDiv({ cls: "fp-stat-grid" });
+	const grid = container.createDiv({ cls: "fpih-stat-grid" });
 
 	renderStat(grid, {
 		label: "Current balance",
@@ -72,7 +72,7 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 		size: "hero",
 		iconName: "piggy-bank",
 		sparklineValues: balances.slice(-24).map((b) => b.balance),
-		sparklineColor: "var(--fp-series-worth)",
+		sparklineColor: "var(--fpih-series-worth)",
 	});
 
 	const coverage = renderStat(grid, {
@@ -116,13 +116,13 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 	/* ---------- contributions vs interest ---------- */
 
 	if (contributions > 0 || interest > 0) {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		cardHead(card, "Where the growth came from", { sub: "Trailing 12 months — your deposits against the bank's interest" });
 		stackedShareBar(
 			card,
 			[
-				{ label: "Your contributions", value: Math.max(0, contributions), color: "var(--fp-series-net)" },
-				{ label: "Interest earned", value: Math.max(0, interest), color: "var(--fp-series-passive)" },
+				{ label: "Your contributions", value: Math.max(0, contributions), color: "var(--fpih-series-net)" },
+				{ label: "Interest earned", value: Math.max(0, interest), color: "var(--fpih-series-passive)" },
 			],
 			{ formatValue: (n) => money(n, currency) }
 		);
@@ -148,7 +148,7 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 				groupedColumnChart(
 					host,
 					months.map((m) => formatMonth(m).slice(0, 3)),
-					[{ label: "Net contribution", color: "var(--fp-series-net)", values }],
+					[{ label: "Net contribution", color: "var(--fpih-series-net)", values }],
 					{ formatValue: (n) => money(n, currency), title: "Net contributions by month", description: "Deposits minus withdrawals, per month." }
 				);
 			},
@@ -158,12 +158,12 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 	/* ---------- balance history ---------- */
 
 	if (balances.length > 1) {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		cardHead(card, "Balance history");
 		lineChart(
 			card,
 			balances.map((b) => b.key),
-			[{ label: "Balance", color: "var(--fp-series-worth)", values: balances.map((b) => b.balance) }],
+			[{ label: "Balance", color: "var(--fpih-series-worth)", values: balances.map((b) => b.balance) }],
 			{
 				area: true,
 				formatValue: (n) => money(n, currency),
@@ -172,7 +172,7 @@ export function renderSavingsDashboard(container: HTMLElement, plugin: FinancePl
 			}
 		);
 	} else if (balances.length === 0) {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		emptyState(card, {
 			variant: "inline",
 			iconName: "piggy-bank",
@@ -195,7 +195,7 @@ function renderGoal(
 	monthlyContribution: number,
 	currency: string
 ): void {
-	const card = container.createDiv({ cls: "fp-card fp-goal-card" });
+	const card = container.createDiv({ cls: "fpih-card fpih-goal-card" });
 	const head = cardHead(card, "Savings goal");
 	editableAmount(head, {
 		emptyLabel: "Set a goal",
@@ -235,21 +235,21 @@ function renderGoal(
 		renderSub: (el) => {
 			if (balance >= goal) {
 				el.createSpan({ text: "Goal reached — " });
-				el.createSpan({ cls: "fp-money", text: money(balance - goal, currency) });
+				el.createSpan({ cls: "fpih-money", text: money(balance - goal, currency) });
 				el.createSpan({ text: " past the target." });
 				return;
 			}
-			el.createSpan({ cls: "fp-money", text: money(goal - balance, currency) });
+			el.createSpan({ cls: "fpih-money", text: money(goal - balance, currency) });
 			el.createSpan({ text: " to go" });
 			if (monthsToGoal !== undefined && monthlyContribution > 0) {
 				el.createSpan({ text: " · at " });
-				el.createSpan({ cls: "fp-money", text: signedMoney(monthlyContribution, currency) });
+				el.createSpan({ cls: "fpih-money", text: signedMoney(monthlyContribution, currency) });
 				el.createSpan({ text: `/mo that's about ${monthsToGoal} month${monthsToGoal === 1 ? "" : "s"}` });
 			} else if (monthlyContribution > 0) {
 				// `fiProjection` returned nothing despite a positive pace, which means the goal is more
 				// than its 60-year horizon away. Saying "no net contributions" here was simply false.
 				el.createSpan({ text: " · at " });
-				el.createSpan({ cls: "fp-money", text: signedMoney(monthlyContribution, currency) });
+				el.createSpan({ cls: "fpih-money", text: signedMoney(monthlyContribution, currency) });
 				el.createSpan({ text: "/mo that's further out than this projection goes — more than 60 years" });
 			} else {
 				el.createSpan({ text: " · no net contributions in the last 12 months, so there's no pace to project" });

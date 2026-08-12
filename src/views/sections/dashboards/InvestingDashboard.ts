@@ -77,7 +77,7 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 
 	/* ---------- stats ---------- */
 
-	const grid = container.createDiv({ cls: "fp-stat-grid" });
+	const grid = container.createDiv({ cls: "fpih-stat-grid" });
 
 	const valueCard = renderStat(grid, {
 		label: marketValue === undefined ? "Holdings (at cost)" : "Portfolio value",
@@ -86,7 +86,7 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 		iconName: "candlestick-chart",
 	});
 	setStatFoot(valueCard, [marketValue === undefined ? "cost basis — no market value entered" : age.text]);
-	if (age.stale && marketValue !== undefined) valueCard.addClass("fp-stat--stale");
+	if (age.stale && marketValue !== undefined) valueCard.addClass("fpih-stat--stale");
 	editableAmount(valueCard, {
 		emptyLabel: "Enter current value",
 		editLabel: "Update value",
@@ -154,21 +154,21 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 
 	if (marketValue !== undefined && netContributions > 0) {
 		const growth = marketValue - netContributions;
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		cardHead(card, "Contributions vs growth", { sub: `Market value ${age.text}` });
 		if (growth >= 0) {
 			stackedShareBar(
 				card,
 				[
-					{ label: "What you put in", value: netContributions, color: "var(--fp-series-net)" },
-					{ label: "Growth", value: growth, color: "var(--fp-series-passive)" },
+					{ label: "What you put in", value: netContributions, color: "var(--fpih-series-net)" },
+					{ label: "Growth", value: growth, color: "var(--fpih-series-passive)" },
 				],
 				{ formatValue: (n) => money(n, currency) }
 			);
 		} else {
-			const note = card.createDiv({ cls: "fp-card-note is-bad" });
+			const note = card.createDiv({ cls: "fpih-card-note is-bad" });
 			note.createSpan({ text: "Currently " });
-			note.createSpan({ cls: "fp-money", text: money(-growth, currency) });
+			note.createSpan({ cls: "fpih-money", text: money(-growth, currency) });
 			note.createSpan({ text: " below what you contributed — the position is down, not up." });
 		}
 	}
@@ -188,13 +188,13 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 			renderPeriod: (host, months) => {
 				const values = months.map((m) => monthlyContribution(store, account.id, m));
 				if (!values.some((v) => v !== 0)) {
-					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					host.createDiv({ cls: "fpih-card-sub", text: "No activity in this period." });
 					return;
 				}
 				groupedColumnChart(
 					host,
 					months.map((m) => formatMonth(m).slice(0, 3)),
-					[{ label: "Net contribution", color: "var(--fp-series-net)", values }],
+					[{ label: "Net contribution", color: "var(--fpih-series-net)", values }],
 					{ formatValue: (n) => money(n, currency), title: "Net contributions by month", description: "Deposits minus withdrawals per month." }
 				);
 			},
@@ -203,7 +203,7 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 
 	/* ---------- holdings ---------- */
 
-	const holdingsCard = container.createDiv({ cls: "fp-card" });
+	const holdingsCard = container.createDiv({ cls: "fpih-card" });
 	cardHead(holdingsCard, "Holdings", { sub: "Average-cost basis of the shares you still hold" });
 	if (holdings.length === 0) {
 		emptyState(holdingsCard, {
@@ -213,21 +213,21 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 			description: "Buys and sells from this account build the holdings breakdown here.",
 		});
 	} else {
-		const wrap = holdingsCard.createDiv({ cls: "fp-table-scroll" });
-		const table = wrap.createEl("table", { cls: "fp-table" });
+		const wrap = holdingsCard.createDiv({ cls: "fpih-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fpih-table" });
 		const thead = table.createEl("thead").createEl("tr");
 		["Ticker", "Asset class", "Shares", "Avg. cost", "Cost basis", "Share"].forEach((h, i) =>
-			thead.createEl("th", { text: h, cls: i >= 2 ? "fp-table-num" : undefined, attr: { scope: "col" } })
+			thead.createEl("th", { text: h, cls: i >= 2 ? "fpih-table-num" : undefined, attr: { scope: "col" } })
 		);
 		const tbody = table.createEl("tbody");
 		holdings.forEach((h) => {
 			const tr = tbody.createEl("tr");
 			tr.createEl("td", { text: h.ticker });
 			tr.createEl("td", { text: h.assetClass || "—" });
-			tr.createEl("td", { text: h.shares.toFixed(4), cls: "fp-table-num" });
-			tr.createEl("td", { text: money(h.avgCost, currency, 2), cls: "fp-table-num fp-money" });
-			tr.createEl("td", { text: money(h.netInvested, currency), cls: "fp-table-num fp-money" });
-			tr.createEl("td", { text: totalCostBasis > 0 ? pct(h.netInvested / totalCostBasis) : "—", cls: "fp-table-num" });
+			tr.createEl("td", { text: h.shares.toFixed(4), cls: "fpih-table-num" });
+			tr.createEl("td", { text: money(h.avgCost, currency, 2), cls: "fpih-table-num fpih-money" });
+			tr.createEl("td", { text: money(h.netInvested, currency), cls: "fpih-table-num fpih-money" });
+			tr.createEl("td", { text: totalCostBasis > 0 ? pct(h.netInvested / totalCostBasis) : "—", cls: "fpih-table-num" });
 		});
 	}
 
@@ -235,10 +235,10 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 
 	const realized = realizedPLByYear(store, account.id);
 	if (realized.length > 0) {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		cardHead(card, "Realized profit & loss", { sub: "Booked on sale — proceeds less the basis those shares carried" });
-		const wrap = card.createDiv({ cls: "fp-table-scroll" });
-		const table = wrap.createEl("table", { cls: "fp-table fp-table-metrics" });
+		const wrap = card.createDiv({ cls: "fpih-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fpih-table fpih-table-metrics" });
 		yearHeaderRow(table, realized.map((r) => r.year));
 		const tbody = table.createEl("tbody");
 		metricRow(tbody, "Proceeds", realized.map((r) => r.proceeds), formatEUR);
@@ -247,10 +247,10 @@ export function renderInvestingDashboard(container: HTMLElement, plugin: Finance
 	}
 
 	if (activity.length > 0) {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		cardHead(card, "Activity by year");
-		const wrap = card.createDiv({ cls: "fp-table-scroll" });
-		const table = wrap.createEl("table", { cls: "fp-table fp-table-metrics" });
+		const wrap = card.createDiv({ cls: "fpih-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fpih-table fpih-table-metrics" });
 		yearHeaderRow(table, activity.map((y) => y.year));
 		const tbody = table.createEl("tbody");
 		metricRow(tbody, "Deposits", activity.map((y) => y.deposits), formatEUR, { heat: "normal" });
@@ -273,7 +273,7 @@ function renderPortfolioShape(
 	const store = plugin.store;
 	if (totalCostBasis <= 0) return;
 
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	cardHead(card, "Portfolio shape");
 
 	// `assetClass` has been carried on every transaction, propagated into every holding, printed as a
@@ -290,7 +290,7 @@ function renderPortfolioShape(
 		);
 	}
 
-	const grid = card.createDiv({ cls: "fp-stat-grid fp-stat-grid--inner" });
+	const grid = card.createDiv({ cls: "fpih-stat-grid fpih-stat-grid--inner" });
 
 	const top = holdings[0];
 	if (top) {
@@ -379,7 +379,7 @@ function renderFlowOnlyVariant(container: HTMLElement, plugin: FinancePlugin, ac
 	const marketValue = account.marketValue;
 	const age = valuationAge(account.marketValueAsOf, today);
 
-	const grid = container.createDiv({ cls: "fp-stat-grid" });
+	const grid = container.createDiv({ cls: "fpih-stat-grid" });
 	const valueCard = renderStat(grid, {
 		label: marketValue === undefined ? "Net contributed" : "Current value",
 		value: money(marketValue ?? balance, currency),
@@ -439,28 +439,28 @@ function renderFlowOnlyVariant(container: HTMLElement, plugin: FinancePlugin, ac
 			renderPeriod: (host, months) => {
 				const values = months.map((m) => rawAccountFlows(store, account.id, monthWindow(m)).net);
 				if (!values.some((v) => v !== 0)) {
-					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					host.createDiv({ cls: "fpih-card-sub", text: "No activity in this period." });
 					return;
 				}
 				groupedColumnChart(
 					host,
 					months.map((m) => formatMonth(m).slice(0, 3)),
-					[{ label: "Net flow", color: "var(--fp-series-net)", values }],
+					[{ label: "Net flow", color: "var(--fpih-series-net)", values }],
 					{ formatValue: (n) => money(n, currency), title: "Net flows by month", description: "Money in minus money out, per month." }
 				);
 			},
 		});
 
-		const historyCard = container.createDiv({ cls: "fp-card" });
+		const historyCard = container.createDiv({ cls: "fpih-card" });
 		cardHead(historyCard, "Contributed over time", { sub: "Cost basis, not market value" });
 		lineChart(
 			historyCard,
 			balances.map((b) => b.key),
-			[{ label: "Contributed", color: "var(--fp-series-worth)", values: balances.map((b) => b.balance) }],
+			[{ label: "Contributed", color: "var(--fpih-series-worth)", values: balances.map((b) => b.balance) }],
 			{ area: true, formatValue: (n) => money(n, currency), title: "Contributed over time", description: "Running total of cash in and out." }
 		);
 	} else {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		emptyState(card, {
 			variant: "inline",
 			iconName: "inbox",

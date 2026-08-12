@@ -67,7 +67,7 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 
 	/* ---------- stats ---------- */
 
-	const grid = container.createDiv({ cls: "fp-stat-grid" });
+	const grid = container.createDiv({ cls: "fpih-stat-grid" });
 
 	renderStat(grid, {
 		label: "Current balance",
@@ -75,7 +75,7 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 		size: "hero",
 		iconName: "landmark",
 		sparklineValues: balances.map((b) => b.balance),
-		sparklineColor: "var(--fp-series-worth)",
+		sparklineColor: "var(--fpih-series-worth)",
 	});
 
 	renderTriStat(grid, {
@@ -120,9 +120,9 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 			valueLabel: money(projection.projected, currency),
 			tone: projection.projected < 0 ? "over" : projection.safeToSpend < 0 ? "warn" : "ok",
 			renderSub: (el) => {
-				el.createSpan({ cls: "fp-money", text: money(projection.scheduledOut, currency) });
+				el.createSpan({ cls: "fpih-money", text: money(projection.scheduledOut, currency) });
 				el.createSpan({ text: ` committed over ${projection.committed.length} payment${projection.committed.length === 1 ? "" : "s"} · ` });
-				el.createSpan({ cls: "fp-money", text: money(projection.discretionary, currency) });
+				el.createSpan({ cls: "fpih-money", text: money(projection.discretionary, currency) });
 				el.createSpan({ text: ` of usual spending across ${projection.remainingDays} remaining day${projection.remainingDays === 1 ? "" : "s"}` });
 			},
 		});
@@ -154,15 +154,15 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 					return windowSummary(store, w.from, w.to, ids);
 				});
 				if (!monthly.some((m) => m.income > 0 || m.expenses > 0)) {
-					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					host.createDiv({ cls: "fpih-card-sub", text: "No activity in this period." });
 					return;
 				}
 				groupedColumnChart(
 					host,
 					months.map((m) => formatMonth(m).slice(0, 3)),
 					[
-						{ label: "In", color: "var(--fp-series-income)", values: monthly.map((m) => m.income) },
-						{ label: "Out", color: "var(--fp-series-expenses)", values: monthly.map((m) => m.expenses) },
+						{ label: "In", color: "var(--fpih-series-income)", values: monthly.map((m) => m.income) },
+						{ label: "Out", color: "var(--fpih-series-expenses)", values: monthly.map((m) => m.expenses) },
 					],
 					{ formatValue: (n) => money(n, currency), title: "Monthly income and expenses", description: "Income and expenses per month." }
 				);
@@ -181,17 +181,17 @@ export function renderCheckingDashboard(container: HTMLElement, plugin: FinanceP
 	/* ---------- history ---------- */
 
 	if (years.length > 0) {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		cardHead(card, "Historical performance", { sub: "The current year is still partial" });
-		const wrap = card.createDiv({ cls: "fp-table-scroll" });
-		const table = wrap.createEl("table", { cls: "fp-table fp-table-metrics" });
+		const wrap = card.createDiv({ cls: "fpih-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fpih-table fpih-table-metrics" });
 		yearHeaderRow(
 			table,
 			years.map((y) => y.year),
 			{ onClick: (year) => new MonthDrilldownModal(plugin.app, plugin, year, account.name, account.id).open() }
 		);
 		const tbody = table.createEl("tbody");
-		// `formatEUR` by reference: `metricRow` detects money by identity to attach `.fp-money`.
+		// `formatEUR` by reference: `metricRow` detects money by identity to attach `.fpih-money`.
 		metricRow(tbody, "Total income", years.map((y) => y.income), formatEUR, { heat: "normal" });
 		deltaRow(tbody, years.map((y) => y.income));
 		metricRow(tbody, "Total expenses", years.map((y) => y.expenses), formatEUR, { heat: "invert" });
@@ -231,9 +231,9 @@ function renderIncomeAndCommitments(
 
 	if (subMonthly <= 0 && detected.length === 0 && !stability && !paycheck) return;
 
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	cardHead(card, "Regular money", { sub: "What reliably arrives, and what reliably leaves" });
-	const grid = card.createDiv({ cls: "fp-stat-grid fp-stat-grid--inner" });
+	const grid = card.createDiv({ cls: "fpih-stat-grid fpih-stat-grid--inner" });
 
 	if (subMonthly > 0) {
 		const commitments = renderStat(grid, {

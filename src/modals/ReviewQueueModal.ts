@@ -91,14 +91,14 @@ export class ReviewQueueModal extends Modal {
 	onOpen(): void {
 		// Registered so a portfolio switch can close it — see modalRegistry.
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
-		this.modalEl.addClass("fp-root");
-		this.modalEl.addClass("fp-review-modal");
-		this.contentEl.addClass("fp-review-queue");
+		this.modalEl.addClass("fpih-wizard-modal");
+		this.modalEl.addClass("fpih-root");
+		this.modalEl.addClass("fpih-review-modal");
+		this.contentEl.addClass("fpih-review-queue");
 
 		this.openedAtGeneration = this.plugin.store.generation;
 		this.groups = this.buildQueue();
-		this.bodyEl = this.contentEl.createDiv({ cls: "fp-review-body" });
+		this.bodyEl = this.contentEl.createDiv({ cls: "fpih-review-body" });
 		this.registerKeys();
 		this.render();
 	}
@@ -289,16 +289,16 @@ export class ReviewQueueModal extends Modal {
 	}
 
 	private renderHeader(): void {
-		const head = this.bodyEl.createDiv({ cls: "fp-review-head" });
+		const head = this.bodyEl.createDiv({ cls: "fpih-review-head" });
 		const titleCol = head.createDiv();
-		titleCol.createDiv({ cls: "fp-review-title", text: this.opts.title ?? "Review uncategorized" });
+		titleCol.createDiv({ cls: "fpih-review-title", text: this.opts.title ?? "Review uncategorized" });
 		titleCol.createDiv({
-			cls: "fp-review-progress-label",
+			cls: "fpih-review-progress-label",
 			text: `${this.index + 1} of ${this.groups.length} merchants`,
 		});
 
 		const sortBtn = head.createEl("button", {
-			cls: "fp-btn fp-btn--chip fp-btn-chip",
+			cls: "fpih-btn fpih-btn--chip fpih-btn-chip",
 			text: this.sort === "count" ? "Most transactions" : "Largest amount",
 			attr: { type: "button", title: "Order the queue by transaction count or by total amount" },
 		});
@@ -314,55 +314,55 @@ export class ReviewQueueModal extends Modal {
 			this.render();
 		});
 
-		const track = this.bodyEl.createDiv({ cls: "fp-review-track" });
-		const fill = track.createDiv({ cls: "fp-review-track-fill" });
+		const track = this.bodyEl.createDiv({ cls: "fpih-review-track" });
+		const fill = track.createDiv({ cls: "fpih-review-track-fill" });
 		fill.style.width = `${Math.round((this.index / this.groups.length) * 100)}%`;
 	}
 
 	private renderCard(group: MerchantGroup): void {
-		const card = this.bodyEl.createDiv({ cls: "fp-review-card fp-card" });
+		const card = this.bodyEl.createDiv({ cls: "fpih-review-card fpih-card" });
 
-		const top = card.createDiv({ cls: "fp-review-merchant" });
-		top.createDiv({ cls: "fp-review-merchant-name fp-sensitive", text: group.displayName });
-		const meta = top.createDiv({ cls: "fp-review-merchant-meta" });
+		const top = card.createDiv({ cls: "fpih-review-merchant" });
+		top.createDiv({ cls: "fpih-review-merchant-name fpih-sensitive", text: group.displayName });
+		const meta = top.createDiv({ cls: "fpih-review-merchant-meta" });
 		meta.createSpan({ text: `${group.transactions.length} transaction${group.transactions.length === 1 ? "" : "s"} · ` });
-		meta.createSpan({ cls: "fp-money", text: formatMoney(group.total) });
+		meta.createSpan({ cls: "fpih-money", text: formatMoney(group.total) });
 		if (group.firstSeen) meta.createSpan({ text: ` · ${group.firstSeen} – ${group.lastSeen}` });
 
-		const list = card.createDiv({ cls: "fp-review-tx-list" });
+		const list = card.createDiv({ cls: "fpih-review-tx-list" });
 		const shown = [...group.transactions].reverse().slice(0, PREVIEW_ROWS);
 		shown.forEach((tx: Transaction) => {
-			const row = list.createDiv({ cls: "fp-review-tx" });
-			row.createSpan({ cls: "fp-review-tx-date", text: tx.date });
-			row.createSpan({ cls: "fp-review-tx-desc fp-sensitive", text: tx.description });
+			const row = list.createDiv({ cls: "fpih-review-tx" });
+			row.createSpan({ cls: "fpih-review-tx-date", text: tx.date });
+			row.createSpan({ cls: "fpih-review-tx-desc fpih-sensitive", text: tx.description });
 			row.createSpan({
-				cls: "fp-review-tx-amount fp-money " + (tx.amount < 0 ? "is-negative" : "is-positive"),
+				cls: "fpih-review-tx-amount fpih-money " + (tx.amount < 0 ? "is-negative" : "is-positive"),
 				text: formatMoney(tx.amount, tx.currency || "EUR"),
 			});
 		});
 		if (group.transactions.length > shown.length) {
-			list.createDiv({ cls: "fp-review-tx-more", text: `+ ${group.transactions.length - shown.length} more` });
+			list.createDiv({ cls: "fpih-review-tx-more", text: `+ ${group.transactions.length - shown.length} more` });
 		}
 
-		const keys = card.createDiv({ cls: "fp-review-keys" });
+		const keys = card.createDiv({ cls: "fpih-review-keys" });
 		this.ranked.forEach((category, i) => {
-			const btn = keys.createEl("button", { cls: "fp-review-key", attr: { type: "button" } });
-			btn.createSpan({ cls: "fp-review-key-num", text: String(i + 1) });
+			const btn = keys.createEl("button", { cls: "fpih-review-key", attr: { type: "button" } });
+			btn.createSpan({ cls: "fpih-review-key-num", text: String(i + 1) });
 			categoryChip(btn, category.name, category.color, category.icon);
 			btn.addEventListener("click", () => void this.assign(category.id));
 		});
-		const searchBtn = keys.createEl("button", { cls: "fp-review-key fp-review-key--search", attr: { type: "button" } });
-		searchBtn.createSpan({ cls: "fp-review-key-num", text: "/" });
+		const searchBtn = keys.createEl("button", { cls: "fpih-review-key fpih-review-key--search", attr: { type: "button" } });
+		searchBtn.createSpan({ cls: "fpih-review-key-num", text: "/" });
 		searchBtn.createSpan({ text: "Search all categories" });
 		searchBtn.addEventListener("click", () => this.openSearch());
 
 		const pattern = this.rulePattern(group);
-		const ruleRow = card.createEl("label", { cls: "fp-review-rule" });
+		const ruleRow = card.createEl("label", { cls: "fpih-review-rule" });
 		const check = ruleRow.createEl("input", { type: "checkbox" });
 		check.checked = this.makeRule && !!pattern;
 		check.disabled = !pattern;
 		check.addEventListener("change", () => (this.makeRule = check.checked));
-		ruleRow.createSpan({ cls: "fp-review-rule-key", text: "R" });
+		ruleRow.createSpan({ cls: "fpih-review-rule-key", text: "R" });
 		if (pattern) {
 			const reach = ruleReach(pattern, this.plugin.store.transactions);
 			ruleRow.createSpan({
@@ -374,28 +374,28 @@ export class ReviewQueueModal extends Modal {
 	}
 
 	private renderFooter(): void {
-		const footer = this.bodyEl.createDiv({ cls: "fp-wizard-footer fp-review-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
+		const footer = this.bodyEl.createDiv({ cls: "fpih-wizard-footer fpih-review-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
 
-		const undoBtn = left.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", attr: { type: "button" } });
-		undoBtn.createSpan({ cls: "fp-review-kbd", text: "U" });
+		const undoBtn = left.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", attr: { type: "button" } });
+		undoBtn.createSpan({ cls: "fpih-review-kbd", text: "U" });
 		undoBtn.createSpan({ text: "Undo" });
 		undoBtn.disabled = this.undoStack.length === 0;
 		undoBtn.addEventListener("click", () => void this.undo());
 
-		const skipBtn = right.createEl("button", { cls: "fp-btn fp-btn--secondary fp-btn-secondary", attr: { type: "button" } });
-		skipBtn.createSpan({ cls: "fp-review-kbd", text: "S" });
+		const skipBtn = right.createEl("button", { cls: "fpih-btn fpih-btn--secondary fpih-btn-secondary", attr: { type: "button" } });
+		skipBtn.createSpan({ cls: "fpih-review-kbd", text: "S" });
 		skipBtn.createSpan({ text: "Skip" });
 		skipBtn.addEventListener("click", () => this.skip());
 
-		const closeBtn = right.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost", attr: { type: "button" } });
-		closeBtn.createSpan({ cls: "fp-review-kbd", text: "Esc" });
+		const closeBtn = right.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost", attr: { type: "button" } });
+		closeBtn.createSpan({ cls: "fpih-review-kbd", text: "Esc" });
 		closeBtn.createSpan({ text: "Close" });
 		closeBtn.addEventListener("click", () => this.close());
 
 		this.bodyEl.createDiv({
-			cls: "fp-review-hint",
+			cls: "fpih-review-hint",
 			text: "1–9 assign · / search · R toggle rule · S skip · U undo · Esc close — everything applied stays applied",
 		});
 	}
@@ -416,29 +416,29 @@ export class ReviewQueueModal extends Modal {
 	private renderDone(): void {
 		const rulesCreated = this.sessionRules.length;
 		const skipped = this.skippedKeys.size;
-		const wrap = this.bodyEl.createDiv({ cls: "fp-review-done" });
-		const head = wrap.createDiv({ cls: "fp-review-done-head" });
-		icon(head, "check-check", "fp-review-done-icon");
-		head.createDiv({ cls: "fp-review-title", text: "All caught up" });
+		const wrap = this.bodyEl.createDiv({ cls: "fpih-review-done" });
+		const head = wrap.createDiv({ cls: "fpih-review-done-head" });
+		icon(head, "check-check", "fpih-review-done-icon");
+		head.createDiv({ cls: "fpih-review-title", text: "All caught up" });
 		wrap.createDiv({
-			cls: "fp-step-desc",
+			cls: "fpih-step-desc",
 			text: `${this.assignedTxCount} transaction${this.assignedTxCount === 1 ? "" : "s"} categorized · ${rulesCreated} rule${rulesCreated === 1 ? "" : "s"} created · ${skipped} skipped`,
 		});
 
-		const footer = wrap.createDiv({ cls: "fp-wizard-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
+		const footer = wrap.createDiv({ cls: "fpih-wizard-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
 
 		if (rulesCreated > 0) {
 			wrap.createDiv({
-				cls: "fp-step-desc",
+				cls: "fpih-step-desc",
 				text: `Your ${rulesCreated} new rule${rulesCreated === 1 ? "" : "s"} will apply automatically to future imports.`,
 			});
 			// "Them" is this session's rules — it used to run the *entire* rule set, including the ~200
 			// seeded merchant rules, so one click could recategorize hundreds of rows nobody asked about
 			// and nothing here can undo. The reach is counted first so the button can name it.
 			const patches = this.sessionRulePatches();
-			const applyBtn = left.createEl("button", { cls: "fp-btn fp-btn--secondary fp-btn-secondary", attr: { type: "button" } });
+			const applyBtn = left.createEl("button", { cls: "fpih-btn fpih-btn--secondary fpih-btn-secondary", attr: { type: "button" } });
 			icon(applyBtn, "wand-sparkles");
 			applyBtn.createSpan({
 				text:
@@ -456,7 +456,7 @@ export class ReviewQueueModal extends Modal {
 			});
 		}
 
-		const done = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", text: "Done", attr: { type: "button" } });
+		const done = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", text: "Done", attr: { type: "button" } });
 		done.addEventListener("click", () => this.close());
 	}
 }

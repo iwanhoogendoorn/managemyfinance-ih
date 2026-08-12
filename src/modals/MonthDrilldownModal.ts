@@ -92,12 +92,12 @@ export class MonthDrilldownModal extends Modal {
 	onOpen(): void {
 		// Registered so a portfolio switch can close it — see modalRegistry.
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
-		this.modalEl.addClass("fp-root");
-		this.modalEl.addClass("fp-drilldown-modal");
+		this.modalEl.addClass("fpih-wizard-modal");
+		this.modalEl.addClass("fpih-root");
+		this.modalEl.addClass("fpih-drilldown-modal");
 		const c = this.contentEl;
-		c.addClass("fp-account-modal");
-		c.addClass("fp-month-review");
+		c.addClass("fpih-account-modal");
+		c.addClass("fpih-month-review");
 
 		// If the entry point was a year and that year has data, start the Month tab on its last active
 		// month rather than a blank January.
@@ -107,7 +107,7 @@ export class MonthDrilldownModal extends Modal {
 			text: this.accountName ? `In review — ${this.accountName}` : "In review",
 		});
 
-		const tabHost = c.createDiv({ cls: "fp-month-review-tabs" });
+		const tabHost = c.createDiv({ cls: "fpih-month-review-tabs" });
 		tabSwitcher(tabHost, [
 			{
 				label: "Month",
@@ -123,13 +123,13 @@ export class MonthDrilldownModal extends Modal {
 		// same way a user would. Deliberate over reordering the tabs per entry point — a tab strip
 		// whose order changes depending on how you got there is worse than one extra click.
 		if (this.initialTab === "year") {
-			const buttons = tabHost.querySelectorAll<HTMLElement>(".fp-tabs .fp-tab");
+			const buttons = tabHost.querySelectorAll<HTMLElement>(".fpih-tabs .fpih-tab");
 			buttons[1]?.click();
 		}
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const closeBtn = right.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", attr: { type: "button" } });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const closeBtn = right.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", attr: { type: "button" } });
 		icon(closeBtn, "check");
 		closeBtn.createSpan({ text: "Close" });
 		closeBtn.addEventListener("click", () => this.close());
@@ -188,7 +188,7 @@ export class MonthDrilldownModal extends Modal {
 			return;
 		}
 
-		const stats = panel.createDiv({ cls: "fp-stat-grid" });
+		const stats = panel.createDiv({ cls: "fpih-stat-grid" });
 		const prevLabel = MONTH_LABELS[Number(prevMonth.slice(5, 7)) - 1];
 		// `sub` is a plain string, so money inside it escapes privacy redaction entirely — the whole
 		// reason `setStatFoot` exists. These two footnotes carry last month's actual figures.
@@ -229,9 +229,9 @@ export class MonthDrilldownModal extends Modal {
 
 	private renderMonthNav(panel: HTMLElement): void {
 		const bounds = this.bounds();
-		const nav = panel.createDiv({ cls: "fp-month-nav" });
+		const nav = panel.createDiv({ cls: "fpih-month-nav" });
 
-		const prev = nav.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost fp-btn--icon fp-btn-icon", attr: { type: "button", "aria-label": "Previous month" } });
+		const prev = nav.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost fpih-btn--icon fpih-btn-icon", attr: { type: "button", "aria-label": "Previous month" } });
 		icon(prev, "chevron-left");
 		prev.disabled = !bounds || shiftMonth(this.month, -1) < bounds.first;
 		prev.addEventListener("click", () => {
@@ -239,9 +239,9 @@ export class MonthDrilldownModal extends Modal {
 			this.renderMonth();
 		});
 
-		nav.createDiv({ cls: "fp-month-nav-label", text: monthLabel(this.month) });
+		nav.createDiv({ cls: "fpih-month-nav-label", text: monthLabel(this.month) });
 
-		const next = nav.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn-ghost fp-btn--icon fp-btn-icon", attr: { type: "button", "aria-label": "Next month" } });
+		const next = nav.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn-ghost fpih-btn--icon fpih-btn-icon", attr: { type: "button", "aria-label": "Next month" } });
 		icon(next, "chevron-right");
 		next.disabled = !bounds || shiftMonth(this.month, 1) > bounds.last;
 		next.addEventListener("click", () => {
@@ -255,15 +255,15 @@ export class MonthDrilldownModal extends Modal {
 		const spend = categorySpend(store, this.month, this.accountIds);
 		if (spend.size === 0) return;
 
-		const card = panel.createDiv({ cls: "fp-card" });
-		card.createEl("h4", { cls: "fp-card-title", text: "Where it went" });
+		const card = panel.createDiv({ cls: "fpih-card" });
+		card.createEl("h4", { cls: "fpih-card-title", text: "Where it went" });
 		const entries = [...spend.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 		const rows = entries.map(([categoryId, total]) => {
 			const category = store.categories.find((c) => c.id === categoryId);
 			return {
 				label: category?.name ?? "Uncategorized",
 				value: total,
-				color: category?.color ?? "var(--fp-ink-muted)",
+				color: category?.color ?? "var(--fpih-ink-muted)",
 				iconName: category?.icon,
 			};
 		});
@@ -290,16 +290,16 @@ export class MonthDrilldownModal extends Modal {
 		const biggest = monthTxs.filter((t) => t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, TOP_N);
 		if (biggest.length === 0) return;
 
-		const card = panel.createDiv({ cls: "fp-card" });
-		card.createEl("h4", { cls: "fp-card-title", text: "Biggest expenses this month" });
-		const table = card.createEl("table", { cls: "fp-table fp-table--dense" });
+		const card = panel.createDiv({ cls: "fpih-card" });
+		card.createEl("h4", { cls: "fpih-card-title", text: "Biggest expenses this month" });
+		const table = card.createEl("table", { cls: "fpih-table fpih-table--dense" });
 		const tbody = table.createEl("tbody");
 		biggest.forEach((tx) => {
-			const tr = tbody.createEl("tr", { cls: "fp-table-row-clickable" });
-			tr.createEl("td", { cls: "fp-cell-date", text: tx.date });
-			tr.createEl("td", { cls: "fp-sensitive", text: tx.description });
-			tr.createEl("td", { cls: "fp-table-num" }).createSpan({
-				cls: "fp-money fp-cell-amount is-negative",
+			const tr = tbody.createEl("tr", { cls: "fpih-table-row-clickable" });
+			tr.createEl("td", { cls: "fpih-cell-date", text: tx.date });
+			tr.createEl("td", { cls: "fpih-sensitive", text: tx.description });
+			tr.createEl("td", { cls: "fpih-table-num" }).createSpan({
+				cls: "fpih-money fpih-cell-amount is-negative",
 				text: formatMoney(tx.amount, tx.currency || "EUR"),
 			});
 			tr.addEventListener("click", () => new TransactionDetailModal(this.app, this.plugin, tx).open());
@@ -326,10 +326,10 @@ export class MonthDrilldownModal extends Modal {
 		}
 		if (fresh.size === 0) return;
 
-		const card = panel.createDiv({ cls: "fp-card fp-card--tight" });
-		card.createEl("h4", { cls: "fp-card-title", text: "New this month" });
+		const card = panel.createDiv({ cls: "fpih-card fpih-card--tight" });
+		card.createEl("h4", { cls: "fpih-card-title", text: "New this month" });
 		card.createDiv({
-			cls: "fp-month-new-merchants fp-sensitive",
+			cls: "fpih-month-new-merchants fpih-sensitive",
 			text: `${fresh.size} merchant${fresh.size === 1 ? "" : "s"} you haven't paid in the last ${NEW_MERCHANT_LOOKBACK_MONTHS} months: ${[...fresh.values()].slice(0, 6).join(", ")}`,
 		});
 	}
@@ -338,13 +338,13 @@ export class MonthDrilldownModal extends Modal {
 		const uncategorized = monthTxs.filter((t) => !t.categoryId);
 		if (uncategorized.length === 0) return;
 
-		const row = panel.createDiv({ cls: "fp-month-warn fp-card fp-card--tight fp-tone-warn" });
+		const row = panel.createDiv({ cls: "fpih-month-warn fpih-card fpih-card--tight fpih-tone-warn" });
 		icon(row, "alert-triangle");
 		row.createSpan({
-			cls: "fp-month-warn-text",
+			cls: "fpih-month-warn-text",
 			text: `${uncategorized.length} transaction${uncategorized.length === 1 ? "" : "s"} this month ${uncategorized.length === 1 ? "is" : "are"} uncategorized`,
 		});
-		const btn = row.createEl("button", { cls: "fp-btn fp-btn--primary fp-btn-primary", text: "Review them", attr: { type: "button" } });
+		const btn = row.createEl("button", { cls: "fpih-btn fpih-btn--primary fpih-btn-primary", text: "Review them", attr: { type: "button" } });
 		btn.addEventListener("click", () => {
 			const ids = new Set(uncategorized.map((t) => t.id));
 			this.close();
@@ -362,22 +362,22 @@ export class MonthDrilldownModal extends Modal {
 		const statuses = budgetStatuses(store, store.categories, this.month).sort((a, b) => b.pct - a.pct);
 		if (statuses.length === 0) return;
 
-		const card = panel.createDiv({ cls: "fp-card" });
-		card.createEl("h4", { cls: "fp-card-title", text: `Budgets — ${monthLabel(this.month)}` });
+		const card = panel.createDiv({ cls: "fpih-card" });
+		card.createEl("h4", { cls: "fpih-card-title", text: `Budgets — ${monthLabel(this.month)}` });
 		statuses.forEach((status) => {
 			const category = store.categories.find((c) => c.id === status.categoryId);
 			if (!category) return;
-			const row = card.createDiv({ cls: "fp-month-budget-row" });
+			const row = card.createDiv({ cls: "fpih-month-budget-row" });
 			categoryChip(row, category.name, category.color, category.icon);
-			const figures = row.createDiv({ cls: "fp-month-budget-figures" });
-			figures.createSpan({ cls: "fp-money", text: formatMoney(status.spent, "EUR", { decimals: 0 }) });
+			const figures = row.createDiv({ cls: "fpih-month-budget-figures" });
+			figures.createSpan({ cls: "fpih-money", text: formatMoney(status.spent, "EUR", { decimals: 0 }) });
 			figures.createSpan({ text: " / " });
-			figures.createSpan({ cls: "fp-money", text: formatMoney(status.budget, "EUR", { decimals: 0 }) });
-			const track = row.createDiv({ cls: "fp-meter-track" });
-			const fill = track.createDiv({ cls: "fp-meter-fill fp-tone-" + status.tone });
+			figures.createSpan({ cls: "fpih-money", text: formatMoney(status.budget, "EUR", { decimals: 0 }) });
+			const track = row.createDiv({ cls: "fpih-meter-track" });
+			const fill = track.createDiv({ cls: "fpih-meter-fill fpih-tone-" + status.tone });
 			fill.style.width = `${Math.min(100, Math.round(status.pct * 100))}%`;
 			row.createDiv({
-				cls: "fp-month-budget-verdict fp-tone-" + status.tone,
+				cls: "fpih-month-budget-verdict fpih-tone-" + status.tone,
 				text:
 					status.remaining >= 0
 						? `${formatMoney(status.remaining, "EUR", { decimals: 0 })} left`
@@ -392,15 +392,15 @@ export class MonthDrilldownModal extends Modal {
 		const months = summarizeByMonth(this.plugin.store, this.year, this.accountId);
 		const hasActivity = months.some((m) => m.income > 0 || m.expenses > 0);
 
-		panel.createEl("h4", { cls: "fp-card-title", text: `${this.year} by month` });
+		panel.createEl("h4", { cls: "fpih-card-title", text: `${this.year} by month` });
 
 		if (!hasActivity) {
-			panel.createEl("p", { cls: "fp-step-desc", text: "No transactions recorded for this year." });
+			panel.createEl("p", { cls: "fpih-step-desc", text: "No transactions recorded for this year." });
 			return;
 		}
 
-		const wrap = panel.createDiv({ cls: "fp-table-scroll" });
-		const table = wrap.createEl("table", { cls: "fp-table fp-table-metrics" });
+		const wrap = panel.createDiv({ cls: "fpih-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fpih-table fpih-table-metrics" });
 		// Month headers are buttons now: the Year tab is a map, and every cell in it should lead
 		// somewhere. Clicking one opens that month in the Month tab.
 		yearHeaderRow(table, MONTH_LABELS, {
@@ -409,7 +409,7 @@ export class MonthDrilldownModal extends Modal {
 				if (idx === -1) return;
 				this.month = `${this.year}-${String(idx + 1).padStart(2, "0")}`;
 				this.renderMonth();
-				const buttons = this.contentEl.querySelectorAll<HTMLElement>(".fp-tabs .fp-tab");
+				const buttons = this.contentEl.querySelectorAll<HTMLElement>(".fpih-tabs .fpih-tab");
 				buttons[0]?.click();
 			},
 		});

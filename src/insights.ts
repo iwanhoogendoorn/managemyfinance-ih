@@ -64,7 +64,7 @@ export type InsightDeepLink =
  * One run of insight copy.
  *
  * The feed's strings interpolate merchant names and exact euro amounts, and a pre-formatted string
- * cannot carry the two hooks the rest of the app redacts on (`.fp-money`, `.fp-sensitive`) — which is
+ * cannot carry the two hooks the rest of the app redacts on (`.fpih-money`, `.fpih-sensitive`) — which is
  * why privacy mode used to leave the five most prominent cards on the overview fully legible. Splitting
  * the copy into parts lets the view wrap each run in the right span while this module stays the single
  * owner of the wording.

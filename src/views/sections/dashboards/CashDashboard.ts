@@ -30,7 +30,7 @@ export function renderCashDashboard(container: HTMLElement, plugin: FinancePlugi
 	const m0 = windowSummary(store, firstDayOf(month), lastDayOf(month), ids);
 	const burn = burnRate(store, ids, 6, today);
 
-	const grid = container.createDiv({ cls: "fp-stat-grid" });
+	const grid = container.createDiv({ cls: "fpih-stat-grid" });
 
 	renderStat(grid, { label: "Current balance", value: money(balance, currency, 2), size: "hero", iconName: "banknote" });
 
@@ -50,7 +50,7 @@ export function renderCashDashboard(container: HTMLElement, plugin: FinancePlugi
 	const dates = store.transactions.filter((t) => t.accountId === account.id).map((t) => t.date).filter(Boolean);
 	const last = dates.reduce<string | undefined>((max, d) => (!max || d > max ? d : max), undefined);
 	if (!last) {
-		const card = container.createDiv({ cls: "fp-card" });
+		const card = container.createDiv({ cls: "fpih-card" });
 		emptyState(card, {
 			variant: "inline",
 			iconName: "banknote",
@@ -61,7 +61,7 @@ export function renderCashDashboard(container: HTMLElement, plugin: FinancePlugi
 	}
 	const staleDays = daysBetween(last, now);
 	if (staleDays > STALE_DAYS) {
-		const note = container.createDiv({ cls: "fp-card fp-card--inset fp-card-note is-warn" });
+		const note = container.createDiv({ cls: "fpih-card fpih-card--inset fpih-card-note is-warn" });
 		note.setText(`Last logged ${formatDay(last)} — ${staleDays} days ago. The balance above is only as good as the last entry.`);
 	}
 }
@@ -91,14 +91,14 @@ function renderCashSources(
 	atmCategoryIds.forEach((id) => (withdrawn += spend.get(id) ?? 0));
 	if (withdrawn <= 0) return;
 
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	cardHead(card, "Where the cash came from", { sub: `Withdrawals from your other accounts in ${formatMonth(month)}` });
 
-	const row = card.createDiv({ cls: "fp-reconcile" });
+	const row = card.createDiv({ cls: "fpih-reconcile" });
 	const item = (label: string, value: string, tone?: string) => {
-		const cell = row.createDiv({ cls: "fp-reconcile-item" });
-		cell.createDiv({ cls: "fp-overline", text: label });
-		cell.createDiv({ cls: `fp-reconcile-value fp-money ${tone ?? ""}`.trim(), text: value });
+		const cell = row.createDiv({ cls: "fpih-reconcile-item" });
+		cell.createDiv({ cls: "fpih-overline", text: label });
+		cell.createDiv({ cls: `fpih-reconcile-value fpih-money ${tone ?? ""}`.trim(), text: value });
 	};
 	item("Withdrawn", money(withdrawn, currency));
 	item("Logged here", money(loggedIn, currency));
@@ -106,8 +106,8 @@ function renderCashSources(
 	item("Unaccounted", money(Math.max(0, gap), currency), gap > 0 ? "is-warn" : undefined);
 
 	if (gap > 0) {
-		const note = card.createDiv({ cls: "fp-card-note" });
-		note.createSpan({ cls: "fp-money", text: money(gap, currency) });
+		const note = card.createDiv({ cls: "fpih-card-note" });
+		note.createSpan({ cls: "fpih-money", text: money(gap, currency) });
 		note.createSpan({
 			text: " came out of an account this month without being logged here — either add it, or this wallet balance is overstating what you actually have.",
 		});

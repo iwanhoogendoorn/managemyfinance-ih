@@ -101,21 +101,21 @@ export class WizardModal extends Modal {
 	onOpen(): void {
 		// Registered so a portfolio switch can close it — see modalRegistry.
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
-		// `.fp-root` is where the design tokens live; `.fp-wizard-modal` is kept as the alias every
+		this.modalEl.addClass("fpih-wizard-modal");
+		// `.fpih-root` is where the design tokens live; `.fpih-wizard-modal` is kept as the alias every
 		// existing modal rule is written against.
-		this.modalEl.addClass("fp-root");
-		this.contentEl.addClass("fp-wizard");
+		this.modalEl.addClass("fpih-root");
+		this.contentEl.addClass("fpih-wizard");
 
-		const head = this.contentEl.createDiv({ cls: "fp-wizard-header" });
-		icon(head.createDiv({ cls: "fp-wizard-header-icon" }), this.wizIcon);
-		const headText = head.createDiv({ cls: "fp-wizard-header-text" });
-		headText.createDiv({ cls: "fp-wizard-title", text: this.wizTitle });
-		headText.createDiv({ cls: "fp-wizard-subtitle", text: this.wizSubtitle });
+		const head = this.contentEl.createDiv({ cls: "fpih-wizard-header" });
+		icon(head.createDiv({ cls: "fpih-wizard-header-icon" }), this.wizIcon);
+		const headText = head.createDiv({ cls: "fpih-wizard-header-text" });
+		headText.createDiv({ cls: "fpih-wizard-title", text: this.wizTitle });
+		headText.createDiv({ cls: "fpih-wizard-subtitle", text: this.wizSubtitle });
 
-		this.stepsEl = this.contentEl.createDiv({ cls: "fp-wizard-steps" });
-		this.bodyEl = this.contentEl.createDiv({ cls: "fp-wizard-body" });
-		this.footerEl = this.contentEl.createDiv({ cls: "fp-wizard-footer" });
+		this.stepsEl = this.contentEl.createDiv({ cls: "fpih-wizard-steps" });
+		this.bodyEl = this.contentEl.createDiv({ cls: "fpih-wizard-body" });
+		this.footerEl = this.contentEl.createDiv({ cls: "fpih-wizard-footer" });
 
 		// Next is disabled whenever `canGoNext` says so, and almost every `canGoNext` reads a field the
 		// user is typing in or a select they just changed. Re-evaluating here — once, on the body, for
@@ -147,15 +147,15 @@ export class WizardModal extends Modal {
 		// header reads as fully complete rather than snapping back to the last visible step.
 		const activeVisibleIdx = activeStep.hidden ? visible.length : visible.indexOf(activeStep);
 		visible.forEach((step, i) => {
-			const cls = ["fp-wizard-step"];
+			const cls = ["fpih-wizard-step"];
 			if (i === activeVisibleIdx) cls.push("is-active");
 			if (i < activeVisibleIdx) cls.push("is-done");
 			const dot = this.stepsEl.createDiv({ cls: cls.join(" ") });
-			const circle = dot.createDiv({ cls: "fp-wizard-step-circle" });
+			const circle = dot.createDiv({ cls: "fpih-wizard-step-circle" });
 			icon(circle, i < activeVisibleIdx ? "check" : step.icon);
-			dot.createDiv({ cls: "fp-wizard-step-label", text: step.title });
+			dot.createDiv({ cls: "fpih-wizard-step-label", text: step.title });
 			if (i < visible.length - 1) {
-				this.stepsEl.createDiv({ cls: "fp-wizard-step-line" + (i < activeVisibleIdx ? " is-done" : "") });
+				this.stepsEl.createDiv({ cls: "fpih-wizard-step-line" + (i < activeVisibleIdx ? " is-done" : "") });
 			}
 		});
 	}
@@ -171,8 +171,8 @@ export class WizardModal extends Modal {
 	private renderFooter(): void {
 		this.footerEl.empty();
 		this.nextBtn = undefined;
-		const left = this.footerEl.createDiv({ cls: "fp-wizard-footer-left" });
-		const right = this.footerEl.createDiv({ cls: "fp-wizard-footer-right" });
+		const left = this.footerEl.createDiv({ cls: "fpih-wizard-footer-left" });
+		const right = this.footerEl.createDiv({ cls: "fpih-wizard-footer-right" });
 
 		const step = this.steps[this.stepIndex];
 		const isLast = this.stepIndex === this.steps.length - 1;
@@ -180,18 +180,18 @@ export class WizardModal extends Modal {
 		if (step.hideBack) {
 			// nothing on the left — this step has already committed something
 		} else if (this.stepIndex > 0) {
-			const back = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Back" });
+			const back = left.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: "Back" });
 			back.addEventListener("click", () => {
 				this.stepIndex--;
 				void this.renderStep();
 			});
 		} else {
-			const cancel = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Cancel" });
+			const cancel = left.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: "Cancel" });
 			cancel.addEventListener("click", () => this.close());
 		}
 
 		if (step.skippable) {
-			const skip = right.createEl("button", { cls: "fp-btn fp-btn-ghost", text: step.skipLabel ?? "Skip" });
+			const skip = right.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: step.skipLabel ?? "Skip" });
 			skip.addEventListener("click", async () => {
 				if (this.busy) return;
 				this.busy = true;
@@ -215,7 +215,7 @@ export class WizardModal extends Modal {
 		if (step.hideNext) return;
 
 		const next = right.createEl("button", {
-			cls: "fp-btn fp-btn--primary fp-btn-primary",
+			cls: "fpih-btn fpih-btn--primary fpih-btn-primary",
 			text: step.nextLabel ?? (isLast ? "Finish" : "Next"),
 		});
 		// A live-looking primary button that silently does nothing is worse than a disabled one.

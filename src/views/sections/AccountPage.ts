@@ -52,7 +52,7 @@ function renderMeta(parent: HTMLElement, plugin: FinancePlugin, account: Account
 	// accounts are imported at different times and one that stopped a year ago is the single most
 	// misleading thing a dashboard can quietly average into a total.
 	if (coverage.from) bits.push(formatCoverage(coverage));
-	parent.createDiv({ cls: "fp-section-subtitle", text: bits.join(" · ") });
+	parent.createDiv({ cls: "fpih-section-subtitle", text: bits.join(" · ") });
 }
 
 /**
@@ -64,9 +64,9 @@ function renderMeta(parent: HTMLElement, plugin: FinancePlugin, account: Account
  * registered yet is a no-op instead of a build error.
  */
 function renderActions(parent: HTMLElement, plugin: FinancePlugin, account?: Account): void {
-	const row = parent.createDiv({ cls: "fp-action-row" });
+	const row = parent.createDiv({ cls: "fpih-action-row" });
 
-	const importBtn = row.createEl("button", { cls: "fp-btn fp-btn--secondary", attr: { type: "button" } });
+	const importBtn = row.createEl("button", { cls: "fpih-btn fpih-btn--secondary", attr: { type: "button" } });
 	icon(importBtn, "upload");
 	importBtn.createSpan({ text: "Import" });
 	importBtn.addEventListener("click", () => openImportWizard(plugin));
@@ -74,7 +74,7 @@ function renderActions(parent: HTMLElement, plugin: FinancePlugin, account?: Acc
 	const scope = account ? plugin.store.transactions.filter((t) => t.accountId === account.id) : plugin.store.transactions;
 	const uncategorized = scope.filter((t) => !t.categoryId).length;
 	if (uncategorized > 0) {
-		const reviewBtn = row.createEl("button", { cls: "fp-btn fp-btn--secondary fp-action-review", attr: { type: "button" } });
+		const reviewBtn = row.createEl("button", { cls: "fpih-btn fpih-btn--secondary fpih-action-review", attr: { type: "button" } });
 		icon(reviewBtn, "alert-triangle");
 		reviewBtn.createSpan({ text: `Review ${uncategorized.toLocaleString("en-IE")} uncategorized` });
 		reviewBtn.addEventListener("click", () => {
@@ -85,7 +85,7 @@ function renderActions(parent: HTMLElement, plugin: FinancePlugin, account?: Acc
 		});
 	}
 
-	const monthBtn = row.createEl("button", { cls: "fp-btn fp-btn--secondary", attr: { type: "button" } });
+	const monthBtn = row.createEl("button", { cls: "fpih-btn fpih-btn--secondary", attr: { type: "button" } });
 	icon(monthBtn, "calendar-range");
 	monthBtn.createSpan({ text: "This month in review" });
 	monthBtn.addEventListener("click", () => runCommand(plugin, "month-in-review"));
@@ -94,7 +94,7 @@ function renderActions(parent: HTMLElement, plugin: FinancePlugin, account?: Acc
 /** One page per account (or "All Accounts"): a type-appropriate dashboard, a divider, then its ledger. */
 export function renderAccountPage(container: HTMLElement, plugin: FinancePlugin): void {
 	const store = plugin.store;
-	container.addClass("fp-section");
+	container.addClass("fpih-section");
 
 	if (store.accounts.length === 0) {
 		emptyState(container, {
@@ -110,10 +110,10 @@ export function renderAccountPage(container: HTMLElement, plugin: FinancePlugin)
 	const activeAccountId = plugin.settings.activeAccountId;
 	const account = activeAccountId ? store.accounts.find((a) => a.id === activeAccountId) : undefined;
 
-	const header = container.createDiv({ cls: "fp-section-header" });
+	const header = container.createDiv({ cls: "fpih-section-header" });
 	const headText = header.createDiv();
 	if (account) {
-		const back = headText.createEl("button", { cls: "fp-back-link", attr: { type: "button" } });
+		const back = headText.createEl("button", { cls: "fpih-back-link", attr: { type: "button" } });
 		icon(back, "chevron-left");
 		back.createSpan({ text: "All accounts" });
 		back.addEventListener("click", async () => {
@@ -124,7 +124,7 @@ export function renderAccountPage(container: HTMLElement, plugin: FinancePlugin)
 	}
 	headText.createEl("h2", { text: account ? account.name : "All accounts" });
 	if (account) renderMeta(headText, plugin, account);
-	renderActions(header.createDiv({ cls: "fp-section-header-actions" }), plugin, account);
+	renderActions(header.createDiv({ cls: "fpih-section-header-actions" }), plugin, account);
 
 	if (account) renderAccountDashboard(container, plugin, account);
 	else renderAllAccountsDashboard(container, plugin);
@@ -132,8 +132,8 @@ export function renderAccountPage(container: HTMLElement, plugin: FinancePlugin)
 	// "All Accounts" is a whole-of-finances overview, not a place to browse every transaction —
 	// each account's own page is where its ledger lives.
 	if (account) {
-		container.createDiv({ cls: "fp-account-page-divider" });
-		container.createEl("h3", { cls: "fp-account-page-ledger-title", text: "Transactions" });
+		container.createDiv({ cls: "fpih-account-page-divider" });
+		container.createEl("h3", { cls: "fpih-account-page-ledger-title", text: "Transactions" });
 		renderLedger(container, plugin);
 	}
 }

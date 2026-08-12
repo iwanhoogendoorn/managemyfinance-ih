@@ -133,16 +133,16 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 	/* ---------- carried-balance banner ---------- */
 
 	if (interestRecent > 0) {
-		const banner = container.createDiv({ cls: "fp-banner is-bad" });
-		banner.createDiv({ cls: "fp-banner-title", text: "You're carrying a balance on this card" });
-		const body = banner.createDiv({ cls: "fp-banner-body" });
-		body.createSpan({ cls: "fp-money", text: money(interestRecent, currency) });
+		const banner = container.createDiv({ cls: "fpih-banner is-bad" });
+		banner.createDiv({ cls: "fpih-banner-title", text: "You're carrying a balance on this card" });
+		const body = banner.createDiv({ cls: "fpih-banner-body" });
+		body.createSpan({ cls: "fpih-money", text: money(interestRecent, currency) });
 		body.createSpan({ text: " of interest and fees in the last three months. Clearing this balance beats any return elsewhere." });
 	}
 
 	/* ---------- stats ---------- */
 
-	const grid = container.createDiv({ cls: "fp-stat-grid" });
+	const grid = container.createDiv({ cls: "fpih-stat-grid" });
 	const balances = balanceSeries(store, ids, "month", today).slice(-24);
 
 	const owedCard = renderStat(grid, {
@@ -156,7 +156,7 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 		// Owed is a positive figure by construction, so the sparkline is inverted to match: a rising
 		// line means rising debt.
 		sparklineValues: balances.map((b) => -b.balance),
-		sparklineColor: "var(--fp-series-expenses)",
+		sparklineColor: "var(--fpih-series-expenses)",
 	});
 	setStatFoot(owedCard, [owed > 0 ? "outstanding right now" : "nothing outstanding — paid in full"]);
 
@@ -233,7 +233,7 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 				groupedColumnChart(
 					host,
 					months.map((m) => formatMonth(m).slice(0, 3)),
-					[{ label: "Utilization", color: "var(--fp-series-expenses)", values }],
+					[{ label: "Utilization", color: "var(--fpih-series-expenses)", values }],
 					{
 						formatValue: (n) => pct(n),
 						money: false,
@@ -269,15 +269,15 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
 					return paymentsIn(store, account.id, w.from, w.to, pairIds);
 				});
 				if (!spendSeries.some((v) => v > 0) && !paymentSeries.some((v) => v > 0)) {
-					host.createDiv({ cls: "fp-card-sub", text: "No activity in this period." });
+					host.createDiv({ cls: "fpih-card-sub", text: "No activity in this period." });
 					return;
 				}
 				groupedColumnChart(
 					host,
 					months.map((m) => formatMonth(m).slice(0, 3)),
 					[
-						{ label: "Spent", color: "var(--fp-series-expenses)", values: spendSeries },
-						{ label: "Paid off", color: "var(--fp-series-income)", values: paymentSeries },
+						{ label: "Spent", color: "var(--fpih-series-expenses)", values: spendSeries },
+						{ label: "Paid off", color: "var(--fpih-series-income)", values: paymentSeries },
 					],
 					{ formatValue: (n) => money(n, currency), title: "Monthly spend against payments", description: "Card spend and payments received, per month." }
 				);
@@ -292,7 +292,7 @@ export function renderCreditDashboard(container: HTMLElement, plugin: FinancePlu
  * Asked for inline; the meter simply doesn't exist until it's given, rather than showing a "—".
  */
 function renderUtilization(container: HTMLElement, plugin: FinancePlugin, account: Account, owed: number, currency: string): void {
-	const card = container.createDiv({ cls: "fp-card" });
+	const card = container.createDiv({ cls: "fpih-card" });
 	const head = cardHead(card, "Credit utilization");
 	editableAmount(head, {
 		emptyLabel: "Set credit limit",
@@ -326,9 +326,9 @@ function renderUtilization(container: HTMLElement, plugin: FinancePlugin, accoun
 		valueLabel: pct(utilization),
 		tone: utilization >= UTIL_WARN ? "over" : utilization >= UTIL_GOOD ? "warn" : "ok",
 		renderSub: (el) => {
-			el.createSpan({ cls: "fp-money", text: money(owed, currency) });
+			el.createSpan({ cls: "fpih-money", text: money(owed, currency) });
 			el.createSpan({ text: " of " });
-			el.createSpan({ cls: "fp-money", text: money(limit, currency) });
+			el.createSpan({ cls: "fpih-money", text: money(limit, currency) });
 			el.createSpan({
 				text:
 					utilization >= UTIL_WARN
@@ -338,7 +338,7 @@ function renderUtilization(container: HTMLElement, plugin: FinancePlugin, accoun
 						: " — comfortably low.",
 			});
 			el.createSpan({ text: " " });
-			el.createSpan({ cls: "fp-money", text: money(Math.max(0, limit - owed), currency) });
+			el.createSpan({ cls: "fpih-money", text: money(Math.max(0, limit - owed), currency) });
 			el.createSpan({ text: " available." });
 		},
 	});

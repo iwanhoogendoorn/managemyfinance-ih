@@ -35,8 +35,8 @@ export class CategoryManagerModal extends Modal {
 
 	onOpen(): void {
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
-		this.modalEl.addClass("fp-root");
+		this.modalEl.addClass("fpih-wizard-modal");
+		this.modalEl.addClass("fpih-root");
 		this.render();
 	}
 
@@ -60,12 +60,12 @@ export class CategoryManagerModal extends Modal {
 	private render(): void {
 		const c = this.contentEl;
 		c.empty();
-		c.addClass("fp-account-modal");
-		c.addClass("fp-category-manager");
+		c.addClass("fpih-account-modal");
+		c.addClass("fpih-category-manager");
 
-		const head = c.createDiv({ cls: "fp-detail-header" });
-		head.createDiv({ cls: "fp-detail-desc", text: "Manage categories" });
-		const addBtn = head.createEl("button", { cls: "fp-btn fp-btn-primary", attr: { type: "button" } });
+		const head = c.createDiv({ cls: "fpih-detail-header" });
+		head.createDiv({ cls: "fpih-detail-desc", text: "Manage categories" });
+		const addBtn = head.createEl("button", { cls: "fpih-btn fpih-btn-primary", attr: { type: "button" } });
 		icon(addBtn, "plus");
 		addBtn.createSpan({ text: "New category" });
 		addBtn.addEventListener("click", () => this.renderEditor());
@@ -74,9 +74,9 @@ export class CategoryManagerModal extends Modal {
 		const active = store.categories.filter((cat) => !cat.archived);
 		const archived = store.categories.filter((cat) => cat.archived);
 
-		const list = c.createDiv({ cls: "fp-category-list" });
+		const list = c.createDiv({ cls: "fpih-category-list" });
 		if (active.length === 0) {
-			list.createDiv({ cls: "fp-step-desc", text: "No categories yet — add one above." });
+			list.createDiv({ cls: "fpih-step-desc", text: "No categories yet — add one above." });
 		}
 		const childrenOf = new Map<string, Category[]>();
 		active.forEach((cat) => {
@@ -93,14 +93,14 @@ export class CategoryManagerModal extends Modal {
 			});
 
 		if (archived.length > 0) {
-			c.createDiv({ cls: "fp-category-archived-head", text: `Archived (${archived.length}) — hidden from pickers, existing transactions keep them` });
-			const archivedList = c.createDiv({ cls: "fp-category-list" });
+			c.createDiv({ cls: "fpih-category-archived-head", text: `Archived (${archived.length}) — hidden from pickers, existing transactions keep them` });
+			const archivedList = c.createDiv({ cls: "fpih-category-list" });
 			archived.forEach((cat) => this.renderRow(archivedList, cat, { archived: true }));
 		}
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const done = right.createEl("button", { cls: "fp-btn fp-btn-primary", attr: { type: "button" } });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const done = right.createEl("button", { cls: "fpih-btn fpih-btn-primary", attr: { type: "button" } });
 		icon(done, "check");
 		done.createSpan({ text: "Done" });
 		done.addEventListener("click", () => this.close());
@@ -116,9 +116,9 @@ export class CategoryManagerModal extends Modal {
 		// A parent's count is its own rows plus everything filed under its subcategories — the number
 		// you'd lose if you deleted it, which is the only number that matters next to a delete button.
 		const familyUsed = used + children.reduce((sum, kid) => sum + this.usageOf(kid.id), 0);
-		const row = parent.createDiv({ cls: "fp-category-row" + (opts.child ? " fp-category-row--child" : "") });
+		const row = parent.createDiv({ cls: "fpih-category-row" + (opts.child ? " fpih-category-row--child" : "") });
 
-		const main = row.createDiv({ cls: "fp-category-row-main" });
+		const main = row.createDiv({ cls: "fpih-category-row-main" });
 		categoryChip(main, cat.name, cat.color, cat.icon);
 		const meta =
 			children.length > 0
@@ -127,13 +127,13 @@ export class CategoryManagerModal extends Modal {
 				: used === 0
 				? "unused"
 				: `${used.toLocaleString("en-IE")} transaction${used === 1 ? "" : "s"}`;
-		main.createSpan({ cls: "fp-category-row-meta", text: meta });
+		main.createSpan({ cls: "fpih-category-row-meta", text: meta });
 
-		const actions = row.createDiv({ cls: "fp-category-row-actions" });
+		const actions = row.createDiv({ cls: "fpih-category-row-actions" });
 
 		if (!opts.child && !opts.archived) {
 			const addSub = actions.createEl("button", {
-				cls: "fp-btn fp-btn-ghost fp-btn--icon",
+				cls: "fpih-btn fpih-btn-ghost fpih-btn--icon",
 				attr: { type: "button", "aria-label": `Add a subcategory under ${cat.name}`, title: `Add a subcategory under ${cat.name}` },
 			});
 			icon(addSub, "corner-down-right");
@@ -141,14 +141,14 @@ export class CategoryManagerModal extends Modal {
 		}
 
 		const edit = actions.createEl("button", {
-			cls: "fp-btn fp-btn-ghost fp-btn--icon",
+			cls: "fpih-btn fpih-btn-ghost fpih-btn--icon",
 			attr: { type: "button", "aria-label": `Edit ${cat.name}`, title: "Edit name, colour and icon" },
 		});
 		icon(edit, "pencil");
 		edit.addEventListener("click", () => this.renderEditor(cat));
 
 		const archiveBtn = actions.createEl("button", {
-			cls: "fp-btn fp-btn-ghost fp-btn--icon",
+			cls: "fpih-btn fpih-btn-ghost fpih-btn--icon",
 			attr: {
 				type: "button",
 				"aria-label": opts.archived ? `Restore ${cat.name}` : `Archive ${cat.name}`,
@@ -167,7 +167,7 @@ export class CategoryManagerModal extends Modal {
 		});
 
 		const del = actions.createEl("button", {
-			cls: "fp-btn fp-btn-ghost fp-btn--icon",
+			cls: "fpih-btn fpih-btn-ghost fpih-btn--icon",
 			attr: { type: "button", "aria-label": `Delete ${cat.name}`, title: used > 0 ? `Used by ${used} transactions` : "Delete" },
 		});
 		icon(del, "trash-2");
@@ -187,13 +187,13 @@ export class CategoryManagerModal extends Modal {
 		let iconName = existing?.icon ?? "tag";
 		let parentId = existing?.parentId ?? preselectParent ?? "";
 
-		const form = c.createDiv({ cls: "fp-form" });
+		const form = c.createDiv({ cls: "fpih-form" });
 
 		// Only a category with no children of its own may become a subcategory — two levels, no deeper.
 		const hasChildren = existing ? store.categories.some((x) => x.parentId === existing.id) : false;
-		const parentRow = form.createDiv({ cls: "fp-form-row" });
+		const parentRow = form.createDiv({ cls: "fpih-form-row" });
 		parentRow.createEl("label", { text: "Type" });
-		const parentSelect = parentRow.createEl("select", { cls: "fp-select" });
+		const parentSelect = parentRow.createEl("select", { cls: "fpih-select" });
 		parentSelect.createEl("option", { text: "Top-level category", value: "" });
 		store.categories
 			.filter((x) => !x.archived && !x.parentId && x.id !== existing?.id)
@@ -203,19 +203,19 @@ export class CategoryManagerModal extends Modal {
 		parentSelect.addEventListener("change", () => (parentId = parentSelect.value));
 		if (hasChildren) {
 			parentRow.createDiv({
-				cls: "fp-form-hint",
+				cls: "fpih-form-hint",
 				text: "This category has subcategories of its own, so it has to stay top-level. Move or delete them first.",
 			});
 		}
 
-		const preview = c.createDiv({ cls: "fp-category-preview" });
+		const preview = c.createDiv({ cls: "fpih-category-preview" });
 		const drawPreview = () => {
 			preview.empty();
-			preview.createSpan({ cls: "fp-category-preview-label", text: "Preview" });
+			preview.createSpan({ cls: "fpih-category-preview-label", text: "Preview" });
 			categoryChip(preview, name.trim() || "Category name", color, iconName);
 		};
 
-		const nameRow = form.createDiv({ cls: "fp-form-row" });
+		const nameRow = form.createDiv({ cls: "fpih-form-row" });
 		nameRow.createEl("label", { text: "Name" });
 		const nameInput = nameRow.createEl("input", { type: "text", attr: { placeholder: "e.g. Hobbies" } });
 		nameInput.value = name;
@@ -224,16 +224,16 @@ export class CategoryManagerModal extends Modal {
 			drawPreview();
 		});
 
-		const colorRow = form.createDiv({ cls: "fp-form-row" });
+		const colorRow = form.createDiv({ cls: "fpih-form-row" });
 		colorRow.createEl("label", { text: "Colour" });
-		const colorInput = colorRow.createEl("input", { type: "color", cls: "fp-category-color" });
+		const colorInput = colorRow.createEl("input", { type: "color", cls: "fpih-category-color" });
 		colorInput.value = color;
 		colorInput.addEventListener("input", () => {
 			color = colorInput.value;
 			drawPreview();
 		});
 
-		const iconRow = form.createDiv({ cls: "fp-form-row" });
+		const iconRow = form.createDiv({ cls: "fpih-form-row" });
 		iconRow.createEl("label", { text: "Icon" });
 		const iconInput = iconRow.createEl("input", { type: "text", attr: { placeholder: "tag" } });
 		iconInput.value = iconName;
@@ -242,7 +242,7 @@ export class CategoryManagerModal extends Modal {
 			drawPreview();
 		});
 		iconRow.createDiv({
-			cls: "fp-form-hint",
+			cls: "fpih-form-hint",
 			// Obsidian ships Lucide, so any Lucide name works — but only the name, and a wrong one
 			// silently renders nothing, so say where the list lives.
 			text: "Any Lucide icon name (lucide.dev) — e.g. tag, plane, dumbbell, gamepad-2.",
@@ -250,13 +250,13 @@ export class CategoryManagerModal extends Modal {
 
 		drawPreview();
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const cancel = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Cancel", attr: { type: "button" } });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const cancel = left.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: "Cancel", attr: { type: "button" } });
 		cancel.addEventListener("click", () => this.render());
 
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const save = right.createEl("button", { cls: "fp-btn fp-btn-primary", attr: { type: "button" } });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const save = right.createEl("button", { cls: "fpih-btn fpih-btn-primary", attr: { type: "button" } });
 		icon(save, "check");
 		save.createSpan({ text: existing ? "Save changes" : "Create category" });
 		save.addEventListener("click", () => {
@@ -314,7 +314,7 @@ export class CategoryManagerModal extends Modal {
 
 		if (children.length > 0) {
 			c.createEl("p", {
-				cls: "fp-step-desc",
+				cls: "fpih-step-desc",
 				text: `${children.length} subcategor${children.length === 1 ? "y" : "ies"} (${children
 					.map((x) => x.name)
 					.join(", ")}) sit under this one. They'll be kept and promoted to top-level categories — their transactions are not touched.`,
@@ -322,28 +322,28 @@ export class CategoryManagerModal extends Modal {
 		}
 
 		if (used === 0) {
-			c.createEl("p", { cls: "fp-step-desc", text: "Nothing uses this category, so deleting it changes no transactions." });
+			c.createEl("p", { cls: "fpih-step-desc", text: "Nothing uses this category, so deleting it changes no transactions." });
 		} else {
 			c.createEl("p", {
-				cls: "fp-step-desc",
+				cls: "fpih-step-desc",
 				text: `${used.toLocaleString("en-IE")} transaction${used === 1 ? " uses" : "s use"} this category. Deleting it will leave ${
 					used === 1 ? "that transaction" : "those transactions"
 				} uncategorized — the amounts are untouched, but they'll drop out of every per-category figure until you re-assign them.`,
 			});
 			c.createEl("p", {
-				cls: "fp-step-desc",
+				cls: "fpih-step-desc",
 				text: "Archiving instead hides it from every picker while leaving those transactions exactly as they are — usually what you actually want.",
 			});
 		}
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const cancel = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Cancel", attr: { type: "button" } });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const cancel = left.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: "Cancel", attr: { type: "button" } });
 		cancel.addEventListener("click", () => this.render());
 
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
 		if (used > 0 && !cat.archived) {
-			const archive = right.createEl("button", { cls: "fp-btn fp-btn-secondary", attr: { type: "button" } });
+			const archive = right.createEl("button", { cls: "fpih-btn fpih-btn-secondary", attr: { type: "button" } });
 			icon(archive, "archive");
 			archive.createSpan({ text: "Archive instead" });
 			archive.addEventListener("click", () => {
@@ -357,7 +357,7 @@ export class CategoryManagerModal extends Modal {
 				})();
 			});
 		}
-		const del = right.createEl("button", { cls: "fp-btn fp-btn-danger", attr: { type: "button" } });
+		const del = right.createEl("button", { cls: "fpih-btn fpih-btn-danger", attr: { type: "button" } });
 		icon(del, "trash-2");
 		del.createSpan({ text: used > 0 ? `Delete and uncategorize ${used}` : "Delete" });
 		del.addEventListener("click", () => {

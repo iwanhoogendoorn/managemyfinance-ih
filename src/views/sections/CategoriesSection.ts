@@ -53,15 +53,15 @@ function buildPeriods(years: string[], today: Date): Period[] {
  */
 export function renderCategoriesSection(container: HTMLElement, plugin: FinancePlugin): void {
 	const store = plugin.store;
-	container.addClass("fp-section");
+	container.addClass("fpih-section");
 	const root = container.createDiv();
 
-	const header = root.createDiv({ cls: "fp-page-head" });
-	const headMain = header.createDiv({ cls: "fp-page-head-main" });
-	headMain.createEl("h2", { cls: "fp-page-title", text: "Categories" });
-	headMain.createDiv({ cls: "fp-page-sub", text: "Every transaction, grouped by who you paid. Change a category here and it applies to the whole group." });
+	const header = root.createDiv({ cls: "fpih-page-head" });
+	const headMain = header.createDiv({ cls: "fpih-page-head-main" });
+	headMain.createEl("h2", { cls: "fpih-page-title", text: "Categories" });
+	headMain.createDiv({ cls: "fpih-page-sub", text: "Every transaction, grouped by who you paid. Change a category here and it applies to the whole group." });
 	const manageBtn = header.createEl("button", {
-		cls: "fp-btn fp-btn--secondary",
+		cls: "fpih-btn fpih-btn--secondary",
 		attr: { type: "button", title: "Add, rename, recolour or retire the categories themselves" },
 	});
 	icon(manageBtn, "settings");
@@ -90,33 +90,33 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 
 	/* ---------- filter bar ---------- */
 
-	const bar = root.createDiv({ cls: "fp-filterbar" });
+	const bar = root.createDiv({ cls: "fpih-filterbar" });
 
 	const search = bar.createEl("input", {
 		type: "search",
-		cls: "fp-input fp-filterbar-search",
+		cls: "fpih-input fpih-filterbar-search",
 		attr: { placeholder: "Search merchant or description…", "aria-label": "Search" },
 	});
 
-	const accountSelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by account" } });
+	const accountSelect = bar.createEl("select", { cls: "fpih-select", attr: { "aria-label": "Filter by account" } });
 	accountSelect.createEl("option", { text: "All accounts", value: "" });
 	store.accounts.forEach((a) => accountSelect.createEl("option", { text: a.name, value: a.id }));
 
-	const categorySelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by category" } });
+	const categorySelect = bar.createEl("select", { cls: "fpih-select", attr: { "aria-label": "Filter by category" } });
 	categorySelect.createEl("option", { text: "All categories", value: "" });
 	categorySelect.createEl("option", { text: "Uncategorized only", value: FILTER_UNCATEGORIZED });
 	fillCategorySelect(categorySelect, store.categories);
 
-	const periodSelect = bar.createEl("select", { cls: "fp-select", attr: { "aria-label": "Filter by period" } });
+	const periodSelect = bar.createEl("select", { cls: "fpih-select", attr: { "aria-label": "Filter by period" } });
 	periods.forEach((p) => periodSelect.createEl("option", { text: p.label, value: p.key }));
 
-	const groupingToggle = bar.createDiv({ cls: "fp-pill-toggle", attr: { role: "group", "aria-label": "Grouping" } });
+	const groupingToggle = bar.createDiv({ cls: "fpih-pill-toggle", attr: { role: "group", "aria-label": "Grouping" } });
 	let grouping: Grouping = "merchant";
 
-	const stats = bar.createDiv({ cls: "fp-filterbar-stats" });
+	const stats = bar.createDiv({ cls: "fpih-filterbar-stats" });
 
-	const list = root.createDiv({ cls: "fp-cat-review" });
-	const footer = root.createDiv({ cls: "fp-ledger-footer" });
+	const list = root.createDiv({ cls: "fpih-cat-review" });
+	const footer = root.createDiv({ cls: "fpih-ledger-footer" });
 
 	let visibleCount = PAGE_SIZE;
 
@@ -156,7 +156,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 		transactions.forEach((t) => patches.set(t.id, categoryId));
 		await store.recategorize(patches);
 		if (!root.isConnected) return;
-		const scroller = root.closest<HTMLElement>(".fp-content");
+		const scroller = root.closest<HTMLElement>(".fpih-content");
 		const scrollTop = scroller?.scrollTop ?? 0;
 		render();
 		if (scroller) scroller.scrollTop = scrollTop;
@@ -165,7 +165,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 	/* ---------- rendering ---------- */
 
 	function categoryPicker(parent: HTMLElement, currentId: string | undefined, onPick: (id: string | undefined) => void): HTMLSelectElement {
-		const select = parent.createEl("select", { cls: "fp-select fp-select--sm fp-cat-review-picker", attr: { "aria-label": "Category" } });
+		const select = parent.createEl("select", { cls: "fpih-select fpih-select--sm fpih-cat-review-picker", attr: { "aria-label": "Category" } });
 		select.createEl("option", { text: "— Uncategorized —", value: CLEAR });
 		fillCategorySelect(select, store.categories);
 		select.value = currentId ?? CLEAR;
@@ -178,21 +178,21 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 		const mixed = ids.size > 1;
 		const currentId = mixed ? undefined : group.transactions[0]?.categoryId;
 
-		const row = list.createDiv({ cls: "fp-cat-review-row" });
+		const row = list.createDiv({ cls: "fpih-cat-review-row" });
 
-		const main = row.createDiv({ cls: "fp-cat-review-main" });
-		const nameLine = main.createDiv({ cls: "fp-cat-review-name" });
-		nameLine.createSpan({ cls: "fp-sensitive", text: group.displayName });
+		const main = row.createDiv({ cls: "fpih-cat-review-main" });
+		const nameLine = main.createDiv({ cls: "fpih-cat-review-name" });
+		nameLine.createSpan({ cls: "fpih-sensitive", text: group.displayName });
 		if (mixed) badge(nameLine, "Mixed", "warn");
 		else if (!currentId) badge(nameLine, "Uncategorized", "warn");
 
-		const meta = main.createDiv({ cls: "fp-cat-review-meta" });
+		const meta = main.createDiv({ cls: "fpih-cat-review-meta" });
 		meta.createSpan({ text: `${group.transactions.length} transaction${group.transactions.length === 1 ? "" : "s"}` });
 		meta.createSpan({ text: " · " });
-		meta.createSpan({ cls: "fp-money", text: money(group.total, currency) });
+		meta.createSpan({ cls: "fpih-money", text: money(group.total, currency) });
 		meta.createSpan({ text: ` · ${group.firstSeen} → ${group.lastSeen}` });
 
-		const actions = row.createDiv({ cls: "fp-cat-review-actions" });
+		const actions = row.createDiv({ cls: "fpih-cat-review-actions" });
 		const picker = categoryPicker(actions, currentId, (id) => {
 			void (async () => {
 				await assign(group.transactions, id);
@@ -207,7 +207,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 			const already = store.rules.some((r) => r.pattern.toLowerCase() === pattern.toLowerCase());
 			if (!already) {
 				const remember = actions.createEl("button", {
-					cls: "fp-btn fp-btn--ghost fp-btn--icon",
+					cls: "fpih-btn fpih-btn--ghost fpih-btn--icon",
 					attr: { type: "button", "aria-label": `Always categorize ${group.displayName} this way`, title: `Always categorize "${pattern}" as this category on future imports` },
 				});
 				icon(remember, "bookmark-plus");
@@ -226,11 +226,11 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 		}
 
 		const expand = actions.createEl("button", {
-			cls: "fp-btn fp-btn--ghost fp-btn--icon",
+			cls: "fpih-btn fpih-btn--ghost fpih-btn--icon",
 			attr: { type: "button", "aria-expanded": "false", "aria-label": `Show ${group.displayName}'s transactions` },
 		});
 		icon(expand, "chevron-down");
-		const detail = row.createDiv({ cls: "fp-cat-review-detail is-hidden" });
+		const detail = row.createDiv({ cls: "fpih-cat-review-detail is-hidden" });
 		expand.addEventListener("click", () => {
 			const open = detail.hasClass("is-hidden");
 			detail.toggleClass("is-hidden", !open);
@@ -245,22 +245,22 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 	}
 
 	function renderTransactionLine(parent: HTMLElement, t: Transaction, opts: { compact?: boolean } = {}): void {
-		const row = parent.createDiv({ cls: "fp-cat-review-row" + (opts.compact ? " fp-cat-review-row--compact" : "") });
+		const row = parent.createDiv({ cls: "fpih-cat-review-row" + (opts.compact ? " fpih-cat-review-row--compact" : "") });
 
-		const main = row.createDiv({ cls: "fp-cat-review-main" });
-		const nameLine = main.createDiv({ cls: "fp-cat-review-name" });
-		nameLine.createSpan({ cls: "fp-sensitive", text: t.description });
+		const main = row.createDiv({ cls: "fpih-cat-review-main" });
+		const nameLine = main.createDiv({ cls: "fpih-cat-review-name" });
+		nameLine.createSpan({ cls: "fpih-sensitive", text: t.description });
 
-		const meta = main.createDiv({ cls: "fp-cat-review-meta" });
+		const meta = main.createDiv({ cls: "fpih-cat-review-meta" });
 		meta.createSpan({ text: t.date });
 		meta.createSpan({ text: " · " });
-		meta.createSpan({ cls: "fp-money", text: money(t.amount, t.currency || currency, 2) });
+		meta.createSpan({ cls: "fpih-money", text: money(t.amount, t.currency || currency, 2) });
 		if (!opts.compact) {
 			const acc = accountById.get(t.accountId);
 			if (acc) meta.createSpan({ text: ` · ${acc.name}` });
 		}
 
-		const actions = row.createDiv({ cls: "fp-cat-review-actions" });
+		const actions = row.createDiv({ cls: "fpih-cat-review-actions" });
 		if (!opts.compact) {
 			const cat = t.categoryId ? categoryById.get(t.categoryId) : undefined;
 			if (cat) categoryChip(actions, cat.name, cat.color, cat.icon);
@@ -268,7 +268,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 		categoryPicker(actions, t.categoryId, (id) => void assign([t], id));
 
 		const open = actions.createEl("button", {
-			cls: "fp-btn fp-btn--ghost fp-btn--icon",
+			cls: "fpih-btn fpih-btn--ghost fpih-btn--icon",
 			attr: { type: "button", "aria-label": "Open transaction", title: "Open full details" },
 		});
 		icon(open, "maximize-2");
@@ -286,7 +286,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 		stats.createSpan({ text: `${transactions.length.toLocaleString("en-IE")} transaction${transactions.length === 1 ? "" : "s"}` });
 		if (uncategorized > 0) {
 			stats.createSpan({ text: " · " });
-			stats.createSpan({ cls: "fp-cat-review-uncat", text: `${uncategorized.toLocaleString("en-IE")} uncategorized` });
+			stats.createSpan({ cls: "fpih-cat-review-uncat", text: `${uncategorized.toLocaleString("en-IE")} uncategorized` });
 		}
 
 		if (transactions.length === 0) {
@@ -311,7 +311,7 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 			shown.forEach(renderMerchantRow);
 
 			if (ungroupable.length > 0 && shown.length === groups.length) {
-				list.createDiv({ cls: "fp-cat-review-divider", text: `${ungroupable.length} transaction${ungroupable.length === 1 ? "" : "s"} with no recognisable merchant name` });
+				list.createDiv({ cls: "fpih-cat-review-divider", text: `${ungroupable.length} transaction${ungroupable.length === 1 ? "" : "s"} with no recognisable merchant name` });
 				ungroupable.slice(0, PAGE_SIZE).forEach((t) => renderTransactionLine(list, t));
 			}
 
@@ -326,11 +326,11 @@ export function renderCategoriesSection(container: HTMLElement, plugin: FinanceP
 
 	function renderFooter(shown: number, total: number, unit: string): void {
 		footer.createSpan({
-			cls: "fp-ledger-footer-count",
+			cls: "fpih-ledger-footer-count",
 			text: `Showing ${shown.toLocaleString("en-IE")} of ${total.toLocaleString("en-IE")} ${unit}${total === 1 ? "" : "s"}`,
 		});
 		if (shown < total) {
-			const more = footer.createEl("button", { cls: "fp-btn fp-btn--secondary", text: "Load more", attr: { type: "button" } });
+			const more = footer.createEl("button", { cls: "fpih-btn fpih-btn--secondary", text: "Load more", attr: { type: "button" } });
 			more.addEventListener("click", () => {
 				visibleCount += PAGE_SIZE;
 				render();

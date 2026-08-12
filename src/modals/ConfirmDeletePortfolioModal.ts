@@ -8,28 +8,28 @@ export class ConfirmDeletePortfolioModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.modalEl.addClass("fp-wizard-modal");
+		this.modalEl.addClass("fpih-wizard-modal");
 		const c = this.contentEl;
-		c.addClass("fp-account-modal");
+		c.addClass("fpih-account-modal");
 
 		c.createEl("h3", { text: `Remove "${this.portfolioName}"?` });
 		c.createEl("p", {
-			cls: "fp-step-desc",
+			cls: "fpih-step-desc",
 			text: `Its data lives in "${this.folder}/". You can keep that folder in your vault, or delete it (moved to trash, not permanently erased).`,
 		});
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const cancel = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Cancel" });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const cancel = left.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: "Cancel" });
 		cancel.addEventListener("click", () => this.close());
 
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const keepBtn = right.createEl("button", { cls: "fp-btn fp-btn-secondary", text: "Keep the folder" });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const keepBtn = right.createEl("button", { cls: "fpih-btn fpih-btn-secondary", text: "Keep the folder" });
 		keepBtn.addEventListener("click", () => {
 			this.onChoice(false);
 			this.close();
 		});
-		const deleteBtn = right.createEl("button", { cls: "fp-btn fp-btn-danger" });
+		const deleteBtn = right.createEl("button", { cls: "fpih-btn fpih-btn-danger" });
 		icon(deleteBtn, "trash-2");
 		deleteBtn.createSpan({ text: "Delete the folder" });
 		deleteBtn.addEventListener("click", () => {

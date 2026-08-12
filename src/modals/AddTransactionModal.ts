@@ -36,49 +36,49 @@ export class AddTransactionModal extends Modal {
 
 	onOpen(): void {
 		registerOpenModal(this);
-		this.modalEl.addClass("fp-wizard-modal");
-		this.modalEl.addClass("fp-root");
+		this.modalEl.addClass("fpih-wizard-modal");
+		this.modalEl.addClass("fpih-root");
 		const c = this.contentEl;
-		c.addClass("fp-account-modal");
+		c.addClass("fpih-account-modal");
 
 		c.createEl("h3", { text: "Add transaction" });
 		c.createEl("p", {
-			cls: "fp-step-desc",
+			cls: "fpih-step-desc",
 			text: "A single hand-entered row — for cash spending or anything your bank export doesn't cover.",
 		});
 
-		const form = c.createDiv({ cls: "fp-form" });
+		const form = c.createDiv({ cls: "fpih-form" });
 		const store = this.plugin.store;
 
-		const accountRow = form.createDiv({ cls: "fp-form-row" });
+		const accountRow = form.createDiv({ cls: "fpih-form-row" });
 		accountRow.createEl("label", { text: "Account" });
 		const accountSelect = accountRow.createEl("select");
 		store.accounts.forEach((a) => accountSelect.createEl("option", { text: a.name, value: a.id }));
 		accountSelect.value = this.accountId;
 		accountSelect.addEventListener("change", () => (this.accountId = accountSelect.value));
 
-		const dateRow = form.createDiv({ cls: "fp-form-row" });
+		const dateRow = form.createDiv({ cls: "fpih-form-row" });
 		dateRow.createEl("label", { text: "Date" });
 		const dateInput = dateRow.createEl("input", { type: "date" });
 		dateInput.value = this.date;
 		dateInput.addEventListener("change", () => (this.date = dateInput.value));
 
-		const descRow = form.createDiv({ cls: "fp-form-row" });
+		const descRow = form.createDiv({ cls: "fpih-form-row" });
 		descRow.createEl("label", { text: "Description" });
 		const descInput = descRow.createEl("input", { type: "text", attr: { placeholder: "e.g. Groceries at the market" } });
 		descInput.addEventListener("input", () => (this.description = descInput.value));
 
-		const cpRow = form.createDiv({ cls: "fp-form-row" });
+		const cpRow = form.createDiv({ cls: "fpih-form-row" });
 		cpRow.createEl("label", { text: "Counterparty (optional)" });
 		const cpInput = cpRow.createEl("input", { type: "text", attr: { placeholder: "Who was paid — drives auto-categorization" } });
 		cpInput.addEventListener("input", () => (this.counterparty = cpInput.value));
 
-		const amountRow = form.createDiv({ cls: "fp-form-row" });
+		const amountRow = form.createDiv({ cls: "fpih-form-row" });
 		amountRow.createEl("label", { text: "Amount" });
-		const amountWrap = amountRow.createDiv({ cls: "fp-manual-amount" });
+		const amountWrap = amountRow.createDiv({ cls: "fpih-manual-amount" });
 		// Direction as an explicit toggle instead of a sign convention: nobody should have to
 		// remember that expenses are negative in a form field.
-		const dirWrap = amountWrap.createDiv({ cls: "fp-pill-toggle", attr: { role: "group", "aria-label": "Direction" } });
+		const dirWrap = amountWrap.createDiv({ cls: "fpih-pill-toggle", attr: { role: "group", "aria-label": "Direction" } });
 		const expenseBtn = dirWrap.createEl("button", { text: "Expense", attr: { type: "button", "aria-pressed": "true" } });
 		const incomeBtn = dirWrap.createEl("button", { text: "Income", attr: { type: "button", "aria-pressed": "false" } });
 		const setDirection = (d: "expense" | "income") => {
@@ -97,24 +97,24 @@ export class AddTransactionModal extends Modal {
 		});
 		amountInput.addEventListener("input", () => (this.amountRaw = amountInput.value));
 
-		const catRow = form.createDiv({ cls: "fp-form-row" });
+		const catRow = form.createDiv({ cls: "fpih-form-row" });
 		catRow.createEl("label", { text: "Category" });
 		const catSelect = catRow.createEl("select");
 		catSelect.createEl("option", { text: "Auto (from your rules) / none", value: "" });
 		fillCategorySelect(catSelect, store.categories);
 		catSelect.addEventListener("change", () => (this.categoryId = catSelect.value));
 
-		const notesRow = form.createDiv({ cls: "fp-form-row" });
+		const notesRow = form.createDiv({ cls: "fpih-form-row" });
 		notesRow.createEl("label", { text: "Notes (optional)" });
 		const notesInput = notesRow.createEl("input", { type: "text" });
 		notesInput.addEventListener("input", () => (this.notes = notesInput.value));
 
-		const footer = c.createDiv({ cls: "fp-wizard-footer" });
-		const left = footer.createDiv({ cls: "fp-wizard-footer-left" });
-		const cancel = left.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Cancel", attr: { type: "button" } });
+		const footer = c.createDiv({ cls: "fpih-wizard-footer" });
+		const left = footer.createDiv({ cls: "fpih-wizard-footer-left" });
+		const cancel = left.createEl("button", { cls: "fpih-btn fpih-btn-ghost", text: "Cancel", attr: { type: "button" } });
 		cancel.addEventListener("click", () => this.close());
-		const right = footer.createDiv({ cls: "fp-wizard-footer-right" });
-		const save = right.createEl("button", { cls: "fp-btn fp-btn-primary", attr: { type: "button" } });
+		const right = footer.createDiv({ cls: "fpih-wizard-footer-right" });
+		const save = right.createEl("button", { cls: "fpih-btn fpih-btn-primary", attr: { type: "button" } });
 		icon(save, "plus");
 		save.createSpan({ text: "Add transaction" });
 		save.addEventListener("click", () => void this.submit(save));

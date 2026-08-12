@@ -40,7 +40,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 	// and `container` is the view's body element, which stays connected no matter where the user
 	// navigated in the meantime. A root we created goes away with the body's next `.empty()`, so
 	// `isConnected` is an honest answer to "do we still own this page?".
-	const root = container.createDiv({ cls: "fp-section" });
+	const root = container.createDiv({ cls: "fpih-section" });
 
 	function render(): void {
 		if (!root.isConnected) return;
@@ -50,21 +50,21 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 		const today = new Date();
 		const currency = portfolioCurrency(store);
 
-		const header = root.createDiv({ cls: "fp-section-header" });
+		const header = root.createDiv({ cls: "fpih-section-header" });
 		const headText = header.createDiv();
 		headText.createEl("h2", { text: "Subscriptions" });
 		headText.createDiv({
-			cls: "fp-section-subtitle",
+			cls: "fpih-section-subtitle",
 			text: "Everything you pay for on repeat — cost per cycle, next payment date and when each one ends. Totals are normalised to a monthly figure.",
 		});
-		const headerActions = header.createDiv({ cls: "fp-section-header-actions" });
-		const addBtn = headerActions.createEl("button", { cls: "fp-btn fp-btn--primary", attr: { type: "button" } });
+		const headerActions = header.createDiv({ cls: "fpih-section-header-actions" });
+		const addBtn = headerActions.createEl("button", { cls: "fpih-btn fpih-btn--primary", attr: { type: "button" } });
 		icon(addBtn, "plus");
 		addBtn.createSpan({ text: "Add subscription" });
 		addBtn.addEventListener("click", () => openSubscriptionWizard(plugin, undefined, () => render()));
 
 		const totals = subscriptionTotals(subs, today, DUE_SOON_DAYS);
-		const kpis = root.createDiv({ cls: "fp-stat-grid" });
+		const kpis = root.createDiv({ cls: "fpih-stat-grid" });
 		const perMonth = renderStat(kpis, { label: "Per month", value: money(totals.perMonth, currency, 2), size: "hero", iconName: "calendar" });
 		setStatFoot(perMonth, [{ money: money(totals.perYear, currency) }, " a year at this rate"]);
 		renderStat(kpis, { label: "Private", value: money(totals.privatePerMonth, currency, 2), iconName: "user", sub: "per month" });
@@ -93,7 +93,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			return;
 		}
 
-		const breakdown = root.createDiv({ cls: "fp-sub-breakdown-grid" });
+		const breakdown = root.createDiv({ cls: "fpih-sub-breakdown-grid" });
 		renderShareCard(breakdown, "By category", totalsByCategory(subs, today), currency, categoryColor);
 		renderShareCard(breakdown, "By billing cycle", totalsByBillingCycle(subs, today), currency);
 		renderShareCard(breakdown, "Private vs business", totalsByPaidVia(subs, today), currency);
@@ -105,7 +105,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			.sort((a, b) => b.value - a.value)
 			.slice(0, 5);
 		if (topRows.length > 0) {
-			const topCard = root.createDiv({ cls: "fp-card" });
+			const topCard = root.createDiv({ cls: "fpih-card" });
 			cardHead(topCard, "Top subscriptions", { label: "Monthly cost" });
 			barChart(topCard, topRows, { formatValue: (n) => money(n, currency, 2) });
 		}
@@ -123,52 +123,52 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 		if (candidates.length === 0) return;
 
 		const monthlyTotal = candidates.reduce((sum, c) => sum + c.monthlyCost, 0);
-		const card = parent.createDiv({ cls: "fp-card fp-detect-card" });
+		const card = parent.createDiv({ cls: "fpih-card fpih-detect-card" });
 		const head = cardHead(card, "Found in your ledger", {
 			sub: "These look like recurring payments you're not tracking yet.",
 		});
-		const label = head.createDiv({ cls: "fp-card-head-label" });
+		const label = head.createDiv({ cls: "fpih-card-head-label" });
 		label.createSpan({ text: `${candidates.length} possible · ` });
-		label.createSpan({ cls: "fp-money", text: `${money(monthlyTotal, currency, 2)}/mo` });
+		label.createSpan({ cls: "fpih-money", text: `${money(monthlyTotal, currency, 2)}/mo` });
 
 		let expanded = false;
-		const list = card.createDiv({ cls: "fp-detect-list" });
+		const list = card.createDiv({ cls: "fpih-detect-list" });
 		const draw = () => {
 			list.empty();
 			(expanded ? candidates : candidates.slice(0, DETECTION_PREVIEW)).forEach((c) => renderCandidate(list, c));
 			more.setText(expanded ? "Show fewer" : `Review all ${candidates.length}`);
 			more.toggleClass("is-hidden", candidates.length <= DETECTION_PREVIEW);
 		};
-		const more = card.createEl("button", { cls: "fp-btn fp-btn--ghost", attr: { type: "button" } });
+		const more = card.createEl("button", { cls: "fpih-btn fpih-btn--ghost", attr: { type: "button" } });
 		more.addEventListener("click", () => {
 			expanded = !expanded;
 			draw();
 		});
 
 		function renderCandidate(host: HTMLElement, c: RecurringCandidate): void {
-			const row = host.createDiv({ cls: "fp-row fp-detect-row" });
-			initialsAvatar(row, c.displayName, catColor(c.displayName.length), "fp-detect-avatar");
+			const row = host.createDiv({ cls: "fpih-row fpih-detect-row" });
+			initialsAvatar(row, c.displayName, catColor(c.displayName.length), "fpih-detect-avatar");
 
-			const main = row.createDiv({ cls: "fp-row-main" });
-			const titleLine = main.createDiv({ cls: "fp-row-title" });
+			const main = row.createDiv({ cls: "fpih-row-main" });
+			const titleLine = main.createDiv({ cls: "fpih-row-title" });
 			// Raw ledger merchant text, exactly like the review queue's and the import preview's.
-			titleLine.createSpan({ cls: "fp-sensitive", text: c.displayName });
+			titleLine.createSpan({ cls: "fpih-sensitive", text: c.displayName });
 			badge(titleLine, c.confidence, c.confidence === "high" ? "good" : c.confidence === "medium" ? "warn" : "neutral");
 			const accountName = store.accounts.find((a) => a.id === c.accountId)?.name;
 			main.createDiv({
-				cls: "fp-row-meta",
+				cls: "fpih-row-meta",
 				text: `${c.occurrences} payments since ${formatDay(c.firstSeen, { short: true })} · last ${formatDay(c.lastSeen, {
 					short: true,
 				})}${accountName ? ` · ${accountName}` : ""}`,
 			});
 
-			const value = row.createDiv({ cls: "fp-row-value" });
-			value.createDiv({ cls: "fp-money", text: money(c.cost, currency, 2) });
-			value.createDiv({ cls: "fp-row-value-unit", text: BILLING_CYCLE_LABEL[c.billingCycle].toLowerCase() });
+			const value = row.createDiv({ cls: "fpih-row-value" });
+			value.createDiv({ cls: "fpih-money", text: money(c.cost, currency, 2) });
+			value.createDiv({ cls: "fpih-row-value-unit", text: BILLING_CYCLE_LABEL[c.billingCycle].toLowerCase() });
 
 			// Row actions are always visible here: this panel exists to be answered, not browsed.
-			const actions = row.createDiv({ cls: "fp-row-actions is-persistent" });
-			const track = actions.createEl("button", { cls: "fp-btn fp-btn--primary", text: "Track", attr: { type: "button" } });
+			const actions = row.createDiv({ cls: "fpih-row-actions is-persistent" });
+			const track = actions.createEl("button", { cls: "fpih-btn fpih-btn--primary", text: "Track", attr: { type: "button" } });
 			track.addEventListener("click", () =>
 				openSubscriptionWizard(plugin, undefined, () => refresh(), {
 					name: c.displayName,
@@ -179,7 +179,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 					merchantKey: c.merchantKey,
 				})
 			);
-			const reject = actions.createEl("button", { cls: "fp-btn fp-btn--ghost", text: "Not a subscription", attr: { type: "button" } });
+			const reject = actions.createEl("button", { cls: "fpih-btn fpih-btn--ghost", text: "Not a subscription", attr: { type: "button" } });
 			reject.addEventListener("click", () => void dismissCandidate(c));
 		}
 
@@ -206,7 +206,7 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 		currency: string,
 		colorFor?: (label: string) => string
 	): void {
-		const card = parent.createDiv({ cls: "fp-card fp-sub-share-card" });
+		const card = parent.createDiv({ cls: "fpih-card fpih-sub-share-card" });
 		cardHead(card, title, { label: "Monthly spend" });
 		const total = rows.reduce((s, r) => s + r.value, 0);
 		if (total <= 0) {
@@ -223,15 +223,15 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 	/* ---------- upcoming ---------- */
 
 	function renderUpcoming(parent: HTMLElement, payments: UpcomingPayment[], currency: string): void {
-		const card = parent.createDiv({ cls: "fp-card" });
+		const card = parent.createDiv({ cls: "fpih-card" });
 		// The charge that actually hits the account, not its normalized monthly share: a €120/year
 		// subscription due next week is €120 leaving your balance that day.
 		const total = payments.reduce((sum, p) => sum + p.amount, 0);
 		const head = cardHead(card, "Upcoming payments");
 		if (payments.length > 0) {
-			const label = head.createDiv({ cls: "fp-card-head-label" });
+			const label = head.createDiv({ cls: "fpih-card-head-label" });
 			label.createSpan({ text: `Next ${payments.length} · ` });
-			label.createSpan({ cls: "fp-money", text: money(total, currency, 2) });
+			label.createSpan({ cls: "fpih-money", text: money(total, currency, 2) });
 		}
 
 		if (payments.length === 0) {
@@ -244,32 +244,32 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 			return;
 		}
 
-		const list = card.createDiv({ cls: "fp-row-list" });
+		const list = card.createDiv({ cls: "fpih-row-list" });
 		payments.forEach((p) => {
-			const row = list.createDiv({ cls: "fp-row" });
-			const date = row.createDiv({ cls: "fp-row-date" });
+			const row = list.createDiv({ cls: "fpih-row" });
+			const date = row.createDiv({ cls: "fpih-row-date" });
 			date.createDiv({ text: formatDay(p.date, { short: true }) });
-			date.createDiv({ cls: "fp-row-date-rel" + (p.daysUntil <= 0 ? " is-due" : ""), text: relativeDays(p.daysUntil) });
+			date.createDiv({ cls: "fpih-row-date-rel" + (p.daysUntil <= 0 ? " is-due" : ""), text: relativeDays(p.daysUntil) });
 
-			initialsAvatar(row, p.sub.name, categoryColor(p.sub.category), "fp-row-avatar");
+			initialsAvatar(row, p.sub.name, categoryColor(p.sub.category), "fpih-row-avatar");
 
-			const main = row.createDiv({ cls: "fp-row-main" });
-			main.createDiv({ cls: "fp-row-title fp-sensitive", text: p.sub.name });
+			const main = row.createDiv({ cls: "fpih-row-main" });
+			main.createDiv({ cls: "fpih-row-title fpih-sensitive", text: p.sub.name });
 			main.createDiv({
-				cls: "fp-row-meta",
+				cls: "fpih-row-meta",
 				text: `${p.sub.category} · ${BILLING_CYCLE_LABEL[p.sub.billingCycle]}${p.sub.plan ? ` · ${p.sub.plan}` : ""}`,
 			});
 
-			const value = row.createDiv({ cls: "fp-row-value" });
-			value.createDiv({ cls: "fp-money", text: money(p.amount, currency, 2) });
-			value.createDiv({ cls: "fp-row-value-unit fp-money", text: `${money(monthlyCost(p.sub), currency, 2)}/mo` });
+			const value = row.createDiv({ cls: "fpih-row-value" });
+			value.createDiv({ cls: "fpih-money", text: money(p.amount, currency, 2) });
+			value.createDiv({ cls: "fpih-row-value-unit fpih-money", text: `${money(monthlyCost(p.sub), currency, 2)}/mo` });
 		});
 	}
 
 	/* ---------- the list ---------- */
 
 	function renderList(parent: HTMLElement, subs: Subscription[], today: Date, currency: string): void {
-		const card = parent.createDiv({ cls: "fp-card" });
+		const card = parent.createDiv({ cls: "fpih-card" });
 		cardHead(card, `${subs.length} subscription${subs.length === 1 ? "" : "s"}`);
 
 		const groups = new Map<string, Subscription[]>();
@@ -283,10 +283,10 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 
 		sortedGroups.forEach(([category, items]) => {
 			const groupTotal = items.reduce((sum, s) => sum + monthlyCost(s), 0);
-			const groupLabel = card.createDiv({ cls: "fp-row-group-label" });
+			const groupLabel = card.createDiv({ cls: "fpih-row-group-label" });
 			groupLabel.createSpan({ text: category });
-			groupLabel.createSpan({ cls: "fp-money", text: `${money(groupTotal, currency, 2)}/mo` });
-			const list = card.createDiv({ cls: "fp-row-list" });
+			groupLabel.createSpan({ cls: "fpih-money", text: `${money(groupTotal, currency, 2)}/mo` });
+			const list = card.createDiv({ cls: "fpih-row-list" });
 			[...items].sort((a, b) => monthlyCost(b) - monthlyCost(a)).forEach((sub) => renderSubRow(list, sub, today, currency));
 		});
 	}
@@ -297,13 +297,13 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 	 */
 	function renderSubRow(parent: HTMLElement, sub: Subscription, today: Date, currency: string): void {
 		const active = isActive(sub, today);
-		const row = parent.createDiv({ cls: "fp-row" + (active ? "" : " is-inactive") });
-		initialsAvatar(row, sub.name, categoryColor(sub.category), "fp-row-avatar");
+		const row = parent.createDiv({ cls: "fpih-row" + (active ? "" : " is-inactive") });
+		initialsAvatar(row, sub.name, categoryColor(sub.category), "fpih-row-avatar");
 
-		const main = row.createDiv({ cls: "fp-row-main" });
-		const titleLine = main.createDiv({ cls: "fp-row-title" });
-		titleLine.createSpan({ cls: "fp-sensitive", text: sub.name });
-		if (sub.plan) titleLine.createSpan({ cls: "fp-row-title-plan", text: sub.plan });
+		const main = row.createDiv({ cls: "fpih-row-main" });
+		const titleLine = main.createDiv({ cls: "fpih-row-title" });
+		titleLine.createSpan({ cls: "fpih-sensitive", text: sub.name });
+		if (sub.plan) titleLine.createSpan({ cls: "fpih-row-title-plan", text: sub.plan });
 		if (sub.paidVia === "business") badge(titleLine, "business", "warn");
 
 		const next = nextOccurrence(sub, today);
@@ -311,22 +311,22 @@ export function renderSubscriptionsSection(container: HTMLElement, plugin: Finan
 		const meta = [BILLING_CYCLE_LABEL[sub.billingCycle], accountName, next ? `next ${formatDay(next, { short: true })} · ${relativeDays(daysUntil(next, today))}` : sub.endDate ? `ended ${formatDay(sub.endDate, { short: true })}` : "no upcoming payment"]
 			.filter(Boolean)
 			.join(" · ");
-		main.createDiv({ cls: "fp-row-meta", text: meta });
+		main.createDiv({ cls: "fpih-row-meta", text: meta });
 
-		const value = row.createDiv({ cls: "fp-row-value" });
-		value.createDiv({ cls: "fp-money", text: money(sub.cost, currency, 2) });
-		value.createDiv({ cls: "fp-row-value-unit fp-money", text: `${money(monthlyCost(sub), currency, 2)}/mo` });
+		const value = row.createDiv({ cls: "fpih-row-value" });
+		value.createDiv({ cls: "fpih-money", text: money(sub.cost, currency, 2) });
+		value.createDiv({ cls: "fpih-row-value-unit fpih-money", text: `${money(monthlyCost(sub), currency, 2)}/mo` });
 
-		const actions = row.createDiv({ cls: "fp-row-actions" });
+		const actions = row.createDiv({ cls: "fpih-row-actions" });
 		if (sub.cancelUrl) {
-			const linkBtn = actions.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": `Open cancel page for ${sub.name}` } });
+			const linkBtn = actions.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn--icon", attr: { type: "button", "aria-label": `Open cancel page for ${sub.name}` } });
 			icon(linkBtn, "external-link");
 			linkBtn.addEventListener("click", () => window.open(sub.cancelUrl, "_blank"));
 		}
-		const editBtn = actions.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": `Edit ${sub.name}` } });
+		const editBtn = actions.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn--icon", attr: { type: "button", "aria-label": `Edit ${sub.name}` } });
 		icon(editBtn, "pencil");
 		editBtn.addEventListener("click", () => openSubscriptionWizard(plugin, sub, () => render()));
-		const deleteBtn = actions.createEl("button", { cls: "fp-btn fp-btn--ghost fp-btn--icon", attr: { type: "button", "aria-label": `Delete ${sub.name}` } });
+		const deleteBtn = actions.createEl("button", { cls: "fpih-btn fpih-btn--ghost fpih-btn--icon", attr: { type: "button", "aria-label": `Delete ${sub.name}` } });
 		icon(deleteBtn, "trash-2");
 		deleteBtn.addEventListener("click", () => void remove(sub));
 	}

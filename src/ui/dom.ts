@@ -5,7 +5,7 @@ import { sparkline } from "./charts";
 export type Tone = "good" | "warn" | "bad" | "neutral";
 
 export function icon(parent: HTMLElement, name: string, cls?: string): HTMLElement {
-	const span = parent.createSpan({ cls: ["fp-icon", cls].filter(Boolean).join(" ") });
+	const span = parent.createSpan({ cls: ["fpih-icon", cls].filter(Boolean).join(" ") });
 	setIcon(span, name);
 	return span;
 }
@@ -65,45 +65,45 @@ export function renderStat(parent: HTMLElement, opts: StatOpts): HTMLElement {
 	const tone = opts.tone ?? "neutral";
 	const card = parent.createDiv({
 		cls: [
-			"fp-stat",
-			"fp-card",
-			"fp-card--tight",
-			size === "hero" ? "fp-stat--hero" : "",
-			size === "compact" ? "fp-stat--compact" : "",
-			tone === "bad" ? "fp-stat--danger" : "",
-			// Legacy tone hook — sections still read `.fp-tone-*` for their own rules.
-			`fp-tone-${tone}`,
+			"fpih-stat",
+			"fpih-card",
+			"fpih-card--tight",
+			size === "hero" ? "fpih-stat--hero" : "",
+			size === "compact" ? "fpih-stat--compact" : "",
+			tone === "bad" ? "fpih-stat--danger" : "",
+			// Legacy tone hook — sections still read `.fpih-tone-*` for their own rules.
+			`fpih-tone-${tone}`,
 		]
 			.filter(Boolean)
 			.join(" "),
 	});
 
-	const eyebrow = card.createDiv({ cls: "fp-stat-eyebrow fp-overline" });
-	if (opts.iconName) icon(eyebrow, opts.iconName, "fp-stat-icon");
-	eyebrow.createSpan({ cls: "fp-stat-label", text: opts.label });
+	const eyebrow = card.createDiv({ cls: "fpih-stat-eyebrow fpih-overline" });
+	if (opts.iconName) icon(eyebrow, opts.iconName, "fpih-stat-icon");
+	eyebrow.createSpan({ cls: "fpih-stat-label", text: opts.label });
 
 	if (opts.delta) {
 		const raw = opts.delta.value;
 		const good = opts.delta.goodIfUp === false ? raw <= 0 : raw >= 0;
 		const dir: 1 | -1 | 0 = raw > 0 ? 1 : raw < 0 ? -1 : 0;
 		const chip = eyebrow.createSpan({
-			cls: "fp-delta " + (dir === 0 ? "fp-delta--flat" : good ? "fp-delta--good" : "fp-delta--bad"),
+			cls: "fpih-delta " + (dir === 0 ? "fpih-delta--flat" : good ? "fpih-delta--good" : "fpih-delta--bad"),
 		});
 		deltaGlyph(chip, dir);
 		chip.createSpan({ text: `${raw >= 0 ? "+" : ""}${(raw * 100).toFixed(1)}${opts.delta.unit ?? "%"}` });
 	}
 
-	const body = card.createDiv({ cls: "fp-stat-body" });
+	const body = card.createDiv({ cls: "fpih-stat-body" });
 	body.createDiv({
-		cls: "fp-stat-value" + (opts.money === false ? "" : " fp-money"),
+		cls: "fpih-stat-value" + (opts.money === false ? "" : " fpih-money"),
 		text: opts.value,
 	});
 	if (opts.sparklineValues && opts.sparklineValues.length > 1) {
-		const sparkWrap = body.createDiv({ cls: "fp-stat-spark" });
-		sparkline(sparkWrap, opts.sparklineValues, opts.sparklineColor ?? "var(--fp-accent-ink)");
+		const sparkWrap = body.createDiv({ cls: "fpih-stat-spark" });
+		sparkline(sparkWrap, opts.sparklineValues, opts.sparklineColor ?? "var(--fpih-accent-ink)");
 	}
 
-	if (opts.sub) card.createDiv({ cls: "fp-stat-foot", text: opts.sub });
+	if (opts.sub) card.createDiv({ cls: "fpih-stat-foot", text: opts.sub });
 	return card;
 }
 
@@ -126,21 +126,21 @@ export function statTile(
 }
 
 export function badge(parent: HTMLElement, text: string, tone: Tone = "neutral"): HTMLElement {
-	return parent.createSpan({ cls: `fp-badge fp-tone-${tone}`, text });
+	return parent.createSpan({ cls: `fpih-badge fpih-tone-${tone}`, text });
 }
 
 /** A colored square with the label's first letter — a logo stand-in that needs no network fetch. */
 export function initialsAvatar(parent: HTMLElement, label: string, color: string, cls?: string): HTMLElement {
-	const el = parent.createDiv({ cls: ["fp-avatar", cls].filter(Boolean).join(" ") });
-	el.style.setProperty("--fp-avatar-color", color);
+	const el = parent.createDiv({ cls: ["fpih-avatar", cls].filter(Boolean).join(" ") });
+	el.style.setProperty("--fpih-avatar-color", color);
 	el.setText((label.trim().charAt(0) || "?").toUpperCase());
 	return el;
 }
 
 export function categoryChip(parent: HTMLElement, name: string, color: string, iconName?: string): HTMLElement {
-	const chip = parent.createSpan({ cls: "fp-chip" });
-	chip.style.setProperty("--fp-chip-color", color);
-	if (iconName) icon(chip, iconName, "fp-chip-icon");
+	const chip = parent.createSpan({ cls: "fpih-chip" });
+	chip.style.setProperty("--fpih-chip-color", color);
+	if (iconName) icon(chip, iconName, "fpih-chip-icon");
 	chip.createSpan({ text: name });
 	return chip;
 }
@@ -157,8 +157,8 @@ export function categoryChip(parent: HTMLElement, name: string, color: string, i
  * element it was handed (MonthDrilldownModal's Month tab) keeps a valid reference.
  */
 export function tabSwitcher(container: HTMLElement, tabs: { label: string; render: (panel: HTMLElement) => void }[]): void {
-	const header = container.createDiv({ cls: "fp-tabs", attr: { role: "tablist" } });
-	const panels = container.createDiv({ cls: "fp-tab-panels" });
+	const header = container.createDiv({ cls: "fpih-tabs", attr: { role: "tablist" } });
+	const panels = container.createDiv({ cls: "fpih-tab-panels" });
 	const buttons: HTMLElement[] = [];
 	const panelEls: HTMLElement[] = [];
 	const rendered: boolean[] = [];
@@ -178,11 +178,11 @@ export function tabSwitcher(container: HTMLElement, tabs: { label: string; rende
 
 	tabs.forEach((tab, i) => {
 		const btn = header.createEl("button", {
-			cls: "fp-tab" + (i === 0 ? " is-active" : ""),
+			cls: "fpih-tab" + (i === 0 ? " is-active" : ""),
 			text: tab.label,
 			attr: { type: "button", role: "tab", "aria-selected": String(i === 0), tabindex: i === 0 ? "0" : "-1" },
 		});
-		const panel = panels.createDiv({ cls: "fp-tab-panel" + (i === 0 ? "" : " is-hidden"), attr: { role: "tabpanel" } });
+		const panel = panels.createDiv({ cls: "fpih-tab-panel" + (i === 0 ? "" : " is-hidden"), attr: { role: "tabpanel" } });
 		btn.addEventListener("click", () => select(i));
 		btn.addEventListener("keydown", (ev: KeyboardEvent) => {
 			const next = ev.key === "ArrowRight" ? i + 1 : ev.key === "ArrowLeft" ? i - 1 : -1;
@@ -216,18 +216,18 @@ export interface EmptyStateOpts {
 export function emptyState(parent: HTMLElement, opts: EmptyStateOpts): HTMLElement {
 	const variant = opts.variant ?? "page";
 	const wrap = parent.createDiv({
-		cls: "fp-empty" + (variant === "inline" ? " fp-empty--inline" : variant === "row" ? " fp-empty--row" : ""),
+		cls: "fpih-empty" + (variant === "inline" ? " fpih-empty--inline" : variant === "row" ? " fpih-empty--row" : ""),
 	});
 	// A neutral icon plate, not an accent circle: an accent disc on an empty screen implies a
 	// primary action that is not there.
-	const plate = wrap.createDiv({ cls: "fp-empty-icon" });
+	const plate = wrap.createDiv({ cls: "fpih-empty-icon" });
 	icon(plate, opts.iconName);
-	const text = wrap.createDiv({ cls: "fp-empty-text" });
-	text.createDiv({ cls: "fp-empty-title", text: opts.title });
-	text.createDiv({ cls: "fp-empty-desc", text: opts.description });
+	const text = wrap.createDiv({ cls: "fpih-empty-text" });
+	text.createDiv({ cls: "fpih-empty-title", text: opts.title });
+	text.createDiv({ cls: "fpih-empty-desc", text: opts.description });
 	if (opts.actionLabel && opts.onAction) {
 		const btn = wrap.createEl("button", {
-			cls: "fp-btn fp-btn--primary fp-btn-primary",
+			cls: "fpih-btn fpih-btn--primary fpih-btn-primary",
 			text: opts.actionLabel,
 			attr: { type: "button" },
 		});
