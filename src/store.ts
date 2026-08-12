@@ -327,4 +327,107 @@ export class FinanceStore {
 		}
 		return count;
 	}
+
+	/* ---------- starting over ----------
+	   All of this data is plain text in the vault, so a reset is really "delete some files". That
+	   makes it cheap to do and, crucially, cheap to back up first — every destructive path here
+	   writes a timestamped copy of the whole data folder unless the caller explicitly opts out. */
+
+	/** What a reset would remove, counted before anything is touched, so the confirmation can be
+	 *  specific rather than asking the user to accept "everything". */
+	summarize(accountId?: string): { transactions: number; accounts: number; categories: number; rules: number; subscriptions: number; cards: number } {
+		return {
+			transactions: accountId ? this.transactions.filter((t) => t.accountId === accountId).length : this.transactions.length,
+			accounts: this.accounts.length,
+			categories: this.categories.length,
+			rules: this.rules.length,
+			subscriptions: this.subscriptions.length,
+			cards: this.cards.length,
+		};
+	}
+
+	/** Recursively copies the data folder to a sibling folder. Returns the vault-relative path. */
+	async backupData(label: string): Promise<string> {
+		const adapter = this.app.vault.adapter;
+		const target = normalizePath(`${this.settings.dataFolder} (backup ${label})`);
+		const copyDir = async (from: string, to: string): Promise<void> => {
+			if (!(await adapter.exists(to))) await adapter.mkdir(to);
+			const { files, folders } = await adapter.list(from);
+			for (const file of files) {
+				const name = file.split("/").pop()!;
+				await adapter.write(normalizePath(`${to}/${name}`), await adapter.read(file));
+			}
+			for (const folder of folders) {
+				const name = folder.split("/").pop()!;
+				await copyDir(folder, normalizePath(`${to}/${name}`));
+			}
+		};
+		await copyDir(this.path("data"), normalizePath(`${target}/data`));
+		return target;
+	}
+
+	/**
+	 * Deletes transactions — all of them, or just one account's. Accounts, categories, rules,
+	 * subscriptions and cards are untouched, which is the point: "start over with a smaller import"
+	 * should not cost you the category tree and merchant rules you built getting here.
+	 */
+	async clearTransactions(accountId?: string): Promise<number> {
+		const adapter = this.app.vault.adapter;
+		const ledgerRoot = this.path("data", "ledger");
+		const removed = accountId ? this.transactions.filter((t) => t.accountId === accountId).length : this.transactions.length;
+
+		if (!accountId) {
+			// Whole ledger: drop the source folders outright rather than rewriting each file empty,
+			// so a re-import starts from genuinely clean state.
+			if (await adapter.exists(ledgerRoot)) {
+				const { folders } = await adapter.list(ledgerRoot);
+				for (const folder of folders) await adapter.rmdir(folder, true);
+			}
+			this.transactions = [];
+			return removed;
+		}
+
+		this.transactions = this.transactions.filter((t) => t.accountId !== accountId);
+		// One account: every affected file is rewritten from what survives, and a file left with no
+		// rows at all is removed rather than left as a lone header.
+		if (await adapter.exists(ledgerRoot)) {
+			const { folders } = await adapter.list(ledgerRoot);
+			for (const folder of folders) {
+				const source = folder.split("/").pop()!;
+				const { files } = await adapter.list(folder);
+				for (const file of files) {
+					if (!file.toLowerCase().endsWith(".csv")) continue;
+					const year = file.split("/").pop()!.replace(/\.csv$/i, "");
+					const keep = this.transactions.filter((t) => t.source === source && (t.date || "").slice(0, 4) === year);
+					if (keep.length === 0) {
+						await adapter.remove(file);
+						continue;
+					}
+					const rows: (string | number | undefined)[][] = [TX_COLUMNS];
+					for (const t of keep) rows.push(this.serializeTx(t));
+					await adapter.write(file, toCSV(rows));
+				}
+			}
+		}
+		return removed;
+	}
+
+	/**
+	 * Back to a fresh install: no transactions, no accounts, no subscriptions or cards, and the
+	 * seeded category set restored. Rules are dropped too — a rule pointing at a category id that no
+	 * longer exists would silently mis-file the very first import after the reset.
+	 */
+	async resetAll(): Promise<void> {
+		await this.clearTransactions();
+		this.accounts = [];
+		this.subscriptions = [];
+		this.cards = [];
+		this.rules = [];
+		this.categories = defaultCategories();
+		await this.saveAccounts();
+		await this.saveCategories();
+		await this.saveRules();
+		await this.saveSubscriptions();
+		await this.saveCards();
+	}
 }

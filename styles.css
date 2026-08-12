@@ -5364,3 +5364,57 @@
 .fpih-cell-stale .fpih-coverage-meta {
 	color: var(--fpih-warn-ink);
 }
+
+/* ==========================================================================
+   Start-over (reset) modal
+   ========================================================================== */
+.fpih-danger-heading {
+	color: var(--fpih-neg-ink);
+	margin-top: var(--fpih-space-8);
+	padding-top: var(--fpih-space-4);
+	border-top: 1px solid var(--fpih-line);
+}
+/* A plain-language list of exactly what goes and what stays — a confirmation that says
+   "are you sure?" without saying what it will do is not a confirmation. */
+.fpih-reset-summary {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fpih-space-1);
+	margin: var(--fpih-space-4) 0;
+	padding: var(--fpih-space-3);
+	background: var(--fpih-bg-inset);
+	border-radius: var(--fpih-radius-sm);
+}
+.fpih-reset-line {
+	display: flex;
+	align-items: center;
+	gap: var(--fpih-space-2);
+	font-size: var(--fpih-fs-sm);
+	color: var(--fpih-neg-ink);
+}
+.fpih-reset-line.is-kept {
+	color: var(--fpih-ink-secondary);
+}
+.fpih-reset-line svg {
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
+}
+.fpih-reset-line.is-kept svg {
+	color: var(--fpih-pos-ink);
+}
+.fpih-reset-backup {
+	display: flex;
+	align-items: center;
+	gap: var(--fpih-space-2);
+	font-size: var(--fpih-fs-sm);
+	color: var(--fpih-ink-secondary);
+	margin-bottom: var(--fpih-space-3);
+}
+.fpih-reset-confirm input {
+	font-family: var(--fpih-font-mono);
+	letter-spacing: 0.08em;
+}
+.fpih-form-row.is-hidden {
+	display: none;
+}

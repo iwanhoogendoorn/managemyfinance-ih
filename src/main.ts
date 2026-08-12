@@ -5,6 +5,7 @@ import { closeAllPluginModals } from "./modalRegistry";
 import { AddTransactionModal } from "./modals/AddTransactionModal";
 import { openBudgetSetup } from "./modals/BudgetSetupModal";
 import { openCategoryManager } from "./modals/CategoryManagerModal";
+import { openResetData } from "./modals/ResetDataModal";
 import { CreateAccountModal } from "./modals/CreateAccountModal";
 import { openMonthInReview } from "./modals/MonthDrilldownModal";
 import { openReviewQueue } from "./modals/ReviewQueueModal";
@@ -123,6 +124,11 @@ export default class FinancePlugin extends Plugin {
 			id: "manage-categories",
 			name: "Manage categories",
 			callback: () => openCategoryManager(this),
+		});
+		this.addCommand({
+			id: "reset-data",
+			name: "Start over (delete financial data)",
+			callback: () => openResetData(this),
 		});
 		this.addCommand({
 			id: "add-transaction",

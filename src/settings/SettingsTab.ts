@@ -2,6 +2,7 @@ import { App, Platform, PluginSettingTab, Setting } from "obsidian";
 import { ACCOUNT_TYPE_META } from "../constants";
 import type FinancePlugin from "../main";
 import type { AccountType } from "../types";
+import { openResetData } from "../modals/ResetDataModal";
 import { restartSetup } from "../views/SetupView";
 import { openImportWizard } from "../wizards/ImportWizard";
 
@@ -130,5 +131,15 @@ export class FinanceSettingTab extends PluginSettingTab {
 		store.categories.forEach((cat) => {
 			grid.createDiv({ cls: "fpih-badge fpih-tone-neutral", text: cat.name });
 		});
+
+		// Last, and visually separated: a destructive action should never sit next to a routine one.
+		containerEl.createEl("h3", { text: "Danger zone", cls: "fpih-danger-heading" });
+		new Setting(containerEl)
+			.setName("Start over")
+			.setDesc(
+				"Delete transactions — all of them, or just one account's — and optionally everything else. " +
+					"Takes a timestamped backup in your vault first, so this stays recoverable."
+			)
+			.addButton((b) => b.setButtonText("Start over…").setWarning().onClick(() => openResetData(this.plugin)));
 	}
 }
