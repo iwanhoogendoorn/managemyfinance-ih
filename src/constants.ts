@@ -1,6 +1,6 @@
 import type { Account, Category } from "./types";
 
-export const VIEW_TYPE_FINANCE = "finance-workspace-view";
+export const VIEW_TYPE_FINANCE = "finance-workspace-view-ih";
 
 export const DEFAULT_DATA_FOLDER = "Finance";
 

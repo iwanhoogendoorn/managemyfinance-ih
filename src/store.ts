@@ -34,7 +34,7 @@ export interface FinanceSettings {
 }
 
 export const DEFAULT_SETTINGS: FinanceSettings = {
-	dataFolder: "Finance",
+	dataFolder: "Finance-IH",
 	fiMultiplier: 25,
 	expectedReturn: 0.07,
 	mobileLayout: "auto",
