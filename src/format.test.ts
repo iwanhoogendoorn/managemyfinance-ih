@@ -81,6 +81,15 @@ describe("formatCompact", () => {
 		expect(formatCompact(48_000, "USD")).toBe("US$48K");
 	});
 
+	it("never emits a redundant zero fraction, whatever the runtime's ICU does", () => {
+		// Node 20 renders these as "€950.0" / "US$48.0K" where Node 25 gives "€950" / "US$48K" —
+		// the same chart axis reading differently on two machines. Pinned as an invariant rather
+		// than as one runtime's exact output.
+		for (const [value, currency] of [[950, "EUR"], [48_000, "USD"], [1_000_000, "EUR"], [2_000, "EUR"]] as const) {
+			expect(formatCompact(value, currency)).not.toMatch(/[.,]0(?!\d)/);
+		}
+	});
+
 	it("returns an em dash for a non-finite number", () => {
 		expect(formatCompact(NaN)).toBe("—");
 	});

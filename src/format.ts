@@ -31,11 +31,17 @@ export interface MoneyFormatOptions {
  * CSVs — one malformed row must not take down a whole dashboard render, so an unusable code degrades to
  * a plain number with the raw code in front of it.
  */
+interface Formatter {
+	format: (n: number) => string;
+	/** Only present on the real Intl path — the malformed-currency fallback below can't provide it. */
+	formatToParts?: (n: number) => Intl.NumberFormatPart[];
+}
+
 function currencyFormat(
 	locale: string,
 	currency: string,
 	options: Intl.NumberFormatOptions
-): { format: (n: number) => string } {
+): Formatter {
 	try {
 		return new Intl.NumberFormat(locale, { style: "currency", currency, ...options });
 	} catch {
@@ -86,10 +92,21 @@ export function formatSignedPct(n: number, digits = 0): string {
  */
 export function formatCompact(n: number, currency = "EUR", opts: { locale?: string } = {}): string {
 	if (!Number.isFinite(n)) return NO_VALUE;
-	return currencyFormat(opts.locale ?? DEFAULT_LOCALE, currency, {
+	const value = n === 0 ? 0 : n;
+	const formatter = currencyFormat(opts.locale ?? DEFAULT_LOCALE, currency, {
 		notation: "compact",
 		maximumFractionDigits: 1,
-	}).format(n === 0 ? 0 : n);
+	});
+
+	// ICU builds disagree about whether compact notation keeps a redundant zero fraction: Node 20
+	// renders 950 as "€950.0" where Node 25 gives "€950", so the same chart axis reads differently
+	// on two machines. Dropping an all-zero fraction via parts (rather than string surgery) is exact
+	// — the zeros aren't at the end of the string in "48.0K", and the separator is locale-dependent.
+	const parts = formatter.formatToParts?.(value);
+	if (!parts) return formatter.format(value);
+	const fractionIsZero = parts.some((p) => p.type === "fraction") && parts.every((p) => p.type !== "fraction" || /^0+$/.test(p.value));
+	if (!fractionIsZero) return parts.map((p) => p.value).join("");
+	return parts.filter((p) => p.type !== "fraction" && p.type !== "decimal").map((p) => p.value).join("");
 }
 
 /**
