@@ -706,3 +706,36 @@ export function valuationAge(asOf: string | undefined, today: Date = new Date())
 	if (days === 1) return { text: "updated yesterday", stale: false };
 	return { text: `updated ${formatDay(asOf)}`, stale: days > 90 };
 }
+
+export interface DataCoverage {
+	/** First and last transaction date in scope, or undefined when there are none at all. */
+	from?: string;
+	to?: string;
+	count: number;
+}
+
+/**
+ * The window a set of transactions actually covers. "Data through 11 Aug" only ever told half the
+ * story — without the start date there's no way to know whether a figure rests on six years of
+ * history or on one import that happened to land last week.
+ */
+export function dataCoverage(store: KpiStore, accountId?: string): DataCoverage {
+	let from: string | undefined;
+	let to: string | undefined;
+	let count = 0;
+	for (const tx of store.transactions) {
+		if (accountId && tx.accountId !== accountId) continue;
+		count++;
+		if (!tx.date) continue;
+		if (!from || tx.date < from) from = tx.date;
+		if (!to || tx.date > to) to = tx.date;
+	}
+	return { from, to, count };
+}
+
+/** "5 Feb 2020 → 11 Aug 2026", or a single date when everything landed on one day. */
+export function formatCoverage(coverage: DataCoverage, opts: { short?: boolean } = {}): string {
+	if (!coverage.from || !coverage.to) return "no dated transactions";
+	if (coverage.from === coverage.to) return formatDay(coverage.from, opts);
+	return `${formatDay(coverage.from, opts)} → ${formatDay(coverage.to, opts)}`;
+}

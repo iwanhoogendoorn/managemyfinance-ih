@@ -11,7 +11,7 @@ import { renderInvestingDashboard } from "./dashboards/InvestingDashboard";
 import { renderSavingsDashboard } from "./dashboards/SavingsDashboard";
 import { renderAllAccountsDashboard } from "./DashboardSection";
 import { goToLedger, renderLedger, UNCATEGORIZED } from "./LedgerSection";
-import { hasCommand, runCommand } from "./shared";
+import { dataCoverage, formatCoverage, hasCommand, runCommand } from "./shared";
 
 function renderAccountDashboard(container: HTMLElement, plugin: FinancePlugin, account: Account): void {
 	switch (account.type) {
@@ -43,11 +43,15 @@ function maskedIban(iban: string): string {
 }
 
 function renderMeta(parent: HTMLElement, plugin: FinancePlugin, account: Account): void {
-	const count = plugin.store.transactions.filter((t) => t.accountId === account.id).length;
+	const coverage = dataCoverage(plugin.store, account.id);
 	const bits = [ACCOUNT_TYPE_META[account.type].label];
 	if (account.institution) bits.push(account.institution);
 	if (account.iban) bits.push(maskedIban(account.iban));
-	bits.push(`${count.toLocaleString("en-IE")} transaction${count === 1 ? "" : "s"}`);
+	bits.push(`${coverage.count.toLocaleString("en-IE")} transaction${coverage.count === 1 ? "" : "s"}`);
+	// The window this account's own figures rest on. Per account rather than portfolio-wide, because
+	// accounts are imported at different times and one that stopped a year ago is the single most
+	// misleading thing a dashboard can quietly average into a total.
+	if (coverage.from) bits.push(formatCoverage(coverage));
 	parent.createDiv({ cls: "fp-section-subtitle", text: bits.join(" · ") });
 }
 

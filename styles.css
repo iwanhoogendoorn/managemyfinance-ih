@@ -5348,3 +5348,19 @@
 	width: 1px;
 	background: var(--fp-line);
 }
+
+/* Per-account data coverage in the accounts table — the range on top, the count (or a staleness
+   warning) beneath it, so the column carries two facts without needing two columns. */
+.fp-coverage-cell {
+	white-space: nowrap;
+	line-height: var(--fp-lh-tight);
+}
+.fp-coverage-meta {
+	margin-top: 2px;
+	font-size: var(--fp-fs-xs);
+	color: var(--fp-ink-muted);
+	font-variant-numeric: tabular-nums;
+}
+.fp-cell-stale .fp-coverage-meta {
+	color: var(--fp-warn-ink);
+}

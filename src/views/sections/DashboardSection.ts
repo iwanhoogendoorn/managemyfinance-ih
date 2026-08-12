@@ -30,7 +30,9 @@ import {
 	catColor,
 	cardHead,
 	committedPayments,
+	dataCoverage,
 	daysBetween,
+	formatCoverage,
 	formatDay,
 	goToAccount,
 	goToView,
@@ -47,6 +49,7 @@ import {
 	signedMoney,
 	ttmWindow,
 	uncategorizedShare,
+	type DataCoverage,
 } from "./shared";
 
 /* ==========================================================================
@@ -60,12 +63,14 @@ import {
  */
 function renderTrustBar(container: HTMLElement, plugin: FinancePlugin): void {
 	const store = plugin.store;
-	const latest = store.transactions.reduce<string | undefined>((max, t) => (t.date && (!max || t.date > max) ? t.date : max), undefined);
+	const coverage = dataCoverage(store);
 	const share = uncategorizedShare(store);
 	const tone = share.share >= 0.3 ? "is-bad" : share.share >= 0.15 ? "is-warn" : "";
 
 	const bar = container.createDiv({ cls: `fp-trustbar ${tone}`.trim() });
-	bar.createSpan({ text: latest ? `Data through ${formatDay(latest)}` : "No transactions imported yet" });
+	// The range, not just the end date: "through 11 Aug" alone can't tell you whether the figures
+	// below rest on six years of history or on one import that landed last week.
+	bar.createSpan({ text: coverage.from ? `Data ${formatCoverage(coverage)}` : "No transactions imported yet" });
 	bar.createSpan({ cls: "fp-trustbar-sep", text: "·" });
 	bar.createSpan({ text: `${store.accounts.length} account${store.accounts.length === 1 ? "" : "s"}` });
 
@@ -394,14 +399,14 @@ function renderAccountsOverview(container: HTMLElement, plugin: FinancePlugin, t
 
 	const rows = store.accounts.map((account) => {
 		const balance = netWorth(store, account.id, now);
-		const dates = store.transactions.filter((t) => t.accountId === account.id).map((t) => t.date);
-		const lastActivity = dates.reduce<string | undefined>((max, d) => (d && (!max || d > max) ? d : max), undefined);
+		const coverage = dataCoverage(store, account.id);
 		return {
 			account,
 			balance,
 			delta30: balance - netWorth(store, account.id, monthAgo),
-			lastActivity,
-			count: dates.length,
+			lastActivity: coverage.to,
+			coverage,
+			count: coverage.count,
 		};
 	});
 
@@ -438,7 +443,7 @@ function renderAccountsOverview(container: HTMLElement, plugin: FinancePlugin, t
 	const thead = table.createEl("thead").createEl("tr");
 	thead.createEl("th", { text: "Account", attr: { scope: "col" } });
 	thead.createEl("th", { text: "Type", attr: { scope: "col" } });
-	["Balance", "Δ 30 days", "Last activity"].forEach((h) => thead.createEl("th", { text: h, cls: "fp-table-num", attr: { scope: "col" } }));
+	["Balance", "Δ 30 days", "Data from → to"].forEach((h) => thead.createEl("th", { text: h, cls: "fp-table-num", attr: { scope: "col" } }));
 	const tbody = table.createEl("tbody");
 
 	const group = (label: string, items: typeof rows) => {
@@ -454,7 +459,7 @@ function renderAccountsOverview(container: HTMLElement, plugin: FinancePlugin, t
 function renderAccountRow(
 	tbody: HTMLTableSectionElement,
 	plugin: FinancePlugin,
-	row: { account: Account; balance: number; delta30: number; lastActivity?: string; count: number },
+	row: { account: Account; balance: number; delta30: number; lastActivity?: string; coverage: DataCoverage; count: number },
 	currency: string,
 	now: string
 ): void {
@@ -479,13 +484,20 @@ function renderAccountRow(
 		cls: "fp-table-num fp-money" + (row.delta30 > 0 ? " fp-amount--in" : ""),
 	});
 
-	// A stale account is usually a forgotten re-import, and every total on this page is wrong by
-	// however much it has missed.
+	// The window this account's figures actually rest on, plus a stale-import warning on the end
+	// date — a forgotten re-import makes every total on this page wrong by whatever it has missed.
 	const staleDays = row.lastActivity ? daysBetween(row.lastActivity, now) : undefined;
-	tr.createEl("td", {
-		text: row.lastActivity ? formatDay(row.lastActivity, { short: true }) : "—",
-		cls: "fp-table-num" + (staleDays !== undefined && staleDays > 45 ? " fp-cell-stale" : ""),
-	});
+	const stale = staleDays !== undefined && staleDays > 45;
+	const cell = tr.createEl("td", { cls: "fp-table-num fp-coverage-cell" + (stale ? " fp-cell-stale" : "") });
+	if (!row.coverage.from) {
+		cell.createSpan({ text: "—" });
+	} else {
+		cell.createSpan({ text: formatCoverage(row.coverage, { short: true }) });
+		cell.createDiv({
+			cls: "fp-coverage-meta",
+			text: stale ? `${staleDays}d since last import` : `${row.count.toLocaleString("en-IE")} transactions`,
+		});
+	}
 }
 
 /* ==========================================================================
