@@ -49,7 +49,18 @@ const TR_TYPE_TO_ACTION: Record<string, string> = {
 	transfer_instant_inbound: "deposit",
 	customer_outbound_request: "withdraw",
 	transfer_instant_outbound: "withdraw",
+	// Investing-specific credits beyond a plain buy/sell: a free-share reward and a round-up-into-
+	// investing reward. Both add value to the account without being a trade; see semantics.ts, which
+	// reads "saveback" as income already and gets a matching "stockperk" case alongside it.
+	stockperk: "stockperk",
+	benefits_saveback: "saveback",
 };
+
+/** Card purchase rows: Trade Republic's own "description" column is always the same boilerplate
+ *  ("TR Card Transaction[ International]") — the actual merchant lives only in "name" (column G in
+ *  the raw export). Checked by type rather than category, since these rows carry category "CASH" like
+ *  every other non-trade row. */
+const CARD_TRANSACTION_TYPES = new Set(["card_transaction", "card_transaction_international"]);
 
 function parseTradeRepublicTransactionExport(headers: string[], rows: string[][], accountId: string): Transaction[] {
 	const iDate = col(headers, "date");
@@ -74,7 +85,9 @@ function parseTradeRepublicTransactionExport(headers: string[], rows: string[][]
 		const category = iCategory !== -1 ? (r[iCategory] ?? "").trim() : "";
 		const isTrade = category === "TRADING";
 		const name = iName !== -1 ? (r[iName] ?? "").trim() : "";
-		const description = (iDesc !== -1 ? (r[iDesc] ?? "").trim() : "") || name || type;
+		const rawDescription = iDesc !== -1 ? (r[iDesc] ?? "").trim() : "";
+		const isCardTransaction = CARD_TRANSACTION_TYPES.has(type.toLowerCase());
+		const description = (isCardTransaction && name) || rawDescription || name || type;
 		const amount = iAmount !== -1 ? parseAmount(r[iAmount] ?? "") : 0;
 		const shares = iShares !== -1 ? parseShares(r[iShares]) : undefined;
 		const price = iPrice !== -1 ? parseAmount(r[iPrice] ?? "") : undefined;

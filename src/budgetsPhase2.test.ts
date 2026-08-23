@@ -5,9 +5,11 @@ import {
 	budgetStatuses,
 	budgetTone,
 	oneOffBudgetStatus,
+	payCyclePeriodResolver,
 	rolloverInto,
 	yearReview,
 } from "./budgets";
+import { derivePayCycles } from "./payCycle";
 import type { KpiStore } from "./kpi";
 import type { Account, Category, OneOffBudget, Transaction } from "./types";
 
@@ -29,29 +31,29 @@ function store(transactions: Transaction[], categories: Category[] = [food, sala
 
 describe("rollover", () => {
 	it("carries an unspent month into the next one", () => {
-		const cat: Category = { ...food, rollover: true, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
 		const s = store([tx("2024-01-10", -100, cat.id)], [cat]);
 
 		// January planned 300 and spent 100, so February has its own 300 plus 200 carried in.
-		expect(rolloverInto(s, [cat], cat, "2024-02")).toBe(200);
-		const status = budgetStatuses(s, [cat], "2024-02")[0];
+		expect(rolloverInto(s, [cat], cat, "2024-02", "full")).toBe(200);
+		const status = budgetStatuses(s, [cat], "2024-02", "full")[0];
 		expect(status.available).toBe(500);
 		expect(status.remaining).toBe(500);
 	});
 
 	it("carries an overspend forward as a negative, so the pot can genuinely run dry", () => {
-		const cat: Category = { ...food, rollover: true, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
 		const s = store([tx("2024-01-10", -500, cat.id)], [cat]);
 
-		expect(rolloverInto(s, [cat], cat, "2024-02")).toBe(-200);
-		expect(budgetStatuses(s, [cat], "2024-02")[0].available).toBe(100);
+		expect(rolloverInto(s, [cat], cat, "2024-02", "full")).toBe(-200);
+		expect(budgetStatuses(s, [cat], "2024-02", "full")[0].available).toBe(100);
 	});
 
 	it("only counts months that actually had a budget planned", () => {
-		const cat: Category = { ...food, rollover: true, budgetHistory: { "2024-03": 300 } };
+		const cat: Category = { ...food, budgetHistory: { "2024-03": 300 } };
 		const s = store([], [cat]);
 		// Started budgeting in March, so March doesn't arrive with credit for January and February.
-		expect(rolloverInto(s, [cat], cat, "2024-03")).toBe(0);
+		expect(rolloverInto(s, [cat], cat, "2024-03", "full")).toBe(0);
 	});
 
 	it("does nothing at all when rollover is off", () => {
@@ -62,16 +64,91 @@ describe("rollover", () => {
 	});
 
 	it("accumulates across several months", () => {
-		const cat: Category = { ...food, rollover: true, budgetHistory: { "2024-01": 100, "2024-02": 100, "2024-03": 100 } };
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 100, "2024-02": 100, "2024-03": 100 } };
 		const s = store([], [cat]);
-		expect(rolloverInto(s, [cat], cat, "2024-03")).toBe(200);
+		expect(rolloverInto(s, [cat], cat, "2024-03", "full")).toBe(200);
 	});
 
 	it("nets a refund against the spend it returned, agreeing with the budget page's own net-of-refund total (v1.2.7 Phase 5.1)", () => {
-		const cat: Category = { ...food, rollover: true, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
 		// Spent 200, then 50 of it refunded — net spend is 150, so February should carry 150 (300 - 150).
 		const s = store([tx("2024-01-10", -200, cat.id), tx("2024-01-15", 50, cat.id)], [cat, salary]);
-		expect(rolloverInto(s, [cat], cat, "2024-02")).toBe(150);
+		expect(rolloverInto(s, [cat], cat, "2024-02", "full")).toBe(150);
+	});
+});
+
+describe("debt-only rollover", () => {
+	it("forfeits an underspend instead of banking it as a bonus", () => {
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 500, "2024-02": 500 } };
+		const s = store([tx("2024-01-10", -400, cat.id)], [cat]);
+		// Symmetric rollover would carry +100 in; debt mode carries nothing for an underspend.
+		expect(rolloverInto(s, [cat], cat, "2024-02", "debt")).toBe(0);
+		expect(budgetStatuses(s, [cat], "2024-02", "debt")[0].available).toBe(500);
+	});
+
+	it("carries an overspend forward as debt, same as full rollover does", () => {
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 500, "2024-02": 500 } };
+		const s = store([tx("2024-01-10", -700, cat.id)], [cat]);
+		expect(rolloverInto(s, [cat], cat, "2024-02", "debt")).toBe(-200);
+		expect(budgetStatuses(s, [cat], "2024-02", "debt")[0].available).toBe(300);
+	});
+
+	it("only partially clears debt when the next period doesn't underspend enough to absorb it", () => {
+		// January: 500 planned, 700 spent -> 200 debt. February: 500 planned, 350 spent against a
+		// reduced 300 available (50 over that), but still 150 under its own nominal 500 -- that 150
+		// pays down some of January's 200, leaving 50 still owed into March.
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 500, "2024-02": 500, "2024-03": 500 } };
+		const s = store([tx("2024-01-10", -700, cat.id), tx("2024-02-10", -350, cat.id)], [cat]);
+		expect(rolloverInto(s, [cat], cat, "2024-03", "debt")).toBe(-50);
+	});
+
+	it("clears debt fully once a later period underspends enough, but still doesn't flip into a bonus", () => {
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 500, "2024-02": 500, "2024-03": 500 } };
+		// January: 200 over. February: spends only 200 of its own 500 -- 300 under, more than enough
+		// to absorb the 200 owed, but the surplus past that must still be forfeited, not banked.
+		const s = store([tx("2024-01-10", -700, cat.id), tx("2024-02-10", -200, cat.id)], [cat]);
+		expect(rolloverInto(s, [cat], cat, "2024-03", "debt")).toBe(0);
+	});
+
+	it("does nothing when there's no budget planned for a period to have gone over in", () => {
+		const cat: Category = { ...food, budgetHistory: { "2024-03": 500 } };
+		const s = store([], [cat]);
+		expect(rolloverInto(s, [cat], cat, "2024-03", "debt")).toBe(0);
+	});
+});
+
+describe("pay-cycle budgeting", () => {
+	// Paydays on the 19th/20th, not the 1st — cycle keys are the payday itself.
+	const cycles = derivePayCycles(["2026-06-19", "2026-07-20", "2026-08-19"]);
+	const resolver = payCyclePeriodResolver(cycles);
+
+	it("scores spend against the cycle's own date range instead of a calendar month", () => {
+		const cat: Category = { ...food, budgetHistory: { "2026-07-20": 300 } };
+		// Spent inside the 20 Jul – 18 Aug cycle; a purchase on the 19th (the *next* cycle) must not count.
+		const s = store([tx("2026-07-25", -100, cat.id), tx("2026-08-19", -50, cat.id)], [cat]);
+		const status = budgetStatuses(s, [cat], "2026-07-20", "off", resolver)[0];
+		expect(status.spent).toBe(100);
+	});
+
+	it("carries rollover across cycles by walking the derived list, not calendar months", () => {
+		const cat: Category = { ...food, budgetHistory: { "2026-06-19": 300, "2026-07-20": 300 } };
+		const s = store([tx("2026-06-25", -100, cat.id)], [cat]);
+		expect(rolloverInto(s, [cat], cat, "2026-07-20", "full", resolver)).toBe(200);
+	});
+
+	it("stops the rollover chain at the first known payday instead of assuming arithmetic", () => {
+		// Only one cycle exists; there is nothing before it to have carried anything forward.
+		const singleCycle = payCyclePeriodResolver(derivePayCycles(["2026-08-19"]));
+		const cat: Category = { ...food, budgetHistory: { "2026-08-19": 300 } };
+		const s = store([], [cat]);
+		expect(rolloverInto(s, [cat], cat, "2026-08-19", "full", singleCycle)).toBe(0);
+	});
+
+	it("leaves the open (current) cycle's range unbounded at the end", () => {
+		const cat: Category = { ...food, budgetHistory: { "2026-08-19": 300 } };
+		// Well after the last known payday — still inside the open cycle, since it has no end yet.
+		const s = store([tx("2026-09-10", -40, cat.id)], [cat]);
+		expect(budgetStatuses(s, [cat], "2026-08-19", "off", resolver)[0].spent).toBe(40);
 	});
 });
 
@@ -216,20 +293,20 @@ describe("yearReview", () => {
 describe("rollover consistency with the rest of the app", () => {
 	it("excludes a transfer from the carried-forward balance, same as every other total does", () => {
 		const transfers: Category = { id: "cat-transfers", name: "Transfers", color: "#000", icon: "x", aliases: [] };
-		const cat: Category = { ...food, rollover: true, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
 		// A row categorized as a transfer isn't spending, so January's envelope is untouched by it.
 		const s = store([tx("2024-01-10", -100, transfers.id)], [cat, transfers]);
 
-		expect(rolloverInto(s, [cat, transfers], cat, "2024-02")).toBe(300);
+		expect(rolloverInto(s, [cat, transfers], cat, "2024-02", "full")).toBe(300);
 	});
 
 	it("converts foreign-currency spend before carrying the remainder forward", () => {
-		const cat: Category = { ...food, rollover: true, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
+		const cat: Category = { ...food, budgetHistory: { "2024-01": 300, "2024-02": 300 } };
 		const s = {
 			...store([{ ...tx("2024-01-10", -100, cat.id), currency: "USD" }], [cat]),
 			fx: { baseCurrency: "EUR", rates: { USD: 0.9 } },
 		};
 		// 100 USD is 90 EUR of the January envelope, so 210 carries forward, not 200.
-		expect(rolloverInto(s, [cat], cat, "2024-02")).toBeCloseTo(210, 6);
+		expect(rolloverInto(s, [cat], cat, "2024-02", "full")).toBeCloseTo(210, 6);
 	});
 });

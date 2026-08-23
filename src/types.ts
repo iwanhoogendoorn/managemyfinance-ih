@@ -7,6 +7,40 @@ export interface Portfolio {
 }
 
 /**
+ * How this portfolio's owner wants to budget: against the calendar, or against their own pay
+ * cycle (see payCycle.ts) for anyone paid on a day other than the 1st. Per portfolio rather than
+ * a plugin-wide setting, since two portfolios can genuinely belong to two different people with
+ * two different paydays — stored alongside the portfolio's own data (budgeting.json), not in the
+ * global plugin settings, matching every other piece of data that's specific to one portfolio.
+ */
+export interface PortfolioBudgetingSettings {
+	/** Defaults to "calendar" — a portfolio with no budgeting.json yet behaves exactly as before. */
+	periodMode: "calendar" | "payCycle";
+	/** Which category's incoming money marks a payday. Required to derive any cycle at all. */
+	salaryCategoryId?: string;
+	/** Below this many days apart, a second income row in that category is treated as a bonus
+	 *  riding along with the same payday rather than a new cycle boundary — see payCycle.ts. */
+	minCycleGapDays?: number;
+	/**
+	 * Whether — and how — what a period didn't spend (or overspent) carries into the next one's
+	 * available budget, for every category at once. Defaults to `"off"`: budgets stay simple fixed
+	 * limits, resetting every period.
+	 *
+	 * One dial for the whole portfolio rather than a per-category setting — twenty categories each
+	 * with an independent switch means the overall philosophy is never actually stated anywhere, just
+	 * whatever accumulated from individual clicks, and it's easy to end up with an inconsistency
+	 * (debt discipline on one category, free rollover on another) nobody consciously chose.
+	 *
+	 * `"full"`: both directions carry — an envelope you underspend is genuinely bigger next period,
+	 * and an overspend eats into it. `"debt"`: only overspend carries, as a debt against yourself —
+	 * underspending is never banked as a bonus, so a category never grows past its own plan; it can
+	 * only be brought back to plan by staying under it. See `rolloverInto` in budgets.ts, which is
+	 * the one place this is computed — the clamp that makes `"debt"` one-directional lives there.
+	 */
+	rolloverMode?: "off" | "full" | "debt";
+}
+
+/**
  * Everything you own or owe that carries a balance. The first six are the accounts money actually
  * moves through and gets imported into; the last four are the ones that make net worth true rather
  * than merely bank-shaped — a mortgage you owe, a house you own, a pension you can't spend yet.
@@ -118,10 +152,6 @@ export interface Category {
 	 *  than a ceiling to stay under, so 120% of an income budget is good news and 120% of an expense
 	 *  budget is bad. Unset means "expense", which is what almost every category is. */
 	kind?: "expense" | "income";
-	/** Carries whatever a month didn't spend (or overspent) into the next month's available budget,
-	 *  so an envelope you underspend in January is genuinely bigger in February. Off by default —
-	 *  budgets stay simple monthly limits unless you ask for this. */
-	rollover?: boolean;
 	/** A whole-year envelope, keyed by "YYYY" — for the costs that don't divide sensibly into months
 	 *  (annual insurance, road tax, a yearly software renewal). Tracked independently of budgetHistory. */
 	annualBudgets?: Record<string, number>;

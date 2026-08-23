@@ -17,6 +17,7 @@ import type {
 	ImportBatch,
 	OneOffBudget,
 	Portfolio,
+	PortfolioBudgetingSettings,
 	Strategy,
 	Subscription,
 	Transaction,
@@ -226,6 +227,8 @@ export class FinanceStore {
 	oneOffBudgets: OneOffBudget[] = [];
 	/** The written financial plan — a singleton, not a collection. See Strategy. */
 	strategy: Strategy = defaultStrategy();
+	/** How this portfolio budgets — calendar month or pay cycle. See payCycle.ts. */
+	budgeting: PortfolioBudgetingSettings = { periodMode: "calendar" };
 
 	constructor(private app: App, public settings: FinanceSettings) {}
 
@@ -273,6 +276,8 @@ export class FinanceStore {
 		this.batches = await this.readJson<ImportBatch[]>(this.path("data", "import-batches.json"), []);
 		this.oneOffBudgets = await this.readJson<OneOffBudget[]>(this.path("data", "oneoff-budgets.json"), []);
 		this.strategy = await this.readJson<Strategy>(this.path("data", "strategy.json"), defaultStrategy());
+		this.budgeting = await this.readJson<PortfolioBudgetingSettings>(this.path("data", "budgeting.json"), { periodMode: "calendar" });
+		await this.migrateRolloverToGlobal();
 		await this.migrateLegacyCardExpiry();
 
 		this.transactions = await this.readLedger();
@@ -327,6 +332,39 @@ export class FinanceStore {
 		this.categories.push(...seeded);
 		for (const primary of unseeded) primary.defaultSecondariesSeeded = true;
 		await this.saveCategories();
+	}
+
+	/**
+	 * One-time migration: rollover used to be set per category — first a plain boolean, then briefly
+	 * a per-category `"off" | "full" | "debt"` mode — before becoming one dial for the whole portfolio
+	 * (`this.budgeting.rolloverMode`). Whichever legacy shape a category carries, its mode feeds a
+	 * single winner: `"debt"` beats `"full"` beats `"off"`, favouring whoever most clearly opted into
+	 * carrying something forward rather than the weakest signal found. Never overrides a global mode
+	 * already chosen. Safe to re-run: once no category carries either legacy field, there's nothing
+	 * left to migrate.
+	 */
+	private async migrateRolloverToGlobal(): Promise<void> {
+		let changed = false;
+		const found = new Set<"off" | "full" | "debt">();
+		for (const cat of this.categories) {
+			const legacyFlag = (cat as unknown as { rollover?: boolean }).rollover;
+			const legacyMode = (cat as unknown as { rolloverMode?: "off" | "full" | "debt" }).rolloverMode;
+			if (legacyFlag !== undefined) {
+				found.add(legacyFlag ? "full" : "off");
+				delete (cat as unknown as { rollover?: boolean }).rollover;
+				changed = true;
+			}
+			if (legacyMode !== undefined) {
+				found.add(legacyMode);
+				delete (cat as unknown as { rolloverMode?: "off" | "full" | "debt" }).rolloverMode;
+				changed = true;
+			}
+		}
+		if (found.size > 0 && this.budgeting.rolloverMode === undefined) {
+			this.budgeting.rolloverMode = found.has("debt") ? "debt" : found.has("full") ? "full" : "off";
+			await this.saveBudgeting();
+		}
+		if (changed) await this.saveCategories();
 	}
 
 	/** One-time migration: pre-history installs stored expiry as a single "MM/YY" string. Split it into
@@ -464,6 +502,10 @@ export class FinanceStore {
 
 	async saveStrategy(): Promise<void> {
 		await this.app.vault.adapter.write(this.path("data", "strategy.json"), JSON.stringify(this.strategy, null, "\t"));
+	}
+
+	async saveBudgeting(): Promise<void> {
+		await this.app.vault.adapter.write(this.path("data", "budgeting.json"), JSON.stringify(this.budgeting, null, "\t"));
 	}
 
 	existingIds(): Set<string> {
@@ -732,6 +774,7 @@ export class FinanceStore {
 		await this.saveBatches();
 		await this.saveOneOffBudgets();
 		await this.saveStrategy();
+		await this.saveBudgeting();
 		await this.rewriteAllLedgers();
 	}
 

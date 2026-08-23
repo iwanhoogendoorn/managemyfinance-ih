@@ -563,11 +563,14 @@ export function fiProjection(
 }
 
 /** Spend by category id exactly as tagged on each transaction — a secondary and its primary are
- *  separate keys here. Use `primaryCategoryTotals` when you want secondaries rolled up into their parent. */
-export function categoryTotals(store: KpiStore, year?: string, accountId?: string): Map<string, number> {
+ *  separate keys here. Use `primaryCategoryTotals` when you want secondaries rolled up into their
+ *  parent. `period` takes a plain "YYYY"/"YYYY-MM" prefix (unchanged calendar behaviour) or a
+ *  DateRange — the same choice `primaryCategoryTotals` already offers, needed so a pay-cycle budget
+ *  (see payCycle.ts) can read a secondary category's spend for its own irregular date range. */
+export function categoryTotals(store: KpiStore, period?: string | DateRange, accountId?: string): Map<string, number> {
 	const totals = new Map<string, number>();
 	for (const tx of store.transactions) {
-		if (year && !tx.date?.startsWith(year)) continue;
+		if (!inPeriod(tx.date, period)) continue;
 		if (accountId && tx.accountId !== accountId) continue;
 		// A refund nets off the category it came back into, exactly as it does in the year and month
 		// summaries — otherwise a returned purchase leaves the category showing the full original spend
@@ -621,37 +624,46 @@ export function primaryCategoryIncomeTotals(store: KpiStore, period?: string | D
 }
 
 /**
- * One category's spend for many months in a single pass — same filters as `primaryCategoryTotals`
- * (net of refunds, transfers/trades/debt-principal excluded, converted to base currency), keyed by
- * "YYYY-MM". Feeds `rolloverInto`'s carry-forward chain, so a refund must net here exactly the way it
- * does in the budget page's own "spent" figure the rollover is supposed to agree with (v1.2.7
- * remediation Phase 5.1) — a sign-only `tx.amount >= 0` skip used to drop every refund entirely instead
- * of netting it, so a category's rollover balance and its plain monthly "spent" total could disagree.
+ * One category's spend bucketed by whatever period key `keyOf` derives from a transaction's date, in
+ * a single pass — same filters as `primaryCategoryTotals` (net of refunds, transfers/trades/debt-
+ * principal excluded, converted to base currency). Feeds `rolloverInto`'s carry-forward chain, so a
+ * refund must net here exactly the way it does in the budget page's own "spent" figure the rollover is
+ * supposed to agree with (v1.2.7 remediation Phase 5.1) — a sign-only `tx.amount >= 0` skip used to
+ * drop every refund entirely instead of netting it, so a category's rollover balance and its plain
+ * "spent" total could disagree.
  *
- * Exists because walking a rollover chain month by month would otherwise re-read the entire ledger
- * once per month walked, for every rollover category, on every render of the budgets page.
+ * Exists because walking a rollover chain period by period would otherwise re-read the entire ledger
+ * once per period walked, for every rollover category, on every render of the budgets page.
+ * `monthlySpendFor` and `payCycle.ts`'s `payCycleSpendFor` are both thin wrappers over this — the
+ * bucketing key is the only thing that differs between calendar and pay-cycle budgeting.
  */
-export function monthlySpendFor(store: KpiStore, categoryId: string): Map<string, number> {
+export function spendByPeriod(store: KpiStore, categoryId: string, keyOf: (date: string) => string | undefined): Map<string, number> {
 	const ids = new Set(descendantIds(store.categories, categoryId));
-	const byMonth = new Map<string, number>();
+	const byPeriod = new Map<string, number>();
 	for (const tx of store.transactions) {
 		if (!tx.categoryId || !ids.has(tx.categoryId)) continue;
 		const classified = classifyTransaction(store, tx);
 		if (classified.affectsExpense === 0) continue;
-		const month = tx.date?.slice(0, 7);
-		if (!month) continue;
-		byMonth.set(month, (byMonth.get(month) ?? 0) + scaledEconomicAmount(tx, classified.affectsExpense, amountIn(store, tx)));
+		if (!tx.date) continue;
+		const key = keyOf(tx.date);
+		if (!key) continue;
+		byPeriod.set(key, (byPeriod.get(key) ?? 0) + scaledEconomicAmount(tx, classified.affectsExpense, amountIn(store, tx)));
 	}
-	return byMonth;
+	return byPeriod;
+}
+
+/** `spendByPeriod` keyed by calendar month ("YYYY-MM"). See that function for what's netted/excluded. */
+export function monthlySpendFor(store: KpiStore, categoryId: string): Map<string, number> {
+	return spendByPeriod(store, categoryId, (date) => date.slice(0, 7));
 }
 
 /** The individual expense transactions behind one category's total for a given month — same filters
  *  (expenses only, transfers excluded) as `categoryTotals`/`primaryCategoryTotals`. When `categoryId`
  *  is a primary category, this includes transactions tagged with any of its secondary categories too. */
-export function categoryTransactions(store: KpiStore, categoryId: string, month: string): Transaction[] {
+export function categoryTransactions(store: KpiStore, categoryId: string, period: string | DateRange): Transaction[] {
 	const ids = new Set(descendantIds(store.categories, categoryId));
 	return store.transactions
-		.filter((tx) => tx.amount < 0 && tx.date?.startsWith(month) && tx.categoryId !== undefined && ids.has(tx.categoryId) && !isTransfer(store, tx))
+		.filter((tx) => tx.amount < 0 && inPeriod(tx.date, period) && tx.categoryId !== undefined && ids.has(tx.categoryId) && !isTransfer(store, tx))
 		.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
 

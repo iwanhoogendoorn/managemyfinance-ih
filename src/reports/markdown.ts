@@ -33,6 +33,9 @@ export interface ReportContext {
 	generatedAt?: string;
 	pluginVersion?: string;
 	portfolioName?: string;
+	/** The portfolio's rollover choice (see PortfolioBudgetingSettings in types.ts) — `KpiStore` itself
+	 *  doesn't carry it, so it's threaded through explicitly, same as `baseCurrency`. */
+	rolloverMode?: "off" | "full" | "debt";
 }
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -93,7 +96,7 @@ export function buildMonthlyReport(ctx: ReportContext, month: string): string {
 	const months = summarizeByMonth(ctx.store, year);
 	const summary = months[monthIndex] ?? { income: 0, expenses: 0, net: 0, savingsRate: 0, passiveIncome: 0, month: month.slice(5, 7) };
 
-	const statuses = budgetStatuses(ctx.store, ctx.categories, month);
+	const statuses = budgetStatuses(ctx.store, ctx.categories, month, ctx.rolloverMode ?? "off");
 	const byId = new Map(ctx.categories.map((c) => [c.id, c]));
 
 	const out: string[] = [];

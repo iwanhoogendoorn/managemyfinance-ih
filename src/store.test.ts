@@ -186,6 +186,67 @@ describe("FinanceStore — Income category kind migration", () => {
 	});
 });
 
+describe("FinanceStore — rollover migrated from per-category to one global setting", () => {
+	async function seeded(categories: unknown[]): Promise<FinanceStore> {
+		const { store, app } = newStore();
+		await store.load();
+		store.categories = categories as Category[];
+		await store.saveCategories();
+		const reloaded = new FinanceStore(app as never, { ...DEFAULT_SETTINGS, dataFolder: FOLDER });
+		await reloaded.load();
+		return reloaded;
+	}
+	const cat = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+		id: "cat-x",
+		name: "Food",
+		color: "#000",
+		icon: "utensils",
+		aliases: [],
+		...over,
+	});
+
+	it("folds a legacy per-category rollover:true into the global setting as full", async () => {
+		const s = await seeded([cat({ rollover: true })]);
+		expect(s.budgeting.rolloverMode).toBe("full");
+		expect((s.categories[0] as unknown as { rollover?: boolean }).rollover).toBeUndefined();
+	});
+
+	it("folds a legacy per-category rollover:false into the global setting as off, dropping the old field", async () => {
+		const s = await seeded([cat({ rollover: false })]);
+		expect(s.budgeting.rolloverMode).toBe("off");
+		expect((s.categories[0] as unknown as { rollover?: boolean }).rollover).toBeUndefined();
+	});
+
+	it("folds a legacy per-category rolloverMode into the global setting, dropping the old field", async () => {
+		const s = await seeded([cat({ rolloverMode: "debt" })]);
+		expect(s.budgeting.rolloverMode).toBe("debt");
+		expect((s.categories[0] as unknown as { rolloverMode?: string }).rolloverMode).toBeUndefined();
+	});
+
+	it("prefers debt over full when different categories disagreed", async () => {
+		const s = await seeded([cat({ id: "cat-a", rolloverMode: "full" }), cat({ id: "cat-b", name: "Travel", rolloverMode: "debt" })]);
+		expect(s.budgeting.rolloverMode).toBe("debt");
+	});
+
+	it("leaves categories with no legacy field at all alone, and the global setting unset", async () => {
+		const s = await seeded([cat()]);
+		expect(s.budgeting.rolloverMode).toBeUndefined();
+	});
+
+	it("never overrides a global rolloverMode already chosen", async () => {
+		const { store, app } = newStore();
+		await store.load();
+		store.categories = [cat({ rolloverMode: "full" })] as unknown as Category[];
+		await store.saveCategories();
+		store.budgeting.rolloverMode = "debt";
+		await store.saveBudgeting();
+
+		const reloaded = new FinanceStore(app as never, { ...DEFAULT_SETTINGS, dataFolder: FOLDER });
+		await reloaded.load();
+		expect(reloaded.budgeting.rolloverMode).toBe("debt");
+	});
+});
+
 describe("FinanceStore — schema migration", () => {
 	it("reads a file written before a column existed, without shifting every field", async () => {
 		const { store, app } = newStore();

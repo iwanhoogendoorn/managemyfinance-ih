@@ -42,6 +42,8 @@ import { DeleteCategoryModal } from "../modals/DeleteCategoryModal";
 import { EditAccountModal } from "../modals/EditAccountModal";
 import { ImportBackupModal } from "../modals/ImportBackupModal";
 import { ManagePortfoliosModal } from "../modals/ManagePortfoliosModal";
+import { isIncomeCategory } from "../budgets";
+import { DEFAULT_MIN_CYCLE_GAP_DAYS, derivePayCycles, describePayCycle, salaryDates } from "../payCycle";
 import type { AccountType, Category } from "../types";
 import { icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
 import { openImportWizard } from "../wizards/ImportWizard";
@@ -190,6 +192,7 @@ export class FinanceSettingTab extends PluginSettingTab {
 					this.renderRulesGroup(c);
 				},
 			},
+			{ id: "budgeting", label: "Budgeting", icon: "calendar-clock", render: (c) => this.renderBudgeting(c) },
 			{ id: "projections", label: "Projections", icon: "trending-up", render: (c) => this.renderProjections(c) },
 			{ id: "currency", label: "Currency", icon: "coins", render: (c) => this.renderCurrency(c) },
 			{ id: "import", label: "Import", icon: "download", render: (c) => this.renderImport(c) },
@@ -1781,6 +1784,81 @@ export class FinanceSettingTab extends PluginSettingTab {
 		this.note(
 			reports.content,
 			"Reports are written to the reports/ folder inside this portfolio's data folder, one note per period, overwritten on regeneration. To embed live figures in a note of your own instead, use a ```finance code block — see the README."
+		);
+	}
+
+	/** Calendar-month or pay-cycle budgeting (see payCycle.ts) — scoped to the active portfolio, since
+	 *  its own data folder is where this choice lives (budgeting.json), same as its categories and
+	 *  accounts. Switching portfolios switches this setting along with the rest of that portfolio's
+	 *  data (see FinanceStore.load()). */
+	private renderBudgeting(content: HTMLElement): void {
+		const store = this.plugin.store;
+		const budgeting = store.budgeting;
+
+		const group = this.group(content, {
+			icon: "calendar-clock",
+			title: "Budgeting period",
+			subtitle: "Plan against the calendar month, or your own pay cycle if payday isn't the 1st.",
+			chip: budgeting.periodMode === "payCycle" ? { text: "pay-cycle", tone: "ok" } : { text: "calendar", tone: "pending" },
+		});
+
+		new Setting(group.content)
+			.setName("Budget against")
+			.setDesc(
+				"Calendar month runs the 1st to the end of the month, same as every dashboard and report. Pay cycle runs from one payday to the next, using your salary category's actual transaction dates — an early or late payday shifts the cycle with it."
+			)
+			.addDropdown((d) => {
+				d.addOption("calendar", "Calendar month");
+				d.addOption("payCycle", "Pay cycle");
+				d.setValue(budgeting.periodMode).onChange(async (value) => {
+					budgeting.periodMode = value as "calendar" | "payCycle";
+					await store.saveBudgeting();
+					this.renderBody();
+				});
+			});
+
+		this.note(
+			group.content,
+			"Dashboards, reports and the year review always stay on the calendar month regardless of this choice — only the Budgets page's own planning period changes."
+		);
+
+		if (budgeting.periodMode !== "payCycle") return;
+
+		const incomeCategories = primaryCategories(store.categories.filter((c) => !c.archived)).filter((c) => isIncomeCategory(c));
+		new Setting(group.content)
+			.setName("Salary category")
+			.setDesc("Which category's incoming transactions mark a payday. Cycle boundaries are derived from their actual dates, not a fixed day of the month.")
+			.addDropdown((d) => {
+				d.addOption("", incomeCategories.length === 0 ? "No income categories yet" : "Choose a category…");
+				incomeCategories.forEach((c) => d.addOption(c.id, c.name));
+				d.setValue(budgeting.salaryCategoryId ?? "").onChange(async (value) => {
+					budgeting.salaryCategoryId = value || undefined;
+					await store.saveBudgeting();
+					this.renderBody();
+				});
+			});
+
+		if (!budgeting.salaryCategoryId) {
+			this.note(group.content, "Pick a salary category above to derive your pay cycles.");
+			return;
+		}
+
+		const gap = budgeting.minCycleGapDays ?? DEFAULT_MIN_CYCLE_GAP_DAYS;
+		const dates = salaryDates(store, budgeting.salaryCategoryId, gap);
+		if (dates.length === 0) {
+			this.note(
+				group.content,
+				"No income has been recorded in that category yet, so no pay cycle can be derived. The Budgets page will show an empty state until at least one payday is in the ledger."
+			);
+			return;
+		}
+
+		const cycles = derivePayCycles(dates);
+		const current = cycles[cycles.length - 1];
+		this.note(
+			group.content,
+			`${cycles.length} pay cycle${cycles.length === 1 ? "" : "s"} detected · current: ${describePayCycle(current)}` +
+				(current.projectedEnd ? ` (est. ends ~${current.projectedEnd})` : "")
 		);
 	}
 

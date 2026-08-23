@@ -2,6 +2,7 @@ import { App, Modal } from "obsidian";
 import { categoryChain, secondaryCategoriesOf } from "../categories";
 import { categoryTransactions } from "../kpi";
 import type FinancePlugin from "../main";
+import type { DateRange } from "../period";
 import type { Category, Transaction } from "../types";
 import { categoryChainChip, icon } from "../ui/dom";
 import { TransactionDetailModal } from "./TransactionDetailModal";
@@ -11,16 +12,19 @@ function formatEUR(n: number): string {
 	return formatMoney(n);
 }
 
-function monthLabel(month: string): string {
-	const d = new Date(`${month}-01T00:00:00`);
-	if (isNaN(d.getTime())) return month;
-	return new Intl.DateTimeFormat("en-IE", { month: "long", year: "numeric" }).format(d);
-}
-
-/** The expense transactions behind one category's "actual spend" figure for a given month —
- *  opened by clicking that figure on the Budgets table, so a total is never just a number to trust blindly. */
+/** The expense transactions behind one category's "actual spend" figure for a given period —
+ *  opened by clicking that figure on the Budgets table, so a total is never just a number to trust
+ *  blindly. `period` is whatever the Budgets page is currently keyed by (a calendar "YYYY-MM" or a
+ *  pay-cycle's own DateRange — see payCycle.ts); `periodLabel` is how that reads to a person, decided
+ *  by the caller rather than derived here, since a pay-cycle key isn't a month name to parse. */
 export class CategoryExpensesModal extends Modal {
-	constructor(app: App, private plugin: FinancePlugin, private category: Category, private month: string) {
+	constructor(
+		app: App,
+		private plugin: FinancePlugin,
+		private category: Category,
+		private period: string | DateRange,
+		private periodLabel: string
+	) {
 		super(app);
 	}
 
@@ -30,18 +34,18 @@ export class CategoryExpensesModal extends Modal {
 		c.addClass("fp-account-modal");
 
 		const store = this.plugin.store;
-		const txs = categoryTransactions(store, this.category.id, this.month);
+		const txs = categoryTransactions(store, this.category.id, this.period);
 		const total = txs.reduce((s, t) => s + -t.amount, 0);
 		const showSecondary = secondaryCategoriesOf(store.categories, this.category.id).length > 0;
 
-		c.createEl("h3", { text: `${this.category.name} — ${monthLabel(this.month)}` });
+		c.createEl("h3", { text: `${this.category.name} — ${this.periodLabel}` });
 		c.createDiv({
 			cls: "fp-step-desc",
 			text: `${txs.length} transaction${txs.length === 1 ? "" : "s"} · ${formatEUR(total)} total`,
 		});
 
 		if (txs.length === 0) {
-			c.createEl("p", { cls: "fp-step-desc", text: "No expenses in this category this month." });
+			c.createEl("p", { cls: "fp-step-desc", text: "No expenses in this category in this period." });
 		} else {
 			const wrap = c.createDiv({ cls: "fp-table-scroll" });
 			const table = wrap.createEl("table", { cls: "fp-table" });

@@ -163,6 +163,11 @@ export function classifyTransaction(store: ClassifyStore, tx: Transaction): Clas
 	if ((action === "saveback" || type === "saveback") && amount >= 0) {
 		return result(tx, "income", "derived", { affectsIncome: amount });
 	}
+	// TR-style free-share reward (a "stock perk"): also real income, not a purchase — there's no
+	// principal paid, so it can't be a buy.
+	if ((action === "stockperk" || type === "stockperk") && amount >= 0) {
+		return result(tx, "income", "derived", { affectsIncome: amount });
+	}
 
 	// 5. Category-declared transfer (older "Savings & Transfers" vocabulary, kept for back-compat).
 	const primaryId = resolvePrimaryId(store.categories, tx.categoryId);

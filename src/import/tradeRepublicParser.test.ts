@@ -68,6 +68,8 @@ describe("parseTradeRepublicRows — newer 'Transaction export' shape", () => {
 		["TRANSFER_INSTANT_OUTBOUND", "withdraw"],
 		["DIVIDEND", "dividend"],
 		["INTEREST_PAYMENT", "interest"],
+		["STOCKPERK", "stockperk"],
+		["BENEFITS_SAVEBACK", "saveback"],
 	])("maps type %s to action %s", (type, expectedAction) => {
 		const [tx] = parseTradeRepublicRows(NEW_HEADERS, [row({ type, category: "CASH", amount: "10" })], ACCOUNT_ID);
 		expect(tx.action).toBe(expectedAction);
@@ -77,6 +79,23 @@ describe("parseTradeRepublicRows — newer 'Transaction export' shape", () => {
 		const [tx] = parseTradeRepublicRows(NEW_HEADERS, [row({ type: "CARD_TRANSACTION", category: "CASH", amount: "-11.55", description: "TR Card Transaction" })], ACCOUNT_ID);
 		expect(tx.action).toBeUndefined();
 		expect(tx.amount).toBe(-11.55);
+	});
+
+	it.each(["CARD_TRANSACTION", "CARD_TRANSACTION_INTERNATIONAL"])(
+		"uses the merchant name (not TR's generic boilerplate) as a %s's description, so merchant-keyword rules can match it",
+		(type) => {
+			const [tx] = parseTradeRepublicRows(
+				NEW_HEADERS,
+				[row({ type, category: "CASH", amount: "-11.55", name: "MCDONALD S DEN HAAG ES", description: "TR Card Transaction" })],
+				ACCOUNT_ID
+			);
+			expect(tx.description).toBe("MCDONALD S DEN HAAG ES");
+		}
+	);
+
+	it("falls back to TR's own description for a card transaction with no merchant name", () => {
+		const [tx] = parseTradeRepublicRows(NEW_HEADERS, [row({ type: "CARD_TRANSACTION", category: "CASH", amount: "-5.00", name: "", description: "TR Card Transaction" })], ACCOUNT_ID);
+		expect(tx.description).toBe("TR Card Transaction");
 	});
 
 	it("does not populate ticker/assetClass for a non-trading (cash) row even if symbol happens to be blank", () => {

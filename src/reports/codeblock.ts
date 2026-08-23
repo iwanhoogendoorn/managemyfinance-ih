@@ -79,7 +79,7 @@ function errorBlock(el: HTMLElement, message: string): void {
 
 function renderBudget(body: HTMLElement, plugin: FinancePlugin, opts: BlockOptions): void {
 	const store = plugin.store;
-	const statuses = budgetStatuses(store, store.categories, opts.month);
+	const statuses = budgetStatuses(store, store.categories, opts.month, store.budgeting.rolloverMode ?? "off");
 	if (statuses.length === 0) {
 		body.createDiv({ cls: "fp-block-empty", text: `No budgets planned for ${opts.month}.` });
 		return;

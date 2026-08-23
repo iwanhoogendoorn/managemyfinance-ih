@@ -173,6 +173,7 @@ export default class FinancePlugin extends Plugin {
 			generatedAt: new Date().toISOString(),
 			pluginVersion: this.manifest.version,
 			portfolioName: this.activePortfolio?.name,
+			rolloverMode: this.store.budgeting.rolloverMode ?? "off",
 		};
 	}
 
@@ -202,7 +203,13 @@ export default class FinancePlugin extends Plugin {
 	 */
 	private notifyBudgetAlerts(): void {
 		if (this.settings.budgetAlerts === false) return;
-		const alerts = budgetAlerts(this.store, this.store.categories, currentMonth(), this.settings.budgetAlertThreshold ?? 0.9);
+		const alerts = budgetAlerts(
+			this.store,
+			this.store.categories,
+			currentMonth(),
+			this.settings.budgetAlertThreshold ?? 0.9,
+			this.store.budgeting.rolloverMode ?? "off"
+		);
 		if (alerts.length === 0) return;
 
 		const over = alerts.filter((a) => a.severity === "over");

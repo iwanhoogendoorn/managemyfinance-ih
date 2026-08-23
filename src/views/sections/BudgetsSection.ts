@@ -3,12 +3,15 @@ import {
 	annualBudgetStatuses,
 	budgetForMonth,
 	budgetStatuses,
+	currentBudgetPeriod,
 	currentMonth,
 	isIncomeCategory,
 	oneOffBudgetStatus,
+	resolverFor,
 	shiftMonth,
 	suggestedBudget,
 	yearReview,
+	type BudgetPeriodResolver,
 } from "../../budgets";
 import { primaryCategories, secondaryCategoriesOf } from "../../categories";
 import { categoryTotals, primaryCategoryTotals } from "../../kpi";
@@ -16,6 +19,7 @@ import { formatMoney, formatMoneyForInput, parseMoney } from "../../money";
 import type FinancePlugin from "../../main";
 import { CategoryExpensesModal } from "../../modals/CategoryExpensesModal";
 import { OneOffBudgetModal } from "../../modals/OneOffBudgetModal";
+import { DEFAULT_MIN_CYCLE_GAP_DAYS, derivePayCycles, describePayCycle, salaryDates, shiftPayCycle } from "../../payCycle";
 import type { Category, OneOffBudget } from "../../types";
 import { barChart } from "../../ui/charts";
 import { badge, categoryChip, categoryIconLabel, emptyState, icon, ringGauge, type Tone } from "../../ui/dom";
@@ -53,6 +57,26 @@ const TABS: { id: BudgetsTab; label: string; icon: string }[] = [
 	{ id: "oneoff", label: "One-off", icon: "target" },
 	{ id: "review", label: "Year review", icon: "line-chart" },
 ];
+
+const ROLLOVER_TOOLTIP: Record<"off" | "full" | "debt", string> = {
+	off: "Every category resets to plan each period — nothing carries forward",
+	full: "Unspent carries forward as extra, overspend carries forward too",
+	debt: "Only overspend carries forward, as debt you owe yourself — unspent is never banked as a bonus",
+};
+
+/** The plain-language line shown right on the page — stating the current philosophy outright,
+ *  rather than leaving it to be inferred from whichever badges happen to be showing. */
+const ROLLOVER_DESC: Record<"off" | "full" | "debt", string> = {
+	off: "You're not budgeting any rollover strategy — every category resets to its plan each period.",
+	full: "You're budgeting in rollover mode — unspent carries forward as extra, and overspend carries forward too.",
+	debt: "You're budgeting in debt mode — overspend carries forward as debt you owe yourself; unspent is never banked as a bonus.",
+};
+
+const ROLLOVER_NOTICE: Record<"off" | "full" | "debt", string> = {
+	off: "Budgeting mode set to off — every category resets to plan each period.",
+	full: "Budgeting mode set to rollover — unspent carries forward as extra, overspend carries forward too.",
+	debt: "Budgeting mode set to debt — overspend carries forward as debt, but unspent is never banked as a bonus.",
+};
 
 /**
  * One row per *primary* category — budgets are planned either as a single total, or (opt-in per
@@ -118,12 +142,50 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 	}
 
 	function renderMonthlyTab(container: HTMLElement): void {
+		const budgeting = store.budgeting;
+		const payCycleMode = budgeting.periodMode === "payCycle";
+		const cycles =
+			payCycleMode && budgeting.salaryCategoryId
+				? derivePayCycles(salaryDates(store, budgeting.salaryCategoryId, budgeting.minCycleGapDays ?? DEFAULT_MIN_CYCLE_GAP_DAYS))
+				: [];
+
+		if (payCycleMode && (!budgeting.salaryCategoryId || cycles.length === 0)) {
+			emptyState(container, {
+				iconName: "calendar-clock",
+				title: "Pay-cycle budgeting isn't set up yet",
+				description: !budgeting.salaryCategoryId
+					? "Choose a salary category in Settings → Budgeting to derive your pay cycles from its actual payday dates."
+					: "No income has been recorded in your salary category yet, so no pay cycle can be derived — this fills in as soon as a payday is in the ledger.",
+			});
+			return;
+		}
+
+		const resolver = resolverFor(budgeting, cycles);
+
+		// Land on "now" whenever the stored key doesn't belong to the active mode — a fresh mode
+		// switch, or a calendar key left over from before pay-cycle mode was turned on (or vice versa).
+		if (payCycleMode) {
+			// Falls back to the most recent known cycle on the rare chance every derived cycle starts
+			// after "today" (a clock oddity, or future-dated ledger entries) — cycles is non-empty here,
+			// so there is always at least that one to land on.
+			if (!cycles.some((c) => c.key === budgetsState.month)) {
+				budgetsState.month = currentBudgetPeriod(budgeting, cycles) ?? cycles[cycles.length - 1].key;
+			}
+		} else if (!/^\d{4}-\d{2}$/.test(budgetsState.month)) {
+			budgetsState.month = currentMonth();
+		}
+
 		const month = budgetsState.month;
+		const currentCycle = payCycleMode ? cycles.find((c) => c.key === month) : undefined;
+		const periodLabel = payCycleMode && currentCycle ? describePayCycle(currentCycle) : monthLabel(month);
+
+		const rolloverMode = store.budgeting.rolloverMode ?? "off";
+
 		const activeCategories = store.categories.filter((c) => !c.archived);
 		const primaries = primaryCategories(activeCategories);
-		const statuses = budgetStatuses(store, activeCategories, month);
+		const statuses = budgetStatuses(store, activeCategories, month, rolloverMode, resolver);
 		const statusByCategory = new Map(statuses.map((s) => [s.categoryId, s]));
-		const rollupSpend = primaryCategoryTotals(store, month);
+		const rollupSpend = primaryCategoryTotals(store, resolver.rangeOf(month));
 
 		// Split mode is all-or-nothing across the whole list — one switch up top, not a per-row choice —
 		// so a category's own budget line and its rolled-up secondaries can't disagree on what's being planned.
@@ -131,38 +193,63 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		const globalBudgetMode: "total" | "breakdown" =
 			categoriesWithSecondaries.length > 0 && categoriesWithSecondaries.every((p) => p.budgetMode === "breakdown") ? "breakdown" : "total";
 
+		container.createDiv({ cls: "fp-budget-rollover-desc", text: ROLLOVER_DESC[rolloverMode] });
+
+		const inDebt = statuses.filter((s) => s.rollover < 0);
+		if (inDebt.length > 0) {
+			const totalOwed = inDebt.reduce((sum, s) => sum + -s.rollover, 0);
+			const banner = container.createDiv({ cls: "fp-budget-debt-banner" });
+			icon(banner, "circle-alert", "fp-budget-debt-banner-icon");
+			banner.createSpan({
+				text: `You owe yourself ${formatEUR(totalOwed)} across ${inDebt.length} categor${inDebt.length === 1 ? "y" : "ies"} from overspending last period — it's already deducted from what's shown as available below.`,
+			});
+		}
+
 		const headerActions = container.createDiv({ cls: "fp-section-header-actions fp-budget-toolbar" });
 
 		const monthNav = headerActions.createDiv({ cls: "fp-month-nav" });
+		const prevKey = payCycleMode ? shiftPayCycle(cycles, month, -1)?.key : shiftMonth(month, -1);
 		const prevBtn = monthNav.createEl("button", { cls: "fp-btn-icon fp-month-nav-btn" });
 		icon(prevBtn, "chevron-left");
-		prevBtn.setAttr("aria-label", "Previous month");
+		prevBtn.setAttr("aria-label", payCycleMode ? "Previous cycle" : "Previous month");
+		prevBtn.disabled = !prevKey;
 		prevBtn.addEventListener("click", () => {
-			budgetsState.month = shiftMonth(month, -1);
+			if (!prevKey) return;
+			budgetsState.month = prevKey;
 			render();
 		});
-		const monthLabelBtn = monthNav.createEl("button", { cls: "fp-month-nav-label fp-month-nav-label-btn", text: monthLabel(month) });
-		monthLabelBtn.addEventListener("click", () => {
-			openMonthPicker(monthLabelBtn, {
-				value: month,
-				onSelect: (m) => {
-					budgetsState.month = m;
-					render();
-				},
+		const monthLabelBtn = monthNav.createEl("button", { cls: "fp-month-nav-label fp-month-nav-label-btn", text: periodLabel });
+		if (payCycleMode) {
+			// An irregular list of derived cycles has no calendar shape for a picker grid to show —
+			// prev/next plus "current cycle" (below) is the whole of navigation in this mode.
+			monthLabelBtn.disabled = true;
+		} else {
+			monthLabelBtn.addEventListener("click", () => {
+				openMonthPicker(monthLabelBtn, {
+					value: month,
+					onSelect: (m) => {
+						budgetsState.month = m;
+						render();
+					},
+				});
 			});
-		});
+		}
+		const nextKey = payCycleMode ? shiftPayCycle(cycles, month, 1)?.key : shiftMonth(month, 1);
 		const nextBtn = monthNav.createEl("button", { cls: "fp-btn-icon fp-month-nav-btn" });
 		icon(nextBtn, "chevron-right");
-		nextBtn.setAttr("aria-label", "Next month");
+		nextBtn.setAttr("aria-label", payCycleMode ? "Next cycle" : "Next month");
+		nextBtn.disabled = !nextKey;
 		nextBtn.addEventListener("click", () => {
-			budgetsState.month = shiftMonth(month, 1);
+			if (!nextKey) return;
+			budgetsState.month = nextKey;
 			render();
 		});
-		if (month !== currentMonth()) {
+		const isCurrentPeriod = payCycleMode ? month === currentBudgetPeriod(budgeting, cycles) : month === currentMonth();
+		if (!isCurrentPeriod) {
 			const todayBtn = monthNav.createEl("button", { cls: "fp-btn fp-btn-ghost fp-month-nav-today" });
-			todayBtn.setText("This month");
+			todayBtn.setText(payCycleMode ? "Current cycle" : "This month");
 			todayBtn.addEventListener("click", () => {
-				budgetsState.month = currentMonth();
+				budgetsState.month = (payCycleMode ? currentBudgetPeriod(budgeting, cycles) : currentMonth()) ?? budgetsState.month;
 				render();
 			});
 		}
@@ -179,6 +266,22 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 				btn.addEventListener("click", () => void setAllBudgetModes(categoriesWithSecondaries, m));
 			});
 		}
+
+		// One dial for the whole portfolio, not a per-category setting — see PortfolioBudgetingSettings
+		// in types.ts for why: twenty independent switches make the overall philosophy something that
+		// just accumulates from individual clicks, rather than something stated plainly in one place.
+		const rolloverToggle = headerActions.createDiv({ cls: "fp-budget-mode-toggle" });
+		(
+			[
+				["off", "Off"],
+				["full", "Rollover"],
+				["debt", "Debt"],
+			] as const
+		).forEach(([m, label]) => {
+			const btn = rolloverToggle.createEl("button", { cls: "fp-budget-mode-btn" + (rolloverMode === m ? " is-active" : ""), text: label });
+			btn.setAttribute("title", ROLLOVER_TOOLTIP[m]);
+			btn.addEventListener("click", () => void setGlobalRolloverMode(m));
+		});
 
 		if (primaries.length > 0) {
 			const suggestBtn = headerActions.createEl("button", { cls: "fp-btn fp-btn-primary" });
@@ -214,7 +317,7 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 			label: "Spent so far",
 			iconName: "trending-down",
 			value: formatEUR(totalSpent),
-			sub: "this month",
+			sub: payCycleMode ? "this cycle" : "this month",
 			pct: spentPct,
 			gaugeCaption: "of budget",
 			tone: "bad",
@@ -262,13 +365,17 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		headRow.createEl("th", { text: "% met", cls: "fp-table-num fp-budget-pct-col" });
 		headRow.createEl("th", { cls: "fp-budget-expand-col" });
 		const tbody = table.createEl("tbody");
-		sorted.forEach((c) => renderBudgetRow(tbody, c, month, statusByCategory.get(c.id), rollupSpend.get(c.id) ?? 0));
+		sorted.forEach((c) =>
+			renderBudgetRow(tbody, c, month, resolver, periodLabel, statusByCategory.get(c.id), rollupSpend.get(c.id) ?? 0)
+		);
 	}
 
 	function renderBudgetRow(
 		parent: HTMLElement,
 		category: Category,
 		month: string,
+		resolver: BudgetPeriodResolver,
+		periodLabel: string,
 		status: ReturnType<typeof budgetStatuses>[number] | undefined,
 		spent: number
 	): void {
@@ -280,31 +387,15 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		const row = parent.createEl("tr", { cls: "fp-budget-row" });
 
 		const catCell = row.createEl("td", { cls: "fp-budget-cat-cell" });
-		// Rollover is a per-category property but it's only meaningful next to that category's own
-		// number, so it's toggled from right beside the name rather than from a settings page somewhere else.
-		const catCol = categoryIconLabel(catCell, category.name, category.color, category.icon, {
-			nameSuffix: (nameRow) => {
-				const rolloverBtn = nameRow.createEl("button", {
-					cls: "fp-btn fp-btn-ghost fp-btn-icon fp-btn-tiny" + (category.rollover ? " is-active" : ""),
-				});
-				icon(rolloverBtn, "recycle");
-				rolloverBtn.setAttribute(
-					"title",
-					category.rollover
-						? "Rollover on: whatever this category doesn't spend carries into next month"
-						: "Rollover off: this category resets to its limit each month"
-				);
-				rolloverBtn.addEventListener("click", () => void toggleRollover(category));
-			},
-		});
+		const catCol = categoryIconLabel(catCell, category.name, category.color, category.icon);
 
 		const catMeta = catCol.createDiv({ cls: "fp-budget-cat-meta" });
 		if (isIncomeCategory(category)) badge(catMeta, "income target", "good");
 		if (status && status.rollover !== 0) {
 			badge(
 				catMeta,
-				status.rollover > 0 ? `+${formatEUR(status.rollover)} carried in` : `${formatEUR(status.rollover)} carried in`,
-				status.rollover > 0 ? "good" : "warn"
+				status.rollover > 0 ? `+${formatEUR(status.rollover)} carried in` : `owes ${formatEUR(-status.rollover)}`,
+				status.rollover > 0 ? "good" : "bad"
 			);
 		}
 
@@ -337,7 +428,7 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		if (spent > 0) {
 			spentCell.addClass("fp-table-value-clickable");
 			spentCell.setText(formatEUR(spent));
-			spentCell.addEventListener("click", () => new CategoryExpensesModal(plugin.app, plugin, category, month).open());
+			spentCell.addEventListener("click", () => new CategoryExpensesModal(plugin.app, plugin, category, resolver.rangeOf(month), periodLabel).open());
 		} else {
 			spentCell.setText(formatEUR(spent));
 		}
@@ -369,13 +460,21 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		if (expanded && hasSecondaries) {
 			const subRow = parent.createEl("tr", { cls: "fp-budget-subrow" });
 			const subCell = subRow.createEl("td", { attr: { colspan: "6" } });
-			renderSecondaryBreakdown(subCell, category, secondaries, month, mode);
+			renderSecondaryBreakdown(subCell, category, secondaries, month, resolver, periodLabel, mode);
 		}
 	}
 
-	function renderSecondaryBreakdown(container: HTMLElement, primary: Category, secondaries: Category[], month: string, mode: "total" | "breakdown"): void {
+	function renderSecondaryBreakdown(
+		container: HTMLElement,
+		primary: Category,
+		secondaries: Category[],
+		month: string,
+		resolver: BudgetPeriodResolver,
+		periodLabel: string,
+		mode: "total" | "breakdown"
+	): void {
 		const wrap = container.createDiv({ cls: "fp-budget-subwrap" });
-		const leafSpend = categoryTotals(store, month);
+		const leafSpend = categoryTotals(store, resolver.rangeOf(month));
 		const directSpend = leafSpend.get(primary.id) ?? 0;
 
 		if (mode === "breakdown") {
@@ -404,7 +503,7 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 				if (subSpent > 0) {
 					spentCell.addClass("fp-table-value-clickable");
 					spentCell.setText(formatEUR(subSpent));
-					spentCell.addEventListener("click", () => new CategoryExpensesModal(plugin.app, plugin, sub, month).open());
+					spentCell.addEventListener("click", () => new CategoryExpensesModal(plugin.app, plugin, sub, resolver.rangeOf(month), periodLabel).open());
 				} else {
 					spentCell.setText(formatEUR(subSpent));
 				}
@@ -774,17 +873,12 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		render();
 	}
 
-	/** Rollover turns a monthly limit into a pot that carries its own leftovers forward. */
-	async function toggleRollover(category: Category): Promise<void> {
-		const target = store.categories.find((c) => c.id === category.id);
-		if (!target) return;
-		target.rollover = !target.rollover;
-		await store.saveCategories();
-		new Notice(
-			target.rollover
-				? `"${category.name}" now carries unspent budget into the next month.`
-				: `"${category.name}" resets each month again.`
-		);
+	/** One dial for the whole portfolio (see PortfolioBudgetingSettings.rolloverMode in types.ts). */
+	async function setGlobalRolloverMode(mode: "off" | "full" | "debt"): Promise<void> {
+		if ((store.budgeting.rolloverMode ?? "off") === mode) return;
+		store.budgeting.rolloverMode = mode;
+		await store.saveBudgeting();
+		new Notice(ROLLOVER_NOTICE[mode]);
 		render();
 	}
 

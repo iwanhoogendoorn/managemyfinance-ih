@@ -5147,6 +5147,25 @@
 .fp-budget-cat-meta .fp-btn.is-active {
 	color: var(--interactive-accent);
 }
+.fp-budget-rollover-desc {
+	margin-bottom: 10px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+.fp-budget-debt-banner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 14px;
+	padding: 10px 14px;
+	border-radius: var(--fp-radius-md);
+	color: var(--fp-bad);
+	background: var(--fp-bad-bg);
+	font-size: var(--font-ui-small);
+}
+.fp-budget-debt-banner-icon {
+	flex-shrink: 0;
+}
 
 .fp-category-chips {
 	display: flex;

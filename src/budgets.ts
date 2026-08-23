@@ -1,8 +1,15 @@
 import { primaryCategories, resolvePrimaryId, secondaryCategoriesOf } from "./categories";
 import { classifyTransaction } from "./finance/semantics";
 import { categoryTotals, monthlySpendFor, primaryCategoryIncomeTotals, primaryCategoryTotals, type KpiStore } from "./kpi";
+import type { DateRange } from "./period";
 import { shiftMonthKey } from "./period";
-import type { Category, OneOffBudget } from "./types";
+import { currentPayCycle, payCycleRange, payCycleSpendFor, shiftPayCycle, type PayCycle } from "./payCycle";
+import type { Category, OneOffBudget, PortfolioBudgetingSettings } from "./types";
+
+/** Off (fixed limits, resets every period) / Full (both directions carry) / Debt (only overspend
+ *  carries, as a debt against yourself). One choice for the whole portfolio — see
+ *  PortfolioBudgetingSettings.rolloverMode in types.ts for why this isn't a per-category setting. */
+export type RolloverMode = "off" | "full" | "debt";
 
 /** "YYYY-MM" for the current calendar month — budgets are simple and monthly, no rollover. */
 export function currentMonth(): string {
@@ -11,6 +18,67 @@ export function currentMonth(): string {
 }
 
 export const shiftMonth = shiftMonthKey;
+
+/**
+ * How `budgetStatuses`/`rolloverInto` turn a period key into what to actually measure — either
+ * plain calendar arithmetic, or a portfolio's own derived pay cycles (see payCycle.ts, and
+ * PortfolioBudgetingSettings in types.ts for the per-portfolio choice this is built from).
+ *
+ * Every function below defaults to `calendarPeriodResolver`, so nothing that already calls them
+ * without one changes behaviour — pay-cycle budgeting is opt-in per call site, same as it's opt-in
+ * per portfolio.
+ */
+export interface BudgetPeriodResolver {
+	/** What to hand `primaryCategoryTotals`/`primaryCategoryIncomeTotals` for this key. */
+	rangeOf(key: string): string | DateRange;
+	/** The immediately preceding period's key, or undefined when there's nowhere to walk back to
+	 *  (calendar mode always has one; pay-cycle mode doesn't, before the first known payday). */
+	previous(key: string): string | undefined;
+	/** Per-category spend across every period this resolver knows about, in one pass over the
+	 *  ledger — the same shape `monthlySpendFor` returns, just keyed by whatever this resolver's
+	 *  periods are. Feeds `rolloverInto`'s carry-forward chain. */
+	spendFor(store: KpiStore, categoryId: string): Map<string, number>;
+}
+
+export const calendarPeriodResolver: BudgetPeriodResolver = {
+	rangeOf: (key) => key,
+	previous: (key) => shiftMonthKey(key, -1),
+	spendFor: (store, categoryId) => monthlySpendFor(store, categoryId),
+};
+
+/** The resolver for a portfolio's derived pay cycles — `cycles` is `derivePayCycles(salaryDates(...))`
+ *  for that portfolio's chosen salary category (see payCycle.ts). */
+export function payCyclePeriodResolver(cycles: PayCycle[]): BudgetPeriodResolver {
+	return {
+		rangeOf: (key) => {
+			const cycle = cycles.find((c) => c.key === key);
+			return cycle ? payCycleRange(cycle) : key;
+		},
+		previous: (key) => shiftPayCycle(cycles, key, -1)?.key,
+		spendFor: (store, categoryId) => payCycleSpendFor(store, categoryId, cycles),
+	};
+}
+
+/** The resolver a portfolio's own budgeting settings call for. `cycles` is only consulted in
+ *  pay-cycle mode — pass `[]` in calendar mode, or whenever cycles haven't been derived yet. */
+export function resolverFor(budgeting: Pick<PortfolioBudgetingSettings, "periodMode">, cycles: PayCycle[] = []): BudgetPeriodResolver {
+	return budgeting.periodMode === "payCycle" ? payCyclePeriodResolver(cycles) : calendarPeriodResolver;
+}
+
+/**
+ * The period key the Budgets section should default to right now, for a portfolio's own budgeting
+ * settings — the current calendar month, or the pay cycle "today" falls in. Undefined only in
+ * pay-cycle mode before any salary transaction has ever been recorded (the bootstrap state) — the
+ * caller is expected to show an empty state pointing at Settings rather than treat this as "all time".
+ */
+export function currentBudgetPeriod(
+	budgeting: Pick<PortfolioBudgetingSettings, "periodMode">,
+	cycles: PayCycle[],
+	today: Date = new Date()
+): string | undefined {
+	if (budgeting.periodMode !== "payCycle") return currentMonth();
+	return currentPayCycle(cycles, today)?.key;
+}
 
 /**
  * The planned budget on record for one category in one specific month — undefined if never set for
@@ -112,32 +180,55 @@ export function isIncomeCategory(category: Pick<Category, "kind">): boolean {
 const MAX_ROLLOVER_MONTHS = 24;
 
 /**
- * What earlier months left behind for this one.
+ * What earlier periods left behind for this one.
  *
  * Rollover is the difference between a budget and a *pot*: without it, an envelope you underspend in
  * January is simply gone in February, which makes saving up inside a category impossible — the exact
  * thing anyone budgeting for an annual bill or an occasional big purchase is trying to do. Each
- * earlier month contributes whatever its own budget plus its own carried-in balance had left over,
+ * earlier period contributes whatever its own budget plus its own carried-in balance had left over,
  * and an overspend carries forward as a negative, so the pot can genuinely run dry.
  *
- * Only counts months that actually had a budget planned: a category you started budgeting in March
+ * `"debt"` mode changes only one thing: a positive result is clamped to zero at every step, so a
+ * period you come in under plan is never banked as a bonus — it just resets. An overspend still
+ * carries forward exactly as it does under `"full"`, and reads the same way a real debt would: it's
+ * only cleared by a later period's plan running far enough ahead of its own spend to absorb what's
+ * still owed, never by simply declaring it forgiven.
+ *
+ * Only counts periods that actually had a budget planned: a category you started budgeting in March
  * doesn't arrive in March with credit for January and February.
  */
-export function rolloverInto(store: KpiStore, categories: Category[], category: Category, month: string): number {
-	if (!category.rollover) return 0;
+export function rolloverInto(
+	store: KpiStore,
+	categories: Category[],
+	category: Category,
+	period: string,
+	mode: RolloverMode = "off",
+	resolver: BudgetPeriodResolver = calendarPeriodResolver
+): number {
+	if (mode === "off") return 0;
 
-	// One pass over the ledger for the whole chain, rather than one per month walked: this runs for
+	// One pass over the ledger for the whole chain, rather than one per period walked: this runs for
 	// every rollover category on every render of the budgets page, and reading the entire transaction
-	// list once per month walked would mean twenty-four passes before drawing a single row.
-	const spendByMonth = monthlySpendFor(store, category.id);
+	// list once per period walked would mean twenty-four passes before drawing a single row.
+	const spendByPeriodKey = resolver.spendFor(store, category.id);
+
+	// Walked oldest-first so each period's leftover is computed against what it had actually inherited.
+	// Pay-cycle mode can run out of periods to walk back to (nothing before the first known payday),
+	// so the chain stops there rather than assuming arithmetic like calendar mode can.
+	const chain: string[] = [];
+	let cursor: string | undefined = period;
+	for (let i = 0; i < MAX_ROLLOVER_MONTHS; i++) {
+		cursor = resolver.previous(cursor);
+		if (!cursor) break;
+		chain.unshift(cursor);
+	}
 
 	let carried = 0;
-	// Walked oldest-first so each month's leftover is computed against what it had actually inherited.
-	for (let i = MAX_ROLLOVER_MONTHS; i >= 1; i--) {
-		const past = shiftMonth(month, -i);
+	for (const past of chain) {
 		const planned = budgetForMonth(categories, category, past);
 		if (planned === undefined) continue;
-		carried = planned + carried - (spendByMonth.get(past) ?? 0);
+		carried = planned + carried - (spendByPeriodKey.get(past) ?? 0);
+		if (mode === "debt") carried = Math.min(0, carried);
 	}
 	return carried;
 }
@@ -151,14 +242,21 @@ export function rolloverInto(store: KpiStore, categories: Category[], category: 
  *  from the same expense-only totals every other category uses would read a €3,000 freelance-income
  *  target as permanently 0% met, since nothing ever counts as "spent" against an income category under
  *  that path. */
-export function budgetStatuses(store: KpiStore, categories: Category[], month: string): CategoryBudgetStatus[] {
-	const spend = primaryCategoryTotals(store, month);
-	const income = primaryCategoryIncomeTotals(store, month);
+export function budgetStatuses(
+	store: KpiStore,
+	categories: Category[],
+	period: string,
+	mode: RolloverMode = "off",
+	resolver: BudgetPeriodResolver = calendarPeriodResolver
+): CategoryBudgetStatus[] {
+	const range = resolver.rangeOf(period);
+	const spend = primaryCategoryTotals(store, range);
+	const income = primaryCategoryIncomeTotals(store, range);
 	return primaryCategories(categories)
-		.filter((c) => (budgetForMonth(categories, c, month) ?? 0) > 0)
+		.filter((c) => (budgetForMonth(categories, c, period) ?? 0) > 0)
 		.map((c) => {
-			const budget = budgetForMonth(categories, c, month)!;
-			const rollover = rolloverInto(store, categories, c, month);
+			const budget = budgetForMonth(categories, c, period)!;
+			const rollover = rolloverInto(store, categories, c, period, mode, resolver);
 			const available = budget + rollover;
 			const isIncome = isIncomeCategory(c);
 			const spent = (isIncome ? income : spend).get(c.id) ?? 0;
@@ -194,9 +292,16 @@ export interface BudgetAlert {
  * short of an income target isn't something a notification can help with, and a warning that fires
  * every month until payday is a warning nobody reads.
  */
-export function budgetAlerts(store: KpiStore, categories: Category[], month: string, threshold = 0.9): BudgetAlert[] {
+export function budgetAlerts(
+	store: KpiStore,
+	categories: Category[],
+	period: string,
+	threshold = 0.9,
+	mode: RolloverMode = "off",
+	resolver: BudgetPeriodResolver = calendarPeriodResolver
+): BudgetAlert[] {
 	const byId = new Map(categories.map((c) => [c.id, c]));
-	return budgetStatuses(store, categories, month)
+	return budgetStatuses(store, categories, period, mode, resolver)
 		.filter((status) => !status.isIncome && status.pct >= threshold)
 		.map((status) => ({
 			categoryId: status.categoryId,
