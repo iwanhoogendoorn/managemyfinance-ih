@@ -2,6 +2,7 @@ import { categoryChain } from "../categories";
 import { toCSV } from "../csv";
 import { formatMoney } from "../money";
 import type { Account, Category, Transaction } from "../types";
+import type { ReportAttachment } from "./attachments";
 import type { ReportGroup, ReportResult } from "./query";
 
 /**
@@ -284,6 +285,15 @@ tfoot td { font-weight: 700; border-top: 1.5px solid var(--ink); border-bottom: 
 .warn { margin-top: 12px; padding: 8px 10px; border-left: 3px solid var(--warn-edge); background: var(--warn-bg);
         font-size: 10.5px; break-inside: avoid; }
 
+/* ---- receipts ---- */
+.receipt-note { font-size: 10px; color: var(--ink-2); margin: 0 0 10px; }
+.receipts { display: flex; flex-wrap: wrap; gap: 12px; }
+.receipt { width: 220px; break-inside: avoid; border: 1px solid var(--rule); border-radius: 8px; padding: 8px; }
+.receipt-caption { font-size: 9px; color: var(--ink-2); margin-bottom: 6px; }
+.receipt-img { width: 100%; max-height: 260px; object-fit: contain; border-radius: 4px; background: var(--surface); }
+.receipt-file { display: flex; align-items: center; gap: 6px; height: 60px; font-size: 10px; color: var(--ink-muted);
+                background: var(--surface); border-radius: 4px; padding: 0 8px; }
+
 @media print {
   /* The body padding is the page margin now, so it must survive printing rather than be reset.
      Repeating the table header is what keeps a transaction list readable past page one. */
@@ -435,6 +445,40 @@ export interface HtmlOptions {
 	 * above it always cover *everything* that matched; only the listing is trimmed, and it says so.
 	 */
 	maxRows?: number;
+	/** Attachments to append after the transaction table — see `collectReportAttachments`. Omitted or
+	 *  empty means no receipts section at all, same as today. */
+	attachments?: ReportAttachment[];
+}
+
+/**
+ * The receipts appended after the transaction table — an image embeds directly (it was already read
+ * into a `data:` URI by `collectReportAttachments`). A PDF can't be embedded inline in an HTML page
+ * this way, so it's named here as a placeholder; its actual pages are appended onto the exported PDF
+ * afterward (see `mergeAttachmentPdfs` in `src/reports/pdf.ts`), which is what this section's note
+ * tells the reader to expect rather than leaving the placeholder looking like the whole story.
+ */
+function receiptsSection(attachments: ReportAttachment[], rows: Transaction[], currency: string): string {
+	if (attachments.length === 0) return "";
+	const txById = new Map(rows.map((tx) => [tx.id, tx]));
+	const pdfCount = attachments.filter((att) => att.isPdf).length;
+
+	const cards = attachments
+		.map((att) => {
+			const tx = txById.get(att.txId);
+			const caption = tx ? `${tx.date} · ${htmlEscape(tx.description || "—")} · ${htmlEscape(money(tx.amount, tx.currency || currency))}` : htmlEscape(att.filename);
+			const body = att.dataUri
+				? `<img class="receipt-img" src="${att.dataUri}" alt="${htmlEscape(att.filename)}">`
+				: `<div class="receipt-file">📄 ${htmlEscape(att.filename)}</div>`;
+			return `<div class="receipt"><div class="receipt-caption">${caption}</div>${body}</div>`;
+		})
+		.join("");
+
+	const note =
+		pdfCount > 0
+			? `<p class="receipt-note">${pdfCount} PDF receipt${pdfCount === 1 ? "" : "s"} follow${pdfCount === 1 ? "s" : ""} as the final page${pdfCount === 1 ? "" : "s"} of this document.</p>`
+			: "";
+
+	return `<section><h2>Receipts &amp; invoices</h2>${note}<div class="receipts">${cards}</div></section>`;
 }
 
 export function buildReportHtml(result: ReportResult, ctx: ExportContext, opts: HtmlOptions = {}): string {
@@ -555,6 +599,7 @@ ${trimmed > 0 ? `<p class="note">The ${listed.length} largest of ${result.count}
 		  }">${htmlEscape(money(result.net, currency))}</td></tr></tfoot>
 </table>`
 }
+${receiptsSection(opts.attachments ?? [], result.rows, currency)}
 <footer class="foot">
   <span>${htmlEscape(ctx.title)} · ${htmlEscape(ctx.period)}</span>
   <span>${htmlEscape(
@@ -594,7 +639,7 @@ function mdGroupTable(label: string, groups: ReportGroup[], currency: string): s
 /** How many transaction rows a note lists before it stops — see the note in buildReportMarkdown. */
 export const MARKDOWN_ROW_LIMIT = 500;
 
-export function buildReportMarkdown(result: ReportResult, ctx: ExportContext): string {
+export function buildReportMarkdown(result: ReportResult, ctx: ExportContext, attachments: ReportAttachment[] = []): string {
 	const currency = result.baseCurrency;
 	const numeric = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
 
@@ -658,6 +703,18 @@ export function buildReportMarkdown(result: ReportResult, ctx: ExportContext): s
 			})
 		)
 	);
+
+	if (attachments.length > 0) {
+		// A note never leaves the vault, so unlike the PDF path this can embed a PDF receipt too —
+		// Obsidian's own wikilink embed renders both images and PDFs inline in preview.
+		const txById = new Map(result.rows.map((tx) => [tx.id, tx]));
+		out.push("## Receipts & invoices\n");
+		for (const att of attachments) {
+			const tx = txById.get(att.txId);
+			const caption = tx ? `${tx.date} · ${mdEscape(tx.description || "—")} · ${money(tx.amount, tx.currency || currency)}` : att.filename;
+			out.push(`**${caption}**\n\n![[${att.path}]]\n`);
+		}
+	}
 
 	if (ctx.pluginVersion) out.push(`\n_Generated by Manage My Finance v${ctx.pluginVersion}._\n`);
 	return out.join("\n");

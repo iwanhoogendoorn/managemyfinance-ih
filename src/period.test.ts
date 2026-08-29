@@ -9,6 +9,7 @@ import {
 	periodRange,
 	resolvePeriodRange,
 	selectionRange,
+	shiftRangeByYears,
 	transactionYears,
 	weekOptions,
 	weekRangeFrom,
@@ -137,6 +138,21 @@ describe("monthRange", () => {
 		expect(monthRange("2026-13")).toBeUndefined();
 		expect(monthRange("2026-00")).toBeUndefined();
 		expect(monthRange("")).toBeUndefined();
+	});
+});
+
+describe("shiftRangeByYears", () => {
+	it("shifts both ends back by whole years", () => {
+		expect(shiftRangeByYears({ from: "2026-08-20", to: "2026-09-19" }, 1)).toEqual({ from: "2025-08-20", to: "2025-09-19" });
+		expect(shiftRangeByYears({ from: "2026-08-20", to: "2026-09-19" }, 3)).toEqual({ from: "2023-08-20", to: "2023-09-19" });
+	});
+
+	it("leaves an open (empty) end empty", () => {
+		expect(shiftRangeByYears({ from: "2026-08-20", to: "" }, 1)).toEqual({ from: "2025-08-20", to: "" });
+	});
+
+	it("clamps 29 Feb into a shifted-to non-leap year onto the 28th", () => {
+		expect(shiftRangeByYears({ from: "2028-02-29", to: "2028-02-29" }, 2)).toEqual({ from: "2026-02-28", to: "2026-02-28" });
 	});
 });
 

@@ -1,5 +1,5 @@
 import { Notice } from "obsidian";
-import { categoryChain, primaryCategories, secondaryCategoriesOf } from "../../categories";
+import { categoryChain } from "../../categories";
 import { writeExport } from "../../data/backup";
 import type FinancePlugin from "../../main";
 import { formatMoney } from "../../money";
@@ -13,6 +13,7 @@ import {
 	type ExportContext,
 } from "../../reports/export";
 import { canExportPdf, exportHtmlToPdf } from "../../reports/pdf";
+import { collectReportAttachments } from "../../reports/attachments";
 import {
 	describePeriod,
 	describeQuery,
@@ -25,6 +26,7 @@ import {
 	type ReportSource,
 } from "../../reports/query";
 import { openNote, writeReportNote } from "../../reports/write";
+import { renderCategoryPicker } from "../../ui/categoryPicker";
 import { badge, categoryChip, emptyState, icon, statTile } from "../../ui/dom";
 import { renderPeriodFilter } from "../../ui/periodFilter";
 
@@ -36,6 +38,15 @@ interface ReportState extends Omit<ReportQuery, "from" | "to"> {
 	grouping: Grouping;
 	/** Rows currently drawn in the preview; grows via "Show more" rather than paginating. */
 	shown: number;
+	/** Overrides the auto-generated title (which spells out every filter, including exclusions) on
+	 *  every export. Blank means "use the auto-generated one", same as always — this is opt-in, for
+	 *  a report that's about to leave the vault and be read by someone who shouldn't have to see which
+	 *  categories were left out to get there. */
+	customTitle?: string;
+	/** Drops the "filters as words" chips (period, categories, exclusions, direction, …) from every
+	 *  export — the detail a custom title alone doesn't hide, since those chips print in the document
+	 *  body regardless of what the title says. */
+	hideFilterDetails?: boolean;
 }
 
 const PAGE_SIZE = 50;
@@ -46,7 +57,9 @@ const PAGE_SIZE = 50;
  */
 const state: ReportState = {
 	categoryIds: [],
+	excludeCategoryIds: [],
 	accountIds: [],
+	customTitle: "",
 	search: "",
 	direction: "out",
 	includeTransfers: false,
@@ -107,6 +120,7 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 			from: period.from || undefined,
 			to: period.to || undefined,
 			categoryIds: state.categoryIds,
+			excludeCategoryIds: state.excludeCategoryIds,
 			accountIds: state.accountIds,
 			search: state.search,
 			direction: state.direction,
@@ -125,6 +139,14 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 			const chain = categoryChain(store.categories, id);
 			if (chain.primary) out.push(chain.secondary ? `${chain.primary.name} › ${chain.secondary.name}` : chain.primary.name);
 		}
+		for (const id of state.excludeCategoryIds ?? []) {
+			if (id === UNCATEGORIZED) {
+				out.push("Excl. Uncategorized");
+				continue;
+			}
+			const chain = categoryChain(store.categories, id);
+			if (chain.primary) out.push(`Excl. ${chain.secondary ? `${chain.primary.name} › ${chain.secondary.name}` : chain.primary.name}`);
+		}
 		for (const id of state.accountIds ?? []) {
 			const account = store.accounts.find((a) => a.id === id);
 			if (account) out.push(account.name);
@@ -138,14 +160,14 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 
 	function exportContext(result: ReportResult): ExportContext {
 		return {
-			title: describeQuery(source(), query()),
+			title: state.customTitle?.trim() || describeQuery(source(), query()),
 			period: describePeriod(period.from || undefined, period.to || undefined),
 			categories: store.categories,
 			accounts: store.accounts,
 			generatedAt: new Date().toISOString(),
 			pluginVersion: plugin.manifest.version,
 			portfolioName: plugin.activePortfolio?.name,
-			filterSummary: filterSummary(result),
+			filterSummary: state.hideFilterDetails ? undefined : filterSummary(result),
 		};
 	}
 
@@ -216,74 +238,32 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 	}
 
 	function renderCategoryRow(card: HTMLElement): void {
-		const control = fieldRow(card, "Categories", "Leave empty for everything. A primary includes its subcategories.");
-
-		const chips = control.createDiv({ cls: "fp-report-chips" });
-		const chosen = state.categoryIds ?? [];
-		if (chosen.length === 0) {
-			chips.createSpan({ cls: "fp-report-chips-empty", text: "All categories" });
-		}
-		for (const id of chosen) {
-			const chip = chips.createDiv({ cls: "fp-report-chip" });
-			if (id === UNCATEGORIZED) {
-				badge(chip, "Uncategorized", "warn");
-			} else {
-				const chain = categoryChain(store.categories, id);
-				const cat = chain.secondary ?? chain.primary;
-				if (cat) categoryChip(chip, chain.secondary ? `${chain.primary?.name} › ${cat.name}` : cat.name, cat.color, cat.icon);
-				else chip.createSpan({ text: id });
-			}
-			const remove = chip.createEl("button", { cls: "fp-report-chip-x" });
-			icon(remove, "x");
-			remove.setAttribute("aria-label", "Remove this category from the report");
-			remove.addEventListener("click", () => {
-				state.categoryIds = chosen.filter((c) => c !== id);
+		const include = fieldRow(card, "Categories", "Leave empty for everything. A primary includes its subcategories.");
+		renderCategoryPicker(include, {
+			categories: store.categories,
+			chosen: state.categoryIds ?? [],
+			emptyText: "All categories",
+			removeLabel: "Remove this category from the report",
+			onChange: (next) => {
+				state.categoryIds = next;
 				state.shown = PAGE_SIZE;
 				render();
-			});
-		}
-
-		// Two selects that *add* rather than replace, because a report over "Restaurants and Fuel" is
-		// the whole point — a single-value picker would make the combined question unaskable.
-		const adder = control.createDiv({ cls: "fp-report-adder" });
-		const primarySelect = adder.createEl("select", { cls: "fp-filter-select" });
-		primarySelect.createEl("option", { text: "Add a category…", value: "" });
-		primarySelect.createEl("option", { text: "Uncategorized", value: UNCATEGORIZED });
-		const primaries = primaryCategories(store.categories);
-		primaries.forEach((c) => primarySelect.createEl("option", { text: c.name, value: c.id }));
-
-		const secondarySelect = adder.createEl("select", { cls: "fp-filter-select" });
-		secondarySelect.disabled = true;
-		secondarySelect.createEl("option", { text: "All subcategories", value: "" });
-
-		function add(id: string): void {
-			if (!id || chosen.includes(id)) return;
-			state.categoryIds = [...chosen, id];
-			state.shown = PAGE_SIZE;
-			render();
-		}
-
-		primarySelect.addEventListener("change", () => {
-			const value = primarySelect.value;
-			if (!value) return;
-			if (value === UNCATEGORIZED) {
-				add(value);
-				return;
-			}
-			const secondaries = secondaryCategoriesOf(store.categories, value);
-			if (secondaries.length === 0) {
-				add(value);
-				return;
-			}
-			// A primary with children gets a second beat: "all of Transport" and "just Fuel" are
-			// different questions and the picker shouldn't guess which one was meant.
-			secondarySelect.empty();
-			secondarySelect.disabled = false;
-			secondarySelect.createEl("option", { text: `All of ${primaries.find((c) => c.id === value)?.name ?? "it"}`, value });
-			secondaries.forEach((c) => secondarySelect.createEl("option", { text: c.name, value: c.id }));
-			secondarySelect.focus();
+			},
 		});
-		secondarySelect.addEventListener("change", () => add(secondarySelect.value));
+
+		const exclude = fieldRow(card, "Exclude", "Left out even if \"all categories\" or the list above would otherwise include them.");
+		renderCategoryPicker(exclude, {
+			categories: store.categories,
+			chosen: state.excludeCategoryIds ?? [],
+			emptyText: "Nothing excluded",
+			removeLabel: "Stop excluding this category",
+			tone: "exclude",
+			onChange: (next) => {
+				state.excludeCategoryIds = next;
+				state.shown = PAGE_SIZE;
+				render();
+			},
+		});
 	}
 
 	function renderScopeRow(card: HTMLElement): void {
@@ -342,6 +322,7 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 		reset.addEventListener("click", () => {
 			selectThisYear();
 			state.categoryIds = [];
+			state.excludeCategoryIds = [];
 			state.accountIds = [];
 			state.search = "";
 			state.direction = "out";
@@ -398,6 +379,31 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 	function renderExportBar(result: ReportResult): void {
 		const bar = container.createDiv({ cls: "fp-report-export-bar" });
 		const disabled = result.count === 0;
+
+		// The auto-generated title spells out every filter — including exclusions — which is exactly
+		// the internal detail a report meant for someone else shouldn't carry. Both controls only
+		// affect what leaves the vault; the on-screen preview above keeps showing the real query.
+		const customize = bar.createDiv({ cls: "fp-report-export-customize" });
+		const titleInput = customize.createEl("input", {
+			type: "text",
+			cls: "fp-search fp-report-title-input",
+			attr: { placeholder: describeQuery(source(), query()) },
+		});
+		titleInput.value = state.customTitle ?? "";
+		titleInput.addEventListener("change", () => {
+			state.customTitle = titleInput.value;
+		});
+
+		const hideWrap = customize.createDiv({ cls: "fp-report-toggle" });
+		const hideCheck = hideWrap.createEl("input", { type: "checkbox", cls: "fp-review-check" });
+		hideCheck.id = "fp-report-hide-filters";
+		hideCheck.checked = !!state.hideFilterDetails;
+		const hideLabel = hideWrap.createEl("label", { text: "Hide filter details", attr: { for: "fp-report-hide-filters" } });
+		hideLabel.setAttribute("title", "Leaves the period and totals, but drops the category/exclusion/account chips a shared copy shouldn't have to explain.");
+		hideCheck.addEventListener("change", () => {
+			state.hideFilterDetails = hideCheck.checked;
+		});
+
 		bar.createSpan({
 			cls: "fp-report-export-hint",
 			text: disabled ? "Nothing matches — adjust the filters above to export something." : "Take this report out of Obsidian:",
@@ -416,7 +422,9 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 		if (canExportPdf()) {
 			action("Save as PDF", "download", true, async () => {
 				const ctx = exportContext(result);
-				await exportHtmlToPdf(buildReportHtml(result, ctx), `${reportSlug(ctx.title)}.pdf`);
+				const attachments = await collectReportAttachments(plugin.app, result.rows);
+				const attachmentPdfs = attachments.filter((att): att is typeof att & { bytes: Uint8Array } => !!att.bytes).map((att) => att.bytes);
+				await exportHtmlToPdf(buildReportHtml(result, ctx, { attachments }), `${reportSlug(ctx.title)}.pdf`, attachmentPdfs);
 			});
 		}
 		action("CSV", "file-spreadsheet", false, () => exportFile(result, "csv"));
@@ -441,7 +449,8 @@ export function renderReportsSection(container: HTMLElement, plugin: FinancePlug
 	async function writeNote(result: ReportResult): Promise<void> {
 		const ctx = exportContext(result);
 		try {
-			const path = await writeReportNote(plugin.app, plugin.settings.dataFolder, reportSlug(ctx.title), buildReportMarkdown(result, ctx));
+			const attachments = await collectReportAttachments(plugin.app, result.rows);
+			const path = await writeReportNote(plugin.app, plugin.settings.dataFolder, reportSlug(ctx.title), buildReportMarkdown(result, ctx, attachments));
 			new Notice(`Report written to ${path}`);
 			await openNote(plugin.app, path);
 		} catch (e) {

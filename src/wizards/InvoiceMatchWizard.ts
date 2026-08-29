@@ -2,7 +2,7 @@ import { App, FuzzySuggestModal, Notice, Platform } from "obsidian";
 import { aiRankPlan, aiReadDocument, describeAiOutcome, emptyAiOutcome, type InvoiceAiOutcome } from "../ai/invoiceMatcher";
 import { describeAiDisclosure } from "../ai/invoicePrompt";
 import type { ModelAttachment } from "../ai/provider";
-import { attachmentFolderOf, writeAttachment } from "../data/attachments";
+import { ATTACHMENT_MEDIA_TYPES, attachmentFolderOf, base64Of, writeAttachment } from "../data/attachments";
 import { merchantDisplayName } from "../import/merchantKey";
 import { buildInvoiceDocument, localExtractionSufficient } from "../invoiceExtract";
 import {
@@ -49,19 +49,6 @@ import { WizardModal, WizardStep } from "./WizardModal";
  * happens after, because there is no shortlist to re-rank until the arithmetic has produced one.
  */
 
-/** MIME types for the formats the dropzone accepts, so an attachment reaches the API correctly labelled. */
-const MEDIA_TYPES: Record<string, string> = {
-	pdf: "application/pdf",
-	png: "image/png",
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	webp: "image/webp",
-	gif: "image/gif",
-	bmp: "image/bmp",
-	avif: "image/avif",
-	heic: "image/heic",
-};
-
 /** Anthropic's per-file ceiling is well above this; the practical limit is what a phone will hold in memory. */
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
@@ -99,14 +86,6 @@ function extensionOf(name: string): string {
 	return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
 }
 
-function base64Of(buffer: ArrayBuffer): string {
-	const bytes = new Uint8Array(buffer);
-	let binary = "";
-	for (let i = 0; i < bytes.length; i += 8192) {
-		binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 8192)));
-	}
-	return btoa(binary);
-}
 
 export function openInvoiceMatchWizard(plugin: FinancePlugin): void {
 	const app = plugin.app;
@@ -416,7 +395,7 @@ export function openInvoiceMatchWizard(plugin: FinancePlugin): void {
 
 		// Only what local reading failed to produce goes over the wire, and the file itself only when
 		// there was no text to send in its place.
-		const mediaType = MEDIA_TYPES[extensionOf(file.name)];
+		const mediaType = ATTACHMENT_MEDIA_TYPES[extensionOf(file.name)];
 		// Both transports can carry a document now — the API inline, the CLI via a temp file it opens
 		// itself — so the only bars left are a type nothing can read and a file too big to send.
 		const canUpload = !!bytes && !!mediaType && bytes.byteLength <= MAX_UPLOAD_BYTES;

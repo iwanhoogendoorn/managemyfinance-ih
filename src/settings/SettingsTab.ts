@@ -1822,6 +1822,37 @@ export class FinanceSettingTab extends PluginSettingTab {
 			"Dashboards, reports and the year review always stay on the calendar month regardless of this choice — only the Budgets page's own planning period changes."
 		);
 
+		const how = this.group(content, {
+			icon: "help-circle",
+			title: "How budgeting works",
+			subtitle: "What the rollover dial and the suggested-budget menu on the Budgets page actually do.",
+		});
+
+		new Setting(how.content).setName("Rollover (Off / Rollover / Debt)").setHeading();
+		this.note(
+			how.content,
+			"One setting for every category at once, on the Budgets page's own toolbar — not a per-category switch, so the overall philosophy is always stated in one place rather than accumulating inconsistently from individual clicks."
+		);
+		this.note(how.content, "Off: every category resets to its plan each period. Nothing carries forward either way.");
+		this.note(
+			how.content,
+			"Rollover: an envelope you underspend is genuinely bigger next period (it carries forward as extra), and an overspend eats into the next period the same way."
+		);
+		this.note(
+			how.content,
+			"Debt: only overspend carries forward, as a debt against yourself — underspending is never banked as a bonus, so a category never grows past its own plan. It can only be brought back to plan by staying under it in a later period. A category currently in debt shows a red \"owes €X\" badge, and the Budgets page banners the total across every category in debt."
+		);
+
+		new Setting(how.content).setName("Suggest budget").setHeading();
+		this.note(
+			how.content,
+			"\"Suggest budget\" on the Budgets page opens a review list before anything is saved — nothing is written until you press Apply. Each category shows Lean (P25), Typical (P50) and Buffered (P75), each with its own confidence (High/Moderate/Low), the method used to reach it, and a plain-language explanation (recent baseline, seasonal effect, volatility, how many comparable periods it drew on). Typical is pre-selected for ordinary categories; you can switch any category to a different scenario, type a custom amount, or leave it unselected."
+		);
+		this.note(
+			how.content,
+			"The method differs by category — a stable monthly charge (rent, a subscription) reads as a fixed cost with no artificial spread; sparse, irregular categories (medical, repairs, legal) use an annual reserve instead of a monthly average that would read mostly as zero; Savings and Charity show historical context only, never a pre-selected recommendation, since how much to give or save is a policy choice, not something history should dictate. An unusual historical period (a one-off holiday splurge, a big repair) is flagged and, depending on the method, excluded or included by default — either way you can toggle it and see every number recompute live."
+		);
+
 		if (budgeting.periodMode !== "payCycle") return;
 
 		const incomeCategories = primaryCategories(store.categories.filter((c) => !c.archived)).filter((c) => isIncomeCategory(c));

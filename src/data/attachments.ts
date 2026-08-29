@@ -6,6 +6,67 @@ function sanitizeFilename(name: string): string {
 	return name.replace(/[\\/:*?"<>|]/g, "_");
 }
 
+/** MIME type by (lowercased) file extension, for every attachment format this plugin will read back
+ *  out and show — the invoice/receipt matcher's own upload list, and a report export's embedded
+ *  receipts, both key off this one map rather than each keeping their own copy. */
+export const ATTACHMENT_MEDIA_TYPES: Record<string, string> = {
+	pdf: "application/pdf",
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	webp: "image/webp",
+	gif: "image/gif",
+	bmp: "image/bmp",
+	avif: "image/avif",
+	heic: "image/heic",
+};
+
+/** Raw bytes → base64, chunked because `String.fromCharCode.apply` blows the argument limit somewhere
+ *  north of 100k bytes in one call. */
+export function base64Of(buffer: ArrayBuffer): string {
+	const bytes = new Uint8Array(buffer);
+	let binary = "";
+	for (let i = 0; i < bytes.length; i += 8192) {
+		binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 8192)));
+	}
+	return btoa(binary);
+}
+
+function extensionOf(path: string): string {
+	const dot = path.lastIndexOf(".");
+	return dot === -1 ? "" : path.slice(dot + 1).toLowerCase();
+}
+
+/**
+ * An attachment already in the vault, read back out as a `data:` URI ready to embed directly in an
+ * HTML export — undefined for anything that isn't a recognised image type, or that can no longer be
+ * read (moved, deleted since it was linked — quietly skipped rather than failing the whole export
+ * over one missing receipt). A PDF attachment reads through `readAttachmentBytes` instead, since its
+ * consumer (the report PDF export) merges its actual pages rather than embedding a data URI.
+ */
+export async function readAttachmentDataUri(app: App, path: string): Promise<string | undefined> {
+	const ext = extensionOf(path);
+	const mediaType = ext === "pdf" ? undefined : ATTACHMENT_MEDIA_TYPES[ext];
+	if (!mediaType) return undefined;
+	try {
+		const bytes = await app.vault.adapter.readBinary(path);
+		return `data:${mediaType};base64,${base64Of(bytes)}`;
+	} catch {
+		return undefined;
+	}
+}
+
+/** An attachment's raw bytes, straight off disk — undefined if it can no longer be read (moved,
+ *  deleted since it was linked). Used where a caller needs the actual file rather than a rendered
+ *  form of it, e.g. merging a receipt PDF's own pages into an exported report PDF. */
+export async function readAttachmentBytes(app: App, path: string): Promise<Uint8Array | undefined> {
+	try {
+		return new Uint8Array(await app.vault.adapter.readBinary(path));
+	} catch {
+		return undefined;
+	}
+}
+
 /**
  * Where receipts and invoices are written, vault-relative.
  *

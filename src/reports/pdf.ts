@@ -1,4 +1,5 @@
 import { Notice } from "obsidian";
+import { PDFDocument } from "pdf-lib";
 
 /**
  * PDF export, written straight to disk.
@@ -147,6 +148,31 @@ export async function renderHtmlToPdf(html: string, namePrefix = "finance"): Pro
 	});
 }
 
+/**
+ * Appends each attachment's own pages onto the end of the rendered report — the literal file, not
+ * its filename. `pdf-lib` copies pages rather than re-rendering them, so a receipt keeps its own
+ * layout, fonts and any scanned image exactly as it was; nothing here regenerates or flattens it.
+ *
+ * A PDF that can't be parsed (corrupted, password-protected, not actually a PDF despite its
+ * extension) is skipped rather than failing the whole export — one bad receipt shouldn't cost the
+ * rest of the report.
+ */
+export async function mergeAttachmentPdfs(reportBytes: Uint8Array, attachmentPdfs: Uint8Array[]): Promise<Uint8Array> {
+	if (attachmentPdfs.length === 0) return reportBytes;
+
+	const merged = await PDFDocument.load(reportBytes);
+	for (const bytes of attachmentPdfs) {
+		try {
+			const doc = await PDFDocument.load(bytes);
+			const pages = await merged.copyPages(doc, doc.getPageIndices());
+			for (const page of pages) merged.addPage(page);
+		} catch {
+			// Corrupt or encrypted receipt — skip it rather than failing the whole export.
+		}
+	}
+	return merged.save();
+}
+
 export type PdfExportStatus = "saved" | "cancelled" | "failed" | "unsupported";
 
 /**
@@ -155,7 +181,7 @@ export type PdfExportStatus = "saved" | "cancelled" | "failed" | "unsupported";
  * The save dialog comes *first*, before any rendering: cancelling should cost nothing, and a
  * twenty-second render that ends in "actually, no" is worse than no export at all.
  */
-export async function exportHtmlToPdf(html: string, suggestedName: string): Promise<PdfExportStatus> {
+export async function exportHtmlToPdf(html: string, suggestedName: string, attachmentPdfs: Uint8Array[] = []): Promise<PdfExportStatus> {
 	const bits = electronBits();
 	if (!bits) {
 		new Notice("Saving a PDF needs the desktop app. On mobile, write the report into your vault as a note instead.");
@@ -173,7 +199,8 @@ export async function exportHtmlToPdf(html: string, suggestedName: string): Prom
 	const target = chosen.filePath;
 
 	try {
-		const bytes = await renderHtmlToPdf(html, "finance-report");
+		const rendered = await renderHtmlToPdf(html, "finance-report");
+		const bytes = await mergeAttachmentPdfs(rendered, attachmentPdfs);
 		bits.writeFile(target, bytes);
 		new Notice(`PDF saved to ${target}`, 8000);
 		bits.openPath?.(target);

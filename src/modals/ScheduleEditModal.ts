@@ -1,8 +1,6 @@
 import { App, Modal, Notice } from "obsidian";
-import { categoryChain, primaryCategories, secondaryCategoriesOf } from "../categories";
 import type FinancePlugin from "../main";
 import { describeOutcome, runSchedule } from "../reports/scheduleRunner";
-import { UNCATEGORIZED } from "../reports/query";
 import {
 	CADENCE_LABEL,
 	DETAIL_HINT,
@@ -15,7 +13,8 @@ import {
 	type ReportDetail,
 	type ReportSchedule,
 } from "../reports/schedule";
-import { badge, categoryChip, icon } from "../ui/dom";
+import { renderCategoryPicker } from "../ui/categoryPicker";
+import { icon } from "../ui/dom";
 
 /**
  * Create or edit one recurring report.
@@ -37,7 +36,7 @@ export class ScheduleEditModal extends Modal {
 					name: "Monthly spending",
 					enabled: true,
 					cadence: "monthly",
-					query: { direction: "out", categoryIds: [], accountIds: [], includeTransfers: false },
+					query: { direction: "out", categoryIds: [], excludeCategoryIds: [], accountIds: [], includeTransfers: false },
 					detail: "standard",
 					attachments: ["pdf"],
 					channels: {},
@@ -110,55 +109,29 @@ export class ScheduleEditModal extends Modal {
 		const query = this.draft.query;
 
 		const catControl = this.row(form, "Categories", "Empty means everything. A primary includes its subcategories.");
-		const chips = catControl.createDiv({ cls: "fp-report-chips" });
-		const chosen = query.categoryIds ?? [];
-		if (chosen.length === 0) chips.createSpan({ cls: "fp-report-chips-empty", text: "All categories" });
-		for (const id of chosen) {
-			const chip = chips.createDiv({ cls: "fp-report-chip" });
-			if (id === UNCATEGORIZED) {
-				badge(chip, "Uncategorized", "warn");
-			} else {
-				const chain = categoryChain(store.categories, id);
-				const cat = chain.secondary ?? chain.primary;
-				if (cat) categoryChip(chip, chain.secondary ? `${chain.primary?.name} › ${cat.name}` : cat.name, cat.color, cat.icon);
-			}
-			const remove = chip.createEl("button", { cls: "fp-report-chip-x" });
-			icon(remove, "x");
-			remove.setAttribute("aria-label", "Remove this category");
-			remove.addEventListener("click", () => {
-				query.categoryIds = chosen.filter((c) => c !== id);
+		renderCategoryPicker(catControl, {
+			categories: store.categories,
+			chosen: query.categoryIds ?? [],
+			emptyText: "All categories",
+			removeLabel: "Remove this category",
+			onChange: (next) => {
+				query.categoryIds = next;
 				this.render();
-			});
-		}
-		const adder = catControl.createDiv({ cls: "fp-report-adder" });
-		const primarySelect = adder.createEl("select", { cls: "fp-filter-select" });
-		primarySelect.createEl("option", { text: "Add a category…", value: "" });
-		primarySelect.createEl("option", { text: "Uncategorized", value: UNCATEGORIZED });
-		primaryCategories(store.categories).forEach((cat) => primarySelect.createEl("option", { text: cat.name, value: cat.id }));
-		const secondarySelect = adder.createEl("select", { cls: "fp-filter-select" });
-		secondarySelect.disabled = true;
-		secondarySelect.createEl("option", { text: "All subcategories", value: "" });
-
-		const add = (id: string): void => {
-			if (!id || chosen.includes(id)) return;
-			query.categoryIds = [...chosen, id];
-			this.render();
-		};
-		primarySelect.addEventListener("change", () => {
-			const value = primarySelect.value;
-			if (!value) return;
-			const secondaries = value === UNCATEGORIZED ? [] : secondaryCategoriesOf(store.categories, value);
-			if (secondaries.length === 0) {
-				add(value);
-				return;
-			}
-			secondarySelect.empty();
-			secondarySelect.disabled = false;
-			secondarySelect.createEl("option", { text: "All of it", value });
-			secondaries.forEach((cat) => secondarySelect.createEl("option", { text: cat.name, value: cat.id }));
-			secondarySelect.focus();
+			},
 		});
-		secondarySelect.addEventListener("change", () => add(secondarySelect.value));
+
+		const excludeControl = this.row(form, "Exclude", "Left out even if \"all categories\" or the list above would otherwise include them.");
+		renderCategoryPicker(excludeControl, {
+			categories: store.categories,
+			chosen: query.excludeCategoryIds ?? [],
+			emptyText: "Nothing excluded",
+			removeLabel: "Stop excluding this category",
+			tone: "exclude",
+			onChange: (next) => {
+				query.excludeCategoryIds = next;
+				this.render();
+			},
+		});
 
 		const scopeControl = this.row(form, "Scope");
 		const line = scopeControl.createDiv({ cls: "fp-report-scope" });

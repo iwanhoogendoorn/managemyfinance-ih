@@ -16,6 +16,7 @@ export function normalizePath(path: string): string {
 
 export class InMemoryAdapter {
 	files = new Map<string, string>();
+	binaryFiles = new Map<string, ArrayBuffer>();
 	folders = new Set<string>();
 
 	async exists(path: string): Promise<boolean> {
@@ -41,6 +42,18 @@ export class InMemoryAdapter {
 
 	async remove(path: string): Promise<void> {
 		this.files.delete(path);
+	}
+
+	async readBinary(path: string): Promise<ArrayBuffer> {
+		const content = this.binaryFiles.get(path);
+		if (content === undefined) throw new Error(`ENOENT: ${path}`);
+		return content;
+	}
+
+	async writeBinary(path: string, data: ArrayBuffer): Promise<void> {
+		this.binaryFiles.set(path, data);
+		const parts = path.split("/");
+		for (let i = 1; i < parts.length; i++) this.folders.add(parts.slice(0, i).join("/"));
 	}
 
 	/** Immediate children of `path`, split into files and folders — matches Obsidian's own shape. */

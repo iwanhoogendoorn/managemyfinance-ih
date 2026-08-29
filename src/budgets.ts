@@ -1,8 +1,8 @@
 import { primaryCategories, resolvePrimaryId, secondaryCategoriesOf } from "./categories";
 import { classifyTransaction } from "./finance/semantics";
-import { categoryTotals, monthlySpendFor, primaryCategoryIncomeTotals, primaryCategoryTotals, type KpiStore } from "./kpi";
+import { monthlySpendFor, primaryCategoryIncomeTotals, primaryCategoryTotals, type KpiStore } from "./kpi";
 import type { DateRange } from "./period";
-import { shiftMonthKey } from "./period";
+import { monthRange, shiftMonthKey } from "./period";
 import { currentPayCycle, payCycleRange, payCycleSpendFor, shiftPayCycle, type PayCycle } from "./payCycle";
 import type { Category, OneOffBudget, PortfolioBudgetingSettings } from "./types";
 
@@ -38,12 +38,22 @@ export interface BudgetPeriodResolver {
 	 *  ledger — the same shape `monthlySpendFor` returns, just keyed by whatever this resolver's
 	 *  periods are. Feeds `rolloverInto`'s carry-forward chain. */
 	spendFor(store: KpiStore, categoryId: string): Map<string, number>;
+	/**
+	 * A concrete, always-closed `DateRange` for this key — unlike `rangeOf`, never a bare string and
+	 * never an open end. Every calendar month already has a definite last day, but the current pay
+	 * cycle doesn't yet, so that case substitutes its `projectedEnd`. Needed anywhere a range is about
+	 * to be shifted by whole years (see `shiftRangeByYears` in period.ts) for a year-over-year
+	 * comparison — shifting an open-ended range back would compare a full prior year against only
+	 * "so far this period", silently understating it.
+	 */
+	closedRangeOf(key: string): DateRange;
 }
 
 export const calendarPeriodResolver: BudgetPeriodResolver = {
 	rangeOf: (key) => key,
 	previous: (key) => shiftMonthKey(key, -1),
 	spendFor: (store, categoryId) => monthlySpendFor(store, categoryId),
+	closedRangeOf: (key) => monthRange(key) ?? { from: "", to: "" },
 };
 
 /** The resolver for a portfolio's derived pay cycles — `cycles` is `derivePayCycles(salaryDates(...))`
@@ -56,6 +66,11 @@ export function payCyclePeriodResolver(cycles: PayCycle[]): BudgetPeriodResolver
 		},
 		previous: (key) => shiftPayCycle(cycles, key, -1)?.key,
 		spendFor: (store, categoryId) => payCycleSpendFor(store, categoryId, cycles),
+		closedRangeOf: (key) => {
+			const cycle = cycles.find((c) => c.key === key);
+			if (!cycle) return { from: "", to: "" };
+			return { from: cycle.start, to: cycle.end ?? cycle.projectedEnd ?? "" };
+		},
 	};
 }
 
@@ -102,46 +117,6 @@ export function budgetForMonth(categories: Category[], category: Category, month
 		return anySet ? sum : undefined;
 	}
 	return category.budgetHistory?.[month];
-}
-
-/**
- * A monthly budget suggestion for one category, extracted from its own recent spending pattern —
- * the average of the last `lookbackMonths` months that actually have transaction history (so a
- * category with no spend before the user started tracking isn't dragged toward zero by "months"
- * that never existed). Rounded to the nearest €5 so it reads as a suggestion, not a false-precision
- * calculation. Returns undefined when there's no spending history to extract a pattern from at all.
- *
- * `scope` controls whether a primary category's history includes its secondaries' spend too: pass
- * "rollup" when suggesting a primary category's own total-mode budget (so the suggestion reflects
- * everything spent under it, not just transactions tagged directly to the primary); the default
- * "leaf" is correct for a secondary category's own line-item suggestion.
- */
-export function suggestedBudget(
-	store: KpiStore,
-	categoryId: string,
-	referenceMonth: string,
-	lookbackMonths = 3,
-	scope: "leaf" | "rollup" = "leaf"
-): number | undefined {
-	const earliest = store.transactions.reduce<string | undefined>(
-		(min, t) => (t.date && (!min || t.date < min) ? t.date : min),
-		undefined
-	);
-	if (!earliest) return undefined;
-	const earliestMonth = earliest.slice(0, 7);
-
-	const totalsFor = scope === "rollup" ? primaryCategoryTotals : categoryTotals;
-	const amounts: number[] = [];
-	for (let i = 1; i <= lookbackMonths; i++) {
-		const month = shiftMonth(referenceMonth, -i);
-		if (month < earliestMonth) continue;
-		amounts.push(totalsFor(store, month).get(categoryId) ?? 0);
-	}
-	if (amounts.length === 0) return undefined;
-
-	const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-	if (avg <= 0) return undefined;
-	return Math.round(avg / 5) * 5;
 }
 
 export type BudgetTone = "good" | "warn" | "bad";

@@ -1,7 +1,7 @@
 import { stableHash } from "../hash";
 import { parseMoneyOr } from "../money";
 import type { Transaction, TransactionSource } from "../types";
-import { parseFlexibleDate } from "../utils/dates";
+import { detectDateOrder, parseFlexibleDate } from "../utils/dates";
 
 function col(headers: string[], ...names: string[]): number {
 	const normHeaders = headers.map((h) => h.trim().toLowerCase());
@@ -64,11 +64,16 @@ export function parseIngRows(headers: string[], rows: string[][], opts: ParseIng
 	const iSubCat = col(headers, "sub cat.", "sub cat", "category");
 	const iMainCat = col(headers, "main cat.", "main cat");
 
+	// Decided once for the whole file — see detectDateOrder's doc comment — so a US-issued statement
+	// (this parser also handles any manually column-mapped "generic" CSV, not only ING's own export)
+	// lands every row on the same calendar instead of silently misreading day and month per row.
+	const dateOrder = iDate !== -1 ? detectDateOrder(rows.map((r) => r[iDate] ?? "")) : "dmy";
+
 	const out: Transaction[] = [];
 	for (const r of rows) {
 		if (r.every((c) => c.trim() === "")) continue;
 
-		const date = parseFlexibleDate(r[iDate] ?? "");
+		const date = parseFlexibleDate(r[iDate] ?? "", dateOrder);
 		const description = (r[iDesc] ?? "").trim();
 		const counterparty = iCounterparty !== -1 ? (r[iCounterparty] ?? "").trim() : "";
 		const debitCredit = (r[iDebitCredit] ?? "").trim().toLowerCase();

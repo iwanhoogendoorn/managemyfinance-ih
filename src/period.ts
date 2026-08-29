@@ -126,6 +126,24 @@ export function monthRange(month: string): DateRange | undefined {
 }
 
 /**
+ * `range` shifted back `years` whole years on both ends — 20 Aug – 19 Sep 2026 becomes 20 Aug – 19
+ * Sep 2025, 2024, ... for `years` = 1, 2. An empty end stays empty (an open period's "still going"
+ * marker isn't a date to shift). Used to find "this same period" in prior years — the arithmetic is
+ * identical whether the range came from a calendar month or a pay cycle, since only the two dates
+ * matter here, not which produced them. A 29 Feb shifted into a non-leap year clamps to the 28th,
+ * same as every other "day past the end of the target month" case in this file.
+ */
+export function shiftRangeByYears(range: DateRange, years: number): DateRange {
+	const shift = (date: string): string => {
+		if (!date) return date;
+		const [y, m, d] = date.slice(0, 10).split("-").map(Number);
+		const daysInTargetMonth = new Date(y - years, m, 0).getDate();
+		return isoDate(new Date(y - years, m - 1, Math.min(d, daysInTargetMonth)));
+	};
+	return { from: shift(range.from), to: shift(range.to) };
+}
+
+/**
  * The seven days starting at `monday`. Weeks are never clipped to the month they were listed under:
  * a week that straddles the turn of a month filters to its true span, which is what its label says it
  * covers — a total that quietly dropped three days would be worse than one that spills.

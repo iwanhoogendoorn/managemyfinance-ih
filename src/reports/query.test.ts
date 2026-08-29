@@ -132,6 +132,37 @@ describe("runReport — filters", () => {
 		expect(result.rows[0].categoryId).toBeUndefined();
 	});
 
+	it("excludes a category, with no include filter at all", () => {
+		// Everything except fuel — the "holiday report, but not the subscriptions" shape.
+		const rows = [tx("2025-01-01", -20, "rest"), tx("2025-01-02", -30, "groc"), tx("2025-01-03", -40, "fuel")];
+		const result = runReport(source(rows), { excludeCategoryIds: ["fuel"] });
+		expect(result.count).toBe(2);
+		expect(result.spent).toBe(50);
+	});
+
+	it("excludes a category from within an included set — the two filters combine, not override", () => {
+		// "Food" would normally pull in Restaurants and Groceries both; excluding Groceries specifically
+		// still leaves Restaurants in.
+		const rows = [tx("2025-01-01", -20, "rest"), tx("2025-01-02", -30, "groc")];
+		const result = runReport(source(rows), { categoryIds: ["food"], excludeCategoryIds: ["groc"] });
+		expect(result.count).toBe(1);
+		expect(result.rows[0].categoryId).toBe("rest");
+	});
+
+	it("expands a primary exclusion to its secondaries too", () => {
+		const rows = [tx("2025-01-01", -20, "rest"), tx("2025-01-02", -30, "groc"), tx("2025-01-03", -40, "fuel")];
+		const result = runReport(source(rows), { excludeCategoryIds: ["food"] });
+		expect(result.count).toBe(1);
+		expect(result.rows[0].categoryId).toBe("fuel");
+	});
+
+	it("excludes uncategorized rows via the sentinel", () => {
+		const rows = [tx("2025-01-01", -10, "rest"), tx("2025-01-02", -10)];
+		const result = runReport(source(rows), { excludeCategoryIds: [UNCATEGORIZED] });
+		expect(result.count).toBe(1);
+		expect(result.rows[0].categoryId).toBe("rest");
+	});
+
 	it("excludes transfers from the row set unless asked for — moved money is not spending", () => {
 		const rows = [tx("2025-01-01", -500, undefined, { transferGroupId: "g1" }), tx("2025-01-02", -20, "rest")];
 		expect(runReport(source(rows), {}).spent).toBe(20);
@@ -293,6 +324,18 @@ describe("describeQuery", () => {
 	it("joins a combination of categories", () => {
 		expect(describeQuery(src, { categoryIds: ["rest", "fuel"], from: "2025-01-01", to: "2025-12-31" })).toBe(
 			"Restaurants, Fuel · 2025"
+		);
+	});
+
+	it("names an exclusion alongside the included categories", () => {
+		expect(describeQuery(src, { categoryIds: ["trans"], excludeCategoryIds: ["fuel"], from: "2025-01-01", to: "2025-12-31" })).toBe(
+			"Transport excl. Fuel · 2025"
+		);
+	});
+
+	it("names an exclusion even with no include filter at all", () => {
+		expect(describeQuery(src, { direction: "out", excludeCategoryIds: ["fuel"], from: "2025-01-01", to: "2025-12-31" })).toBe(
+			"All spending excl. Fuel · 2025"
 		);
 	});
 

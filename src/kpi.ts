@@ -30,7 +30,7 @@ export interface KpiStore {
  * stable regardless of what today's rate later becomes; until then it falls back to today's rate rather
  * than reading as incomplete outright (a deliberate compromise — see convert()'s `optionalRateFor`).
  */
-function amountIn(store: KpiStore, tx: Transaction): number {
+export function amountIn(store: KpiStore, tx: Transaction): number {
 	return store.fx ? convert(tx.amount, tx.currency, store.fx, tx.date) : tx.amount;
 }
 

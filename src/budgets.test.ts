@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { annualBudgetStatuses, budgetForMonth, suggestedBudget, budgetStatuses, currentMonth, oneOffBudgetStatus } from "./budgets";
+import { annualBudgetStatuses, budgetForMonth, budgetStatuses, calendarPeriodResolver, currentMonth, oneOffBudgetStatus } from "./budgets";
 import type { KpiStore } from "./kpi";
 import type { Category, OneOffBudget, Transaction } from "./types";
 
@@ -31,43 +31,6 @@ function store(transactions: Transaction[], categories: Category[] = [cat({ id: 
 describe("currentMonth", () => {
 	it("returns a YYYY-MM string", () => {
 		expect(currentMonth()).toMatch(/^\d{4}-\d{2}$/);
-	});
-});
-
-describe("suggestedBudget", () => {
-	it("averages the last 3 months' spend and rounds to the nearest €5", () => {
-		const s = store([
-			tx("2024-03-05", -100),
-			tx("2024-04-05", -120),
-			tx("2024-05-05", -95),
-		]);
-		// avg = (100+120+95)/3 = 105 -> already a multiple of 5
-		expect(suggestedBudget(s, CAT_FOOD, "2024-06")).toBe(105);
-	});
-
-	it("rounds a non-multiple-of-5 average to the nearest 5", () => {
-		const s = store([tx("2024-05-05", -101), tx("2024-04-05", -101), tx("2024-03-05", -101)]);
-		expect(suggestedBudget(s, CAT_FOOD, "2024-06")).toBe(100); // 101 rounds down to 100
-	});
-
-	it("returns undefined when there's no transaction history at all", () => {
-		expect(suggestedBudget(store([]), CAT_FOOD, "2024-06")).toBeUndefined();
-	});
-
-	it("does not count months before the user's earliest transaction as zero-spend", () => {
-		// Only one month of history exists; a naive 3-month average would wrongly divide by 3.
-		const s = store([tx("2024-05-05", -300)]);
-		expect(suggestedBudget(s, CAT_FOOD, "2024-06")).toBe(300);
-	});
-
-	it("returns undefined when average spend is zero or negative (nothing to suggest)", () => {
-		const s = store([tx("2024-05-05", 50)]); // positive amount, not an expense
-		expect(suggestedBudget(s, CAT_FOOD, "2024-06")).toBeUndefined();
-	});
-
-	it("only considers the given category", () => {
-		const s = store([tx("2024-05-05", -100, "cat-other")]);
-		expect(suggestedBudget(s, CAT_FOOD, "2024-06")).toBeUndefined();
 	});
 });
 

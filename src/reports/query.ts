@@ -49,6 +49,14 @@ export interface ReportQuery {
 	 * selects rows with no category at all.
 	 */
 	categoryIds?: string[];
+	/**
+	 * Categories to leave out, applied independently of — and after — `categoryIds`. Lets "everything
+	 * except Subscriptions" or "Travel, but not Subscriptions" be asked directly, rather than requiring
+	 * every *other* category to be hand-picked to get the same effect. A holiday expense report is
+	 * exactly this shape: broad by date, minus whatever renews on its own regardless of the trip. Same
+	 * primary-pulls-in-secondaries expansion and `"__uncategorized"` handling as `categoryIds`.
+	 */
+	excludeCategoryIds?: string[];
 	accountIds?: string[];
 	/** Free text over description, counterparty and notes. */
 	search?: string;
@@ -124,7 +132,8 @@ export function matchesQuery(
 	tx: Transaction,
 	query: ReportQuery,
 	categoryIds: Set<string> | undefined,
-	store: ClassifyStore
+	store: ClassifyStore,
+	excludeCategoryIds?: Set<string>
 ): boolean {
 	if (query.from && tx.date < query.from) return false;
 	if (query.to && tx.date > query.to) return false;
@@ -135,6 +144,15 @@ export function matchesQuery(
 		if (!id) {
 			if (!categoryIds.has(UNCATEGORIZED)) return false;
 		} else if (!categoryIds.has(id)) return false;
+	}
+
+	// Checked independently of (and after) the include filter above, never as a substitute for it —
+	// a row can pass "include Travel" and still be dropped here for being in "exclude Subscriptions".
+	if (excludeCategoryIds && excludeCategoryIds.size > 0) {
+		const id = tx.categoryId;
+		if (!id) {
+			if (excludeCategoryIds.has(UNCATEGORIZED)) return false;
+		} else if (excludeCategoryIds.has(id)) return false;
 	}
 
 	const measure = query.measure ?? "economic";
@@ -193,6 +211,7 @@ function bump(groups: Map<string, ReportGroup>, key: string, label: string, amou
  */
 export function runReport(source: ReportSource, query: ReportQuery): ReportResult {
 	const categoryIds = expandCategoryIds(source.categories, query.categoryIds);
+	const excludeCategoryIds = expandCategoryIds(source.categories, query.excludeCategoryIds);
 	const accountName = new Map(source.accounts.map((a) => [a.id, a.name]));
 
 	const rows: Transaction[] = [];
@@ -208,7 +227,7 @@ export function runReport(source: ReportSource, query: ReportQuery): ReportResul
 
 	const measure = query.measure ?? "economic";
 	for (const tx of source.transactions) {
-		if (!matchesQuery(tx, query, categoryIds, source)) continue;
+		if (!matchesQuery(tx, query, categoryIds, source, excludeCategoryIds)) continue;
 		rows.push(tx);
 
 		// A report row is a flow — convert at its own date (v1.2.7 Phase 3), not today's rate.
@@ -277,9 +296,9 @@ export function runReport(source: ReportSource, query: ReportQuery): ReportResul
  * A short human name for what a query asked for — the report's own title, and the basis of the
  * exported filename. "Restaurants · 2025", "Car, Fuel · Mar–Aug 2025", "All spending · 2024".
  */
-export function describeQuery(source: ReportSource, query: ReportQuery): string {
+function categoryNames(source: ReportSource, ids: string[] | undefined): string[] {
 	const names: string[] = [];
-	for (const id of query.categoryIds ?? []) {
+	for (const id of ids ?? []) {
 		if (id === UNCATEGORIZED) {
 			names.push("Uncategorized");
 			continue;
@@ -288,8 +307,14 @@ export function describeQuery(source: ReportSource, query: ReportQuery): string 
 		const name = chain.secondary?.name ?? chain.primary?.name;
 		if (name) names.push(name);
 	}
+	return names;
+}
 
-	const what =
+export function describeQuery(source: ReportSource, query: ReportQuery): string {
+	const names = categoryNames(source, query.categoryIds);
+	const excluded = categoryNames(source, query.excludeCategoryIds);
+
+	let what =
 		names.length > 0
 			? names.join(", ")
 			: query.direction === "in"
@@ -297,6 +322,8 @@ export function describeQuery(source: ReportSource, query: ReportQuery): string 
 				: query.direction === "out"
 					? "All spending"
 					: "All transactions";
+	if (excluded.length > 0) what += ` excl. ${excluded.join(", ")}`;
+
 	const when = describePeriod(query.from, query.to);
 	return when ? `${what} · ${when}` : what;
 }

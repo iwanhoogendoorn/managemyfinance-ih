@@ -9,16 +9,16 @@ import {
 	oneOffBudgetStatus,
 	resolverFor,
 	shiftMonth,
-	suggestedBudget,
 	yearReview,
 	type BudgetPeriodResolver,
 } from "../../budgets";
 import { primaryCategories, secondaryCategoriesOf } from "../../categories";
-import { categoryTotals, primaryCategoryTotals } from "../../kpi";
+import { categoryTotals, primaryCategoryIncomeTotals, primaryCategoryTotals } from "../../kpi";
 import { formatMoney, formatMoneyForInput, parseMoney } from "../../money";
 import type FinancePlugin from "../../main";
 import { CategoryExpensesModal } from "../../modals/CategoryExpensesModal";
 import { OneOffBudgetModal } from "../../modals/OneOffBudgetModal";
+import { SuggestBudgetModal } from "../../modals/SuggestBudgetModal";
 import { DEFAULT_MIN_CYCLE_GAP_DAYS, derivePayCycles, describePayCycle, salaryDates, shiftPayCycle } from "../../payCycle";
 import type { Category, OneOffBudget } from "../../types";
 import { barChart } from "../../ui/charts";
@@ -186,6 +186,12 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		const statuses = budgetStatuses(store, activeCategories, month, rolloverMode, resolver);
 		const statusByCategory = new Map(statuses.map((s) => [s.categoryId, s]));
 		const rollupSpend = primaryCategoryTotals(store, resolver.rangeOf(month));
+		// An income-kind category's "actual" is money earned into it, not spent — same distinction
+		// budgetStatuses already makes (FIN-006). Without this, the table's Actual/Remaining cells read
+		// from the expense total (always €0 for a category nothing is ever spent in) while the ring next
+		// to it reads the real earned figure, and the two visibly disagree.
+		const rollupIncome = primaryCategoryIncomeTotals(store, resolver.rangeOf(month));
+		const actualFor = (c: Category): number => (isIncomeCategory(c) ? (rollupIncome.get(c.id) ?? 0) : (rollupSpend.get(c.id) ?? 0));
 
 		// Split mode is all-or-nothing across the whole list — one switch up top, not a per-row choice —
 		// so a category's own budget line and its rolled-up secondaries can't disagree on what's being planned.
@@ -287,7 +293,9 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 			const suggestBtn = headerActions.createEl("button", { cls: "fp-btn fp-btn-primary" });
 			icon(suggestBtn, "wand-2");
 			suggestBtn.createSpan({ text: "Suggest budget" });
-			suggestBtn.addEventListener("click", () => void applyAllSuggestions(primaries, month));
+			suggestBtn.addEventListener("click", () => {
+				new SuggestBudgetModal(plugin.app, plugin, { period: month, periodLabel, resolver, onApplied: render }).open();
+			});
 		}
 
 		// Totals read against what's actually spendable, so a category carrying a surplus forward is
@@ -351,7 +359,7 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 			if (sa && sb) return sb.pct - sa.pct;
 			if (sa) return -1;
 			if (sb) return 1;
-			return (rollupSpend.get(b.id) ?? 0) - (rollupSpend.get(a.id) ?? 0);
+			return actualFor(b) - actualFor(a);
 		});
 
 		const card = container.createDiv({ cls: "fp-card" });
@@ -365,9 +373,7 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		headRow.createEl("th", { text: "% met", cls: "fp-table-num fp-budget-pct-col" });
 		headRow.createEl("th", { cls: "fp-budget-expand-col" });
 		const tbody = table.createEl("tbody");
-		sorted.forEach((c) =>
-			renderBudgetRow(tbody, c, month, resolver, periodLabel, statusByCategory.get(c.id), rollupSpend.get(c.id) ?? 0)
-		);
+		sorted.forEach((c) => renderBudgetRow(tbody, c, month, resolver, periodLabel, statusByCategory.get(c.id), actualFor(c)));
 	}
 
 	function renderBudgetRow(
@@ -435,10 +441,19 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 
 		const remainingCell = row.createEl("td", { cls: "fp-table-num fp-money" });
 		if (planned) {
-			// Against what's actually spendable, so a rolled-over surplus shows up as real headroom.
-			const remaining = (status?.available ?? planned) - spent;
-			remainingCell.addClass(remaining < 0 ? "fp-budget-remaining-over" : "fp-budget-remaining-under");
-			remainingCell.setText(remaining >= 0 ? formatEUR(remaining) : `-${formatEUR(-remaining)}`);
+			const available = status?.available ?? planned;
+			if (isIncomeCategory(category)) {
+				// "Remaining" doesn't mean "left to spend" for an income target — exceeding it is a
+				// surplus (good, green), not an overspend (bad, red), so the sign's meaning flips too.
+				const over = spent - available;
+				remainingCell.addClass(over >= 0 ? "fp-budget-remaining-under" : "fp-budget-remaining-over");
+				remainingCell.setText(over >= 0 ? `+${formatEUR(over)} over target` : `${formatEUR(-over)} short`);
+			} else {
+				// Against what's actually spendable, so a rolled-over surplus shows up as real headroom.
+				const remaining = available - spent;
+				remainingCell.addClass(remaining < 0 ? "fp-budget-remaining-over" : "fp-budget-remaining-under");
+				remainingCell.setText(remaining >= 0 ? formatEUR(remaining) : `-${formatEUR(-remaining)}`);
+			}
 		} else {
 			remainingCell.createSpan({ cls: "fp-budget-hint-text", text: "—" });
 		}
@@ -574,37 +589,6 @@ export function renderBudgetsSection(container: HTMLElement, plugin: FinancePlug
 		await store.saveCategories();
 		render();
 	}
-
-	async function applyAllSuggestions(primaries: Category[], month: string): Promise<void> {
-		let applied = 0;
-		for (const p of primaries) {
-			if ((p.budgetMode ?? "total") === "breakdown") {
-				for (const sub of secondaryCategoriesOf(store.categories, p.id)) {
-					if ((sub.budgetHistory?.[month] ?? 0) > 0) continue;
-					const suggestion = suggestedBudget(store, sub.id, month);
-					if (suggestion) {
-						sub.budgetHistory = { ...sub.budgetHistory, [month]: suggestion };
-						applied++;
-					}
-				}
-			} else {
-				if ((p.budgetHistory?.[month] ?? 0) > 0) continue;
-				const suggestion = suggestedBudget(store, p.id, month, 3, "rollup");
-				if (suggestion) {
-					p.budgetHistory = { ...p.budgetHistory, [month]: suggestion };
-					applied++;
-				}
-			}
-		}
-		if (applied === 0) {
-			new Notice("No suggestions available yet — categories need a bit of spending history first.");
-			return;
-		}
-		await store.saveCategories();
-		new Notice(`Applied a suggested budget to ${applied} categor${applied === 1 ? "y" : "ies"} for ${monthLabel(month)}.`);
-		render();
-	}
-
 
 	/**
 	 * Whole-year envelopes. Some costs simply don't divide into months without lying about them —
