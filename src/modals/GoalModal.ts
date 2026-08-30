@@ -1,4 +1,5 @@
 import { App, Modal, Notice } from "obsidian";
+import { activeAccounts } from "../accounts";
 import type FinancePlugin from "../main";
 import { formatMoney } from "../money";
 import { goalCurrentAmount } from "../strategy";
@@ -100,7 +101,7 @@ export class GoalModal extends Modal {
 				accountRow.createEl("label", { text: "Account" });
 				const accountSelect = accountRow.createEl("select");
 				accountSelect.createEl("option", { text: "Choose an account…", value: "" });
-				store.accounts.forEach((a) => accountSelect.createEl("option", { text: a.name, value: a.id }));
+				activeAccounts(store.accounts, this.linkedAccountId).forEach((a) => accountSelect.createEl("option", { text: a.name, value: a.id }));
 				accountSelect.value = this.linkedAccountId;
 				accountSelect.addEventListener("change", () => (this.linkedAccountId = accountSelect.value));
 			} else {

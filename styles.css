@@ -446,6 +446,32 @@
 	letter-spacing: 0.03em;
 	color: var(--text-faint);
 }
+/* The account number under the type. Deliberately not uppercased — an IBAN is already uppercase and
+   letter-spacing a 18-character string in a sidebar this narrow only costs characters. */
+.fp-nav-item-iban {
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* A checkbox and its label on one baseline, for the form rows that ask a yes/no question. */
+.fp-checkbox-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+}
+.fp-checkbox-row input[type="checkbox"] {
+	margin: 0;
+}
+
+/* A closed account stays legible and stays clickable — it just stops pulling the eye. */
+.fp-nav-item.is-archived .fp-nav-label,
+.fp-nav-item.is-archived .fp-nav-icon {
+	opacity: 0.6;
+}
 .fp-nav-section-label {
 	margin: 10px 10px 2px;
 	font-size: var(--font-ui-smaller);
@@ -7096,4 +7122,93 @@
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Category rules: provenance marks, and the preview shown before one is saved.
+   --------------------------------------------------------------------------- */
+
+/* The "a rule put this here" mark beside a category chip in the ledger. Small and quiet — it is an
+   answer to a question you only sometimes ask, not a status that needs to compete with the row. */
+.fp-rule-mark {
+	display: inline-flex;
+	align-items: center;
+	margin-left: 6px;
+	color: var(--text-faint);
+	vertical-align: middle;
+	cursor: help;
+}
+.fp-rule-mark .svg-icon {
+	width: 13px;
+	height: 13px;
+}
+.fp-ledger-row:hover .fp-rule-mark {
+	color: var(--text-muted);
+}
+
+/* The same fact stated in full in the transaction detail modal, where there is room for the pattern. */
+.fp-rule-note {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.fp-rule-note .svg-icon {
+	width: 13px;
+	height: 13px;
+}
+
+.fp-rule-preview {
+	margin-top: 14px;
+	padding: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+}
+.fp-rule-preview-summary {
+	margin-bottom: 10px;
+	font-size: var(--font-ui-small);
+}
+.fp-rule-preview-count {
+	font-weight: 700;
+	font-size: var(--font-ui-medium);
+	margin-right: 4px;
+}
+.fp-rule-preview-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 5px 0;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+/* Rows that already carry a category and are about to lose it — the part of the preview that
+   deserves a second look before anything is written. */
+.fp-rule-preview-row.is-move {
+	border-left: 2px solid var(--text-warning, var(--color-orange));
+	padding-left: 8px;
+	margin-left: -2px;
+}
+.fp-rule-preview-n {
+	font-weight: 700;
+	color: var(--text-normal);
+}
+.fp-rule-preview-arrow {
+	color: var(--text-faint);
+}
+.fp-rule-preview-sample {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.fp-rule-preview-example {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding: 2px 0;
 }

@@ -58,6 +58,18 @@ export class TransactionDetailModal extends Modal {
 		const chipHolder = catValue.createDiv();
 		const chain = categoryChain(store.categories, this.tx.categoryId);
 		categoryChainChip(chipHolder, chain.primary, chain.secondary);
+		// Says *why* this row sits where it does, so a category you did not choose is never a mystery.
+		// Re-read from the transaction rather than captured once: changing the category below clears
+		// the rule's claim on this row (see Transaction.categoryRuleId), and this line has to follow.
+		const ruleNote = catValue.createDiv({ cls: "fp-rule-note" });
+		const renderRuleNote = (): void => {
+			ruleNote.empty();
+			const rule = this.tx.categoryRuleId ? store.rules.find((r) => r.id === this.tx.categoryRuleId) : undefined;
+			if (!rule) return;
+			icon(ruleNote, "wand-2");
+			ruleNote.createSpan({ text: `Set by rule: "${rule.pattern}"${rule.isRegex ? " (regex)" : ""}` });
+		};
+		renderRuleNote();
 		renderCategoryPicker(catValue, {
 			categories: store.categories,
 			value: { primaryId: chain.primary?.id, secondaryId: chain.secondary?.id },
@@ -73,6 +85,7 @@ export class TransactionDetailModal extends Modal {
 				const newChain = categoryChain(store.categories, categoryId);
 				chipHolder.empty();
 				categoryChainChip(chipHolder, newChain.primary, newChain.secondary);
+				renderRuleNote();
 				this.plugin.refreshViews();
 				new Notice(
 					alsoTagged > 0

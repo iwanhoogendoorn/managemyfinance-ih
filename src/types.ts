@@ -95,6 +95,15 @@ export interface Account {
 	apr?: number;
 	/** Credit accounts: minimum payment as a fraction of the statement balance (0.02 = 2%). */
 	minPaymentPct?: number;
+	/**
+	 * A closed/cancelled account whose history you still want. Presentation only, deliberately: every
+	 * transaction, balance, snapshot, report and net-worth figure counts exactly as before, so ticking
+	 * this can never move a number. It moves the account into the sidebar's "Closed" group and takes
+	 * it out of the pickers that file *new* activity, which is the whole point — an account you can no
+	 * longer spend from shouldn't be offered as a destination, but the eight years it was open are
+	 * still real. Mirrors `Category.archived` and `Subscription.archived`.
+	 */
+	archived?: boolean;
 }
 
 /**
@@ -318,6 +327,14 @@ export interface Transaction {
 	transferGroupId?: string;
 	/** The import run that created this row — see ImportBatch. Absent on manually entered transactions. */
 	importBatchId?: string;
+	/**
+	 * The `CategoryRule` that decided this row's category, when one did. Provenance, not a second
+	 * source of truth: `categoryId` above is still the only thing anything reads to know the category.
+	 * This exists so the ledger can say *why* a row is filed where it is — a rule you wrote once and
+	 * forgot is otherwise indistinguishable from a category you chose deliberately. Cleared the moment
+	 * the category is set by any other means (by hand, by merchant memory, by a later rule).
+	 */
+	categoryRuleId?: string;
 	/** The subscription this payment is an instance of, once linked. Drives "what have I actually paid
 	 *  for Netflix" and price-increase detection. */
 	subscriptionId?: string;

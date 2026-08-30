@@ -1,5 +1,6 @@
-import { Notice } from "obsidian";
+import { Menu, Notice } from "obsidian";
 import { categoryChain, primaryCategories, resolvePrimaryId, secondaryCategoriesOf } from "../../categories";
+import { CreateCategoryRuleModal } from "../../modals/CreateCategoryRuleModal";
 import { TransactionEditModal } from "../../modals/TransactionEditModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import { formatMoney } from "../../money";
@@ -367,10 +368,52 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin, opts
 		}
 	}
 
+	/**
+	 * Why this row is filed where it is, when a rule decided it. The rule is looked up rather than
+	 * trusted: delete a rule and its rows keep their category but stop claiming to be governed, which
+	 * is the truth — nothing is enforcing them any more.
+	 */
+	function renderRuleBadge(parent: HTMLElement, t: Transaction): void {
+		if (!t.categoryRuleId) return;
+		const rule = store.rules.find((r) => r.id === t.categoryRuleId);
+		if (!rule) return;
+		const mark = parent.createSpan({ cls: "fp-rule-mark" });
+		icon(mark, "wand-2");
+		mark.setAttribute("title", `Set by rule: "${rule.pattern}"${rule.isRegex ? " (regex)" : ""}`);
+	}
+
+	function openRowMenu(ev: MouseEvent, t: Transaction): void {
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("Create category rule from this merchant…")
+				.setIcon("wand-2")
+				.onClick(() => new CreateCategoryRuleModal(plugin.app, plugin, t, () => draw()).open())
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Open details")
+				.setIcon("receipt")
+				.onClick(() => new TransactionDetailModal(plugin.app, plugin, t).open())
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Edit transaction…")
+				.setIcon("pencil")
+				.onClick(() => new TransactionEditModal(plugin.app, plugin, { transaction: t, onSaved: () => draw() }).open())
+		);
+		menu.showAtMouseEvent(ev);
+	}
+
 	function appendRow(t: Transaction): void {
 		const status = t.review ?? "new";
 		const tr = tbody.createEl("tr", { cls: `fp-ledger-row fp-review-${status}` + (selectedIds.has(t.id) ? " is-selected" : "") });
 		tr.addEventListener("click", () => new TransactionDetailModal(plugin.app, plugin, t).open());
+		tr.addEventListener("contextmenu", (ev) => {
+			ev.preventDefault();
+			openRowMenu(ev, t);
+		});
 
 		const selectCell = tr.createEl("td", { cls: "fp-ledger-td-select" });
 		const checkbox = selectCell.createEl("input", { type: "checkbox" });
@@ -396,6 +439,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin, opts
 		const catCell = tr.createEl("td");
 		const chain = categoryChain(store.categories, t.categoryId);
 		categoryChainChip(catCell, chain.primary, chain.secondary);
+		renderRuleBadge(catCell, t);
 		const amtCell = tr.createEl("td", { cls: "fp-cell-amount fp-money " + (t.amount < 0 ? "is-negative" : "is-positive") });
 		amtCell.setText(formatMoney(t.amount, { currency: t.currency || "EUR" }));
 

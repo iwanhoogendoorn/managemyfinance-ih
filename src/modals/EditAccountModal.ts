@@ -58,6 +58,7 @@ export class EditAccountModal extends Modal {
 		this.type = account.type;
 		this.currency = account.currency || "EUR";
 		this.iban = account.iban ?? "";
+		this.archived = !!account.archived;
 		this.openingBalance = account.openingBalance ?? 0;
 		this.creditLimit = account.creditLimit;
 		this.statementDay = account.statementDay !== undefined ? String(account.statementDay) : "";
@@ -154,6 +155,19 @@ export class EditAccountModal extends Modal {
 		ibanInput.value = this.iban;
 		ibanInput.addClass("fp-iban");
 		ibanInput.addEventListener("input", () => (this.iban = ibanInput.value));
+
+		const statusRow = form.createDiv({ cls: "fp-form-row" });
+		statusRow.createEl("label", { text: "Status" });
+		const statusControl = statusRow.createDiv({ cls: "fp-field-control" });
+		const archivedLabel = statusControl.createEl("label", { cls: "fp-checkbox-row" });
+		const archivedInput = archivedLabel.createEl("input", { type: "checkbox" });
+		archivedInput.checked = this.archived;
+		archivedLabel.createSpan({ text: "Closed / cancelled" });
+		archivedInput.addEventListener("change", () => (this.archived = archivedInput.checked));
+		statusControl.createDiv({
+			cls: "fp-field-hint",
+			text: "Moves the account into a \u201cClosed\u201d group in the sidebar and stops offering it when filing new activity. Every transaction, balance and report stays exactly as it is — ticking this never changes a number.",
+		});
 
 		form.createDiv({ cls: "fp-form-section-label", text: "Balance" });
 
@@ -254,6 +268,7 @@ export class EditAccountModal extends Modal {
 	private paymentDueDay = "";
 	private apr = "";
 	private minPaymentPct = "";
+	private archived = false;
 
 	/** Credit-card terms — rendered only for a credit account, and re-rendered if the type changes. */
 	private renderCreditTerms(): void {
@@ -346,6 +361,7 @@ export class EditAccountModal extends Modal {
 		account.type = this.type;
 		account.currency = this.currency;
 		account.iban = this.iban.trim() || undefined;
+		account.archived = this.archived || undefined;
 		account.openingBalance = this.openingBalance ?? 0;
 
 		// Card terms are only meaningful on a credit account; switching an account away from credit

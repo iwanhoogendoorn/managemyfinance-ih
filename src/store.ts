@@ -176,7 +176,23 @@ const TX_COLUMNS: (keyof Transaction)[] = [
 	"principalAmount",
 	"interestAmount",
 	"feeAmount",
+	// Same append-only rule again — category-rule provenance, added last.
+	"categoryRuleId",
 ];
+
+/**
+ * A category set by anything other than the rule itself is no longer the rule's doing, so the
+ * provenance stamp comes off with it.
+ *
+ * Applied here rather than at each call site because there are a dozen ways to re-file a row — the
+ * detail modal, the edit modal, bulk re-categorize, the Review page, merchant memory, a later import
+ * — and a stale "set by rule" badge on a row you fixed by hand is worse than no badge at all. A patch
+ * that names `categoryRuleId` explicitly is left alone: that is the rule engine stamping its own work.
+ */
+function clearStaleRuleProvenance(patch: Partial<Transaction>): Partial<Transaction> {
+	if (!("categoryId" in patch) || "categoryRuleId" in patch) return patch;
+	return { ...patch, categoryRuleId: undefined };
+}
 
 const NUMERIC_COLUMNS: (keyof Transaction)[] = [
 	"amount",
@@ -612,7 +628,7 @@ export class FinanceStore {
 		const tx = this.transactions.find((t) => t.id === id);
 		if (!tx) return;
 		const previousKey = this.ledgerKey(tx);
-		Object.assign(tx, patch);
+		Object.assign(tx, clearStaleRuleProvenance(patch));
 		const nextKey = this.ledgerKey(tx);
 		await this.rewriteLedgerFile(nextKey);
 		if (previousKey !== nextKey) await this.rewriteLedgerFile(previousKey);
@@ -679,7 +695,7 @@ export class FinanceStore {
 	async updateTransaction(id: string, patch: Partial<Transaction>): Promise<void> {
 		const tx = this.transactions.find((t) => t.id === id);
 		if (!tx) return;
-		Object.assign(tx, patch);
+		Object.assign(tx, clearStaleRuleProvenance(patch));
 
 		// Was a hand-inlined copy of rewriteLedgerFile that derived the year twice, and differently:
 		// the filename used `tx.date.slice(0,4) || "unknown"` while the row filter compared against
@@ -711,8 +727,9 @@ export class FinanceStore {
 		const touchedFiles = new Set<string>();
 		let count = 0;
 		for (const tx of this.transactions) {
-			const patch = patches.get(tx.id);
-			if (!patch) continue;
+			const raw = patches.get(tx.id);
+			if (!raw) continue;
+			const patch = clearStaleRuleProvenance(raw);
 			const keys = Object.keys(patch) as (keyof Transaction)[];
 			if (keys.every((k) => tx[k] === patch[k])) continue;
 			Object.assign(tx, patch);

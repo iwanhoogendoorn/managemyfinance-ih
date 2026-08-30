@@ -401,22 +401,46 @@ export class FinanceView extends ItemView {
 		const accounts = this.accountOrder()
 			.map((id) => accountById.get(id))
 			.filter((a): a is Account => !!a);
-		if (accounts.length > 0) {
-			this.navItemsEl.createDiv({ cls: "fp-nav-section-label", text: "Accounts" });
-		}
-		accounts.forEach((acc) => {
+		// A closed account keeps its place in the list and all of its history — it just stops competing
+		// for attention with the accounts you actually use. The currently-selected one stays in the open
+		// group even when archived, so closing an account you're looking at doesn't make it vanish.
+		const open = accounts.filter((a) => !a.archived || a.id === activeAccountId);
+		const closed = accounts.filter((a) => a.archived && a.id !== activeAccountId);
+
+		const renderAccount = (acc: Account): void => {
 			const item = this.navItemsEl.createDiv({
-				cls: "fp-nav-item fp-nav-item-draggable" + (!activeView && activeAccountId === acc.id ? " is-active" : ""),
+				cls:
+					"fp-nav-item fp-nav-item-draggable" +
+					(!activeView && activeAccountId === acc.id ? " is-active" : "") +
+					(acc.archived ? " is-archived" : ""),
 				attr: { draggable: "true" },
 			});
 			icon(item, ACCOUNT_TYPE_META[acc.type].icon, "fp-nav-icon");
 			const textCol = item.createDiv({ cls: "fp-nav-item-text" });
 			textCol.createDiv({ cls: "fp-nav-label", text: acc.name });
-			textCol.createDiv({ cls: "fp-nav-item-type", text: ACCOUNT_TYPE_META[acc.type].label });
+			const typeLabel = ACCOUNT_TYPE_META[acc.type].label + (acc.archived ? " · Closed" : "");
+			textCol.createDiv({ cls: "fp-nav-item-type", text: typeLabel });
+			// The account number is what actually tells two same-type accounts apart, so it gets its own
+			// line rather than being squeezed onto the type row. `fp-sensitive` puts it behind the same
+			// privacy toggle every other identifying figure sits behind, and the full value is on hover
+			// since the sidebar will always be too narrow for a full IBAN.
+			if (acc.iban) {
+				const ibanEl = textCol.createDiv({ cls: "fp-nav-item-iban fp-sensitive", text: acc.iban });
+				ibanEl.setAttribute("title", acc.iban);
+			}
 			icon(item, "grip-vertical", "fp-nav-drag-handle");
 			item.addEventListener("click", () => void this.selectAccount(acc.id));
 			this.wireDrag(item, acc.id, (draggedId, targetId) => void this.reorderAccounts(draggedId, targetId));
-		});
+		};
+
+		if (open.length > 0) {
+			this.navItemsEl.createDiv({ cls: "fp-nav-section-label", text: "Accounts" });
+			open.forEach(renderAccount);
+		}
+		if (closed.length > 0) {
+			this.navItemsEl.createDiv({ cls: "fp-nav-section-label", text: "Closed" });
+			closed.forEach(renderAccount);
+		}
 
 		this.navItemsEl.createDiv({ cls: "fp-nav-divider" });
 
