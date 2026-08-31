@@ -72,6 +72,27 @@ export function amountMatches(amount: number | undefined, condition: CategoryRul
 	}
 }
 
+/**
+ * A nested quantifier — `(a+)+`, `(\d*)*`, `(x+)*` — the shape that makes a regex take exponential
+ * time on input that *almost* matches.
+ *
+ * Deliberately a shape test rather than a proof: it catches the classic constructions and makes no
+ * claim about the rest. The alternative is not "a safe regex engine", it is what happens today —
+ * `(a+)+$` against a 32-character description never returns, and since the rule dialog re-runs the
+ * pattern over the whole ledger on every keystroke, typing one freezes the window with no dialog
+ * left to cancel and no way out but force-quitting Obsidian. Refusing a pattern that would hang is
+ * strictly better than hanging on it, and a rule already saved in this shape could never have worked.
+ */
+const NESTED_QUANTIFIER = /\([^()]*[+*][^()]*\)\s*[*+]|\([^()]*[+*]\)\s*\{\d/;
+
+/** Why this pattern must not be compiled, or undefined when it is fine to run. */
+export function unsafeRegexReason(pattern: string): string | undefined {
+	if (NESTED_QUANTIFIER.test(pattern)) {
+		return "That pattern nests one repeat inside another (like \"(a+)+\"), which can take effectively forever to match. Rewrite it without the inner repeat.";
+	}
+	return undefined;
+}
+
 /** A rule's effective mode: `match` when set, else the legacy `isRegex` flag, else "contains". */
 export function resolveRuleMatch(rule: Pick<CategoryRule, "match" | "isRegex">): CategoryRuleMatch {
 	return rule.match ?? (rule.isRegex ? "regex" : "contains");
@@ -99,6 +120,9 @@ export function ruleMatches(
 	const mode = resolveRuleMatch(rule);
 
 	if (mode === "regex") {
+		// Checked before compiling, not after: the cost of a catastrophic pattern is paid at match
+		// time, so there is nothing to catch once it has started.
+		if (unsafeRegexReason(rule.pattern)) return false;
 		try {
 			return new RegExp(rule.pattern, "i").test(ruleHaystack(tx));
 		} catch {
