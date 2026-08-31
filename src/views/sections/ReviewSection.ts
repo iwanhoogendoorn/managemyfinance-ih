@@ -441,6 +441,9 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	 *  without becoming a second list to scroll past. */
 	const MERCHANT_PANEL_LIMIT = 12;
 
+	/** Enough rows to judge what a merchant is without turning the panel into the list below it. */
+	const MERCHANT_DETAIL_LIMIT = 12;
+
 	/**
 	 * The queue grouped by who was paid, with a category picker per merchant.
 	 *
@@ -510,23 +513,55 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 
 	function renderMerchantRow(list: HTMLElement, key: string, name: string, count: number): void {
 		const isActive = reviewState.merchantKey === key;
+		const isOpen = expandedMerchants.has(key);
 		const row = list.createDiv({ cls: "fp-merchant-row" + (isActive ? " is-active" : "") });
 
-		const nameBtn = row.createEl("button", { cls: "fp-merchant-name" });
-		nameBtn.createSpan({ cls: "fp-merchant-count", text: String(count) });
-		nameBtn.createSpan({ text: name });
-		nameBtn.setAttribute("title", isActive ? "Showing only this merchant — click to show all" : `Show only ${name}`);
-		nameBtn.addEventListener("click", () => {
+		// A div, not a button. A theme that styles `button` at all beats a plain class selector, and
+		// this row came out as a 693px grey pill with its text centred — the same way the sidebar's
+		// "Closed" heading did. Nothing here needs to be a button except the click.
+		const expand = row.createDiv({
+			cls: "fp-merchant-expand" + (isOpen ? " is-open" : ""),
+			attr: { role: "button", tabindex: "0", "aria-expanded": String(isOpen), title: isOpen ? "Hide these rows" : `Show the ${count} rows` },
+		});
+		icon(expand, "chevron-right");
+		const toggleOpen = (): void => {
+			if (isOpen) expandedMerchants.delete(key);
+			else expandedMerchants.add(key);
+			render();
+		};
+		expand.addEventListener("click", toggleOpen);
+		expand.addEventListener("keydown", (ev) => {
+			if (ev.key === "Enter" || ev.key === " ") {
+				ev.preventDefault();
+				toggleOpen();
+			}
+		});
+
+		row.createDiv({ cls: "fp-merchant-count", text: String(count) });
+
+		const nameEl = row.createDiv({
+			cls: "fp-merchant-name",
+			text: name,
+			attr: { role: "button", tabindex: "0", title: isActive ? "Showing only this merchant — click to show all" : `Show only ${name}` },
+		});
+		const toggleFilter = (): void => {
 			reviewState.merchantKey = isActive ? "" : key;
 			reviewState.shown = PAGE_SIZE;
 			render();
+		};
+		nameEl.addEventListener("click", toggleFilter);
+		nameEl.addEventListener("keydown", (ev) => {
+			if (ev.key === "Enter" || ev.key === " ") {
+				ev.preventDefault();
+				toggleFilter();
+			}
 		});
 
+		const actions = row.createDiv({ cls: "fp-merchant-actions" });
 		// Its own picker per row rather than one shared control: the whole point is deciding several
 		// merchants in a row without a selection step between each.
 		let pending: string | undefined;
-		const pickerWrap = row.createDiv({ cls: "fp-merchant-picker" });
-		renderCategoryPicker(pickerWrap, {
+		renderCategoryPicker(actions.createDiv({ cls: "fp-merchant-picker" }), {
 			categories: store.categories,
 			primaryPlaceholder: "Set category…",
 			onChange: ({ primaryId, secondaryId }) => {
@@ -535,18 +570,65 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			},
 		});
 
-		const applyBtn = row.createEl("button", { cls: "fp-btn fp-btn-primary fp-merchant-apply" });
+		const applyBtn = actions.createEl("button", { cls: "fp-btn fp-btn-primary fp-merchant-apply" });
 		icon(applyBtn, "check-check");
 		applyBtn.createSpan({ text: `File ${count}` });
 		applyBtn.disabled = true;
 		applyBtn.addEventListener("click", () => {
 			if (!pending) return;
-			// Every row of this merchant currently in scope, not only the page on screen.
-			const ids = filteredIgnoringMerchant()
-				.filter((t) => merchantKey(t) === key)
-				.map((t) => t.id);
-			void categorizeAndApprove(ids, pending);
+			void categorizeAndApprove(merchantRows(key).map((t) => t.id), pending);
 		});
+
+		if (isOpen) renderMerchantRows(list, key);
+	}
+
+	/** Every row of this merchant in the current scope — not only the page on screen. */
+	function merchantRows(key: string): Transaction[] {
+		return filteredIgnoringMerchant().filter((t) => merchantKey(t) === key);
+	}
+
+	/**
+	 * The transactions behind a merchant's count.
+	 *
+	 * "File 75" is a large claim to accept on a name alone — especially where the name came from a
+	 * counterparty the ledger only half-recognises. This is the cheap way to check what is actually in
+	 * there before agreeing to it.
+	 */
+	function renderMerchantRows(list: HTMLElement, key: string): void {
+		const rows = merchantRows(key);
+		const panel = list.createDiv({ cls: "fp-merchant-detail" });
+		const wrap = panel.createDiv({ cls: "fp-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fp-table" });
+		const headRow = table.createEl("thead").createEl("tr");
+		["Date", "Description", "Account", "Category", "Amount"].forEach((h, i) =>
+			headRow.createEl("th", { text: h, cls: i === 4 ? "fp-table-num" : "" })
+		);
+		const tbody = table.createEl("tbody");
+		for (const tx of rows.slice(0, MERCHANT_DETAIL_LIMIT)) {
+			const tr = tbody.createEl("tr", { cls: "fp-table-row-clickable" });
+			tr.addEventListener("click", () => new TransactionDetailModal(plugin.app, plugin, tx).open());
+			tr.createEl("td", { text: tx.date || "No date", cls: "fp-cell-date" });
+			const desc = tr.createEl("td", { cls: "fp-sensitive" });
+			desc.createDiv({ text: tx.description || "(no description)" });
+			if (tx.counterparty && tx.counterparty !== tx.description) {
+				desc.createDiv({ cls: "fp-merchant-detail-sub fp-sensitive", text: tx.counterparty });
+			}
+			tr.createEl("td", { text: store.accounts.find((a) => a.id === tx.accountId)?.name ?? "—" });
+			const catCell = tr.createEl("td");
+			const chain = categoryChain(store.categories, tx.categoryId);
+			if (chain.primary) categoryChainChip(catCell, chain.primary, chain.secondary);
+			else catCell.createSpan({ cls: "fp-budget-hint-text", text: "Uncategorized" });
+			tr.createEl("td", {
+				cls: "fp-table-num fp-money " + (tx.amount < 0 ? "is-negative" : "is-positive"),
+				text: formatMoney(tx.amount, { currency: tx.currency || "EUR" }),
+			});
+		}
+		if (rows.length > MERCHANT_DETAIL_LIMIT) {
+			panel.createDiv({
+				cls: "fp-field-hint",
+				text: `Showing ${MERCHANT_DETAIL_LIMIT} of ${rows.length}. Click the name to filter the queue to this merchant and see them all.`,
+			});
+		}
 	}
 
 	function renderControls(): void {
@@ -674,6 +756,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	/** Rebuilt once per redraw — see uncategorizedByMerchant. */
 	let siblingCounts = new Map<string, number>();
 	let merchantPanelExpanded = false;
+	const expandedMerchants = new Set<string>();
 	let countersEl: HTMLElement | undefined;
 	let bulkBarEl: HTMLElement | undefined;
 	let tableEl: HTMLElement | undefined;

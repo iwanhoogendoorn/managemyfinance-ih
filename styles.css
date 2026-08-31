@@ -7760,12 +7760,13 @@
 	gap: 6px;
 	margin-top: 10px;
 }
+/* A grid, so the counts line up in a column instead of drifting with each name's width. */
 .fp-merchant-row {
-	display: flex;
+	display: grid;
+	grid-template-columns: 22px 3.2em minmax(0, 1fr) auto;
 	align-items: center;
 	gap: 10px;
-	flex-wrap: wrap;
-	padding: 6px 8px;
+	padding: 5px 8px;
 	border-radius: 6px;
 }
 .fp-merchant-row:hover {
@@ -7775,40 +7776,68 @@
 	background: var(--background-modifier-hover);
 	box-shadow: inset 2px 0 0 var(--interactive-accent);
 }
-.fp-merchant-name {
+.fp-merchant-expand {
 	display: inline-flex;
-	align-items: baseline;
-	gap: 8px;
-	flex: 1 1 220px;
-	min-width: 0;
-	padding: 0;
-	border: none;
-	background: transparent;
-	box-shadow: none;
-	color: var(--text-normal);
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 4px;
+	color: var(--text-faint);
 	cursor: pointer;
-	text-align: left;
-	font-size: var(--font-ui-small);
-	height: auto;
 }
-.fp-merchant-name:hover {
-	color: var(--interactive-accent);
+.fp-merchant-expand:hover {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
 }
-/* The count leads: it is the reason to act on this row rather than scroll past it. */
+.fp-merchant-expand .svg-icon {
+	width: 14px;
+	height: 14px;
+	transition: transform 120ms ease;
+}
+.fp-merchant-expand.is-open .svg-icon {
+	transform: rotate(90deg);
+}
+/* Right-aligned and tabular: the counts are the column you scan down. */
 .fp-merchant-count {
-	min-width: 2.5em;
+	text-align: right;
 	font-weight: 700;
 	font-variant-numeric: tabular-nums;
 	color: var(--text-muted);
 }
-.fp-merchant-picker {
-	flex: 0 1 auto;
+.fp-merchant-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+	color: var(--text-normal);
+}
+.fp-merchant-name:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
+}
+.fp-merchant-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 .fp-merchant-picker .fp-category-picker {
 	margin: 0;
 }
 .fp-merchant-apply {
 	flex: 0 0 auto;
+	white-space: nowrap;
+}
+/* The rows behind a count, spanning the full width beneath their merchant. */
+.fp-merchant-detail {
+	grid-column: 1 / -1;
+	margin: 2px 0 10px 32px;
+	padding-left: 10px;
+	border-left: 2px solid var(--background-modifier-border);
+}
+.fp-merchant-detail-sub {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
 }
 .fp-merchant-more {
 	margin-top: 8px;
