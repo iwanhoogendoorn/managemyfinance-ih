@@ -4,9 +4,29 @@ import { formatMoney } from "../money";
 import { merchantKey } from "../import/merchantKey";
 import { remember } from "../import/merchantMemory";
 import type FinancePlugin from "../main";
-import { changedByPreview, previewRule, rulePatches, seedPatternFor, type RulePreview } from "../rules";
-import type { CategoryRule, Transaction } from "../types";
+import { changedByPreview, previewRule, rulePatches, seedRuleFor, type RulePreview } from "../rules";
+import type { CategoryRule, CategoryRuleMatch, Transaction } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
+
+/** Ordered narrowest first, which is also the order they are worth trying in. */
+const MATCH_MODES: { value: CategoryRuleMatch; label: string; hint: string }[] = [
+	{
+		value: "exact",
+		label: "Is exactly this",
+		hint: "The description (or counterparty) is exactly this and nothing more — so \u201cApple\u201d leaves \u201cApple Store\u201d alone.",
+	},
+	{
+		value: "starts-with",
+		label: "Starts with this",
+		hint: "Catches every branch and reference that follows the merchant name, e.g. \u201cALBERT HEIJN 1423 DEN HAAG\u201d.",
+	},
+	{
+		value: "contains",
+		label: "Contains this anywhere",
+		hint: "The widest option: matches wherever the text appears, including inside a longer merchant name.",
+	},
+	{ value: "regex", label: "Regular expression", hint: "Matched case-insensitively against the description and counterparty together." },
+];
 
 /** A read-only list this long is already past the point of being scanned; beyond it, narrowing the
  *  pattern is the better answer than a longer list. */
@@ -29,7 +49,7 @@ const ALREADY_CORRECT_LIMIT = 500;
  */
 export class CreateCategoryRuleModal extends Modal {
 	private pattern: string;
-	private isRegex = false;
+	private match: CategoryRuleMatch;
 	/** Off by default: see `previewRule` on why transfers are held back from a merchant rule. */
 	private includeNeutral = false;
 	private value: CategoryPickerValue;
@@ -44,7 +64,9 @@ export class CreateCategoryRuleModal extends Modal {
 
 	constructor(app: App, private plugin: FinancePlugin, private tx: Transaction, private onDone?: () => void) {
 		super(app);
-		this.pattern = seedPatternFor(tx);
+		const seed = seedRuleFor(tx);
+		this.pattern = seed.pattern;
+		this.match = seed.match;
 		const chain = categoryChain(plugin.store.categories, tx.categoryId);
 		this.value = { primaryId: chain.primary?.id, secondaryId: chain.secondary?.id };
 	}
@@ -62,7 +84,7 @@ export class CreateCategoryRuleModal extends Modal {
 	private computePreview(): RulePreview {
 		return previewRule(
 			this.plugin.store,
-			{ pattern: this.pattern, isRegex: this.isRegex },
+			{ pattern: this.pattern, match: this.match },
 			this.targetCategoryId(),
 			{ includeNeutral: this.includeNeutral }
 		);
@@ -359,15 +381,22 @@ export class CreateCategoryRuleModal extends Modal {
 			this.pattern = patternInput.value;
 			this.renderPreview();
 		});
-		patternControl.createDiv({ cls: "fp-field-hint", text: "Case-insensitive. Shortened from the full description so it catches every branch, not just this one." });
+		patternControl.createDiv({ cls: "fp-field-hint", text: "Case-insensitive, and trimmed back from the full description so it names the merchant rather than this one charge." });
 
-		const regexLabel = patternControl.createEl("label", { cls: "fp-checkbox-row" });
-		const regexInput = regexLabel.createEl("input", { type: "checkbox" });
-		regexLabel.createSpan({ text: "Treat as a regular expression" });
-		regexInput.addEventListener("change", () => {
-			this.isRegex = regexInput.checked;
+		const modeRow = form.createDiv({ cls: "fp-form-row" });
+		modeRow.createEl("label", { text: "Match how" });
+		const modeControl = modeRow.createDiv({ cls: "fp-field-control" });
+		const modeSelect = modeControl.createEl("select", { cls: "fp-setup-select" });
+		MATCH_MODES.forEach(({ value, label }) => modeSelect.createEl("option", { text: label, value }));
+		modeSelect.value = this.match;
+		const modeHint = modeControl.createDiv({ cls: "fp-field-hint" });
+		const describeMode = (): void => modeHint.setText(MATCH_MODES.find((m) => m.value === this.match)?.hint ?? "");
+		modeSelect.addEventListener("change", () => {
+			this.match = modeSelect.value as CategoryRuleMatch;
+			describeMode();
 			this.renderPreview();
 		});
+		describeMode();
 
 		const catRow = form.createDiv({ cls: "fp-form-row" });
 		catRow.createEl("label", { text: "File as" });
@@ -402,7 +431,7 @@ export class CreateCategoryRuleModal extends Modal {
 		const target = this.targetCategoryId();
 		const pattern = this.pattern.trim();
 		if (!pattern || !target) return;
-		if (this.isRegex) {
+		if (this.match === "regex") {
 			try {
 				new RegExp(pattern, "i");
 			} catch {
@@ -415,9 +444,12 @@ export class CreateCategoryRuleModal extends Modal {
 		const rule: CategoryRule = {
 			id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 			pattern,
+			match: this.match,
 			categoryId: target,
 		};
-		if (this.isRegex) rule.isRegex = true;
+		// Written alongside `match`, never instead of it, so anything still reading the old flag —
+		// ManageRulesModal's REGEX badge among them — keeps seeing the truth.
+		if (this.match === "regex") rule.isRegex = true;
 
 		// Ahead of the built-ins and of every older rule: a rule you just wrote about a merchant you
 		// were just looking at is the most specific intent in the list, and applyRules takes the first

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor } from "./rules";
+import { changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor, seedRuleFor } from "./rules";
 import type { Category, Transaction } from "./types";
 
 
@@ -299,5 +299,81 @@ describe("rulePatches — what actually gets written", () => {
 
 		const optedIn = previewRule(storeOf(rows, cats), { pattern: "Albert Heijn" }, GROCERIES, { includeNeutral: true });
 		expect(rulePatches(optedIn, new Set(), RULE).has(topUp.id)).toBe(true);
+	});
+});
+
+describe("seedRuleFor — the mode the dialog opens on", () => {
+	it("starts exact when the description IS the merchant", () => {
+		// The Apple case: 201 rows described "Apple", 2 described "Apple Store", in the same category
+		// today but not necessarily tomorrow. Exact is the only mode that can tell them apart.
+		expect(seedRuleFor({ description: "Apple" })).toEqual({ pattern: "Apple", match: "exact" });
+		expect(seedRuleFor({ description: "Apple Store" })).toEqual({ pattern: "Apple Store", match: "exact" });
+		expect(seedRuleFor({ description: "apple.com/bill" })).toEqual({ pattern: "apple.com/bill", match: "exact" });
+		expect(seedRuleFor({ description: "ONLY&SONS" })).toEqual({ pattern: "ONLY&SONS", match: "exact" });
+	});
+
+	it("starts with starts-with when the seed was cut back from a longer description", () => {
+		// Exact would match nothing here, and one rule has to cover every branch.
+		expect(seedRuleFor({ description: "ALBERT HEIJN 1423 DEN HAAG" })).toEqual({ pattern: "ALBERT HEIJN", match: "starts-with" });
+		expect(seedRuleFor({ description: "Bck Barbershop 040" })).toEqual({ pattern: "Bck Barbershop", match: "starts-with" });
+	});
+
+	it("reads the counterparty when that is where the merchant lives", () => {
+		expect(seedRuleFor({ description: "Card payment", counterparty: "Bck Barbershop 040" })).toEqual({
+			pattern: "Bck Barbershop",
+			match: "starts-with",
+		});
+	});
+
+	it("always produces a rule that matches the row it came from", () => {
+		for (const row of [
+			{ description: "Apple" },
+			{ description: "Apple Store" },
+			{ description: "ALBERT HEIJN 1423 DEN HAAG" },
+			{ description: "H&M 0123 AMSTERDAM" },
+			{ description: "APPLE.COM/BILL" },
+			{ description: "998877665544" },
+			{ description: "Card payment", counterparty: "Bck Barbershop 040" },
+		]) {
+			const seeded = seedRuleFor(row);
+			expect(previewRule(storeOf([{ ...tx(row.description), ...row }]), seeded, "cat-x").total).toBe(1);
+		}
+	});
+});
+
+describe("previewRule — telling Apple from Apple Store", () => {
+	const ELECTRONICS = "cat-electronics";
+	const SUBS = "cat-subs";
+	const CATS: Category[] = [
+		{ id: ELECTRONICS, name: "Electronics", color: "#000", icon: "tag", aliases: [] },
+		{ id: SUBS, name: "Subscriptions", color: "#000", icon: "tag", aliases: [] },
+	];
+
+	/** The real shape of the ledger, scaled down. */
+	function appleLedger(): Transaction[] {
+		return [
+			tx("Apple", ELECTRONICS),
+			tx("Apple", ELECTRONICS),
+			tx("Apple Store", ELECTRONICS),
+			tx("apple.com/bill", SUBS),
+		];
+	}
+
+	it("exact reaches the plain Apple rows and nothing else", () => {
+		const p = previewRule(storeOf(appleLedger(), CATS), { pattern: "Apple", match: "exact" }, ELECTRONICS);
+		expect(p.total).toBe(2);
+		expect(p.alreadyCorrect).toHaveLength(2);
+	});
+
+	it("exact lets Apple Store be filed somewhere else entirely", () => {
+		const rows = appleLedger();
+		const p = previewRule(storeOf(rows, CATS), { pattern: "Apple Store", match: "exact" }, SUBS);
+		expect(p.total).toBe(1);
+		expect(changedByPreview(p)[0].description).toBe("Apple Store");
+	});
+
+	it("contains still sweeps up all four, which is why it is no longer the default", () => {
+		const p = previewRule(storeOf(appleLedger(), CATS), { pattern: "Apple", match: "contains" }, ELECTRONICS);
+		expect(p.total).toBe(4);
 	});
 });

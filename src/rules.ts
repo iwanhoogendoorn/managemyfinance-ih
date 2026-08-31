@@ -1,6 +1,6 @@
 import { classifyTransaction, isEconomicallyNeutral, type ClassifyStore } from "./finance/semantics";
 import { ruleMatches } from "./import/categorize";
-import type { CategoryRule, Transaction } from "./types";
+import type { CategoryRule, CategoryRuleMatch, Transaction } from "./types";
 
 /**
  * What a rule would do to the ledger, grouped by where each matching row currently sits.
@@ -68,7 +68,7 @@ export function movingCount(preview: RulePreview): number {
  */
 export function previewRule(
 	store: RulePreviewStore,
-	rule: Pick<CategoryRule, "pattern" | "isRegex">,
+	rule: Pick<CategoryRule, "pattern" | "isRegex" | "match">,
 	targetCategoryId: string | undefined,
 	opts: { includeNeutral?: boolean } = {}
 ): RulePreview {
@@ -170,4 +170,27 @@ export function rulePatches(
 		patches.set(tx.id, { categoryId: rule.categoryId, categoryRuleId: rule.id });
 	}
 	return patches;
+}
+
+/**
+ * The pattern *and* the match mode to open the dialog with — the narrowest of the two whole-field
+ * modes that still matches the row you right-clicked.
+ *
+ * A ledger holding "Apple" (201 rows, Electronics), "Apple Store" (2 rows), "Apple Pay top-up by
+ * *4606" (54 rows, Transfers) and "apple.com/bill" (1 row, Subscriptions) has four merchants sharing
+ * one word, and under a substring rule there is no pattern that reaches the first without dragging in
+ * the rest. Right-clicking a row whose description *is* the merchant therefore starts at "exact", and
+ * the 201 Apple charges can be filed without touching the other 57.
+ *
+ * Where the seed was cut back from a longer description — "ALBERT HEIJN" out of "ALBERT HEIJN 1423
+ * DEN HAAG" — exact would match nothing at all, so those start at "starts with", which is what makes
+ * one rule cover every branch. Narrow first either way: widening is one dropdown away and the preview
+ * shows the consequence immediately, whereas a rule that quietly swept up a neighbouring merchant is
+ * only discovered later, in a total that looks wrong.
+ */
+export function seedRuleFor(tx: Pick<Transaction, "description" | "counterparty">): { pattern: string; match: CategoryRuleMatch } {
+	const pattern = seedPatternFor(tx);
+	if (ruleMatches(tx, { pattern, match: "exact" })) return { pattern, match: "exact" };
+	if (ruleMatches(tx, { pattern, match: "starts-with" })) return { pattern, match: "starts-with" };
+	return { pattern, match: "contains" };
 }

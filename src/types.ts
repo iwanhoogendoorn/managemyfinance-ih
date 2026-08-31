@@ -189,10 +189,24 @@ export interface OneOffBudget {
 	archived?: boolean;
 }
 
+/**
+ * How a rule's pattern is compared against a transaction.
+ *
+ * "contains" is the original behaviour and stays the fallback for every rule written before this
+ * existed. The other two non-regex modes exist because a substring can't express "this merchant and
+ * not the one whose name starts the same way": a ledger holding both "Apple" and "Apple Store" — two
+ * merchants, two categories — has no substring that catches the first without the second.
+ */
+export type CategoryRuleMatch = "contains" | "exact" | "starts-with" | "regex";
+
 export interface CategoryRule {
 	id: string;
 	pattern: string;
+	/** Superseded by `match`, kept so rules written before it keep working (and so does anything else
+	 *  still reading this flag). `match: "regex"` is written alongside it, never instead of it. */
 	isRegex?: boolean;
+	/** Unset means "contains", or "regex" when `isRegex` is set — see `resolveRuleMatch`. */
+	match?: CategoryRuleMatch;
 	categoryId: string;
 }
 

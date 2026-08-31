@@ -1,5 +1,5 @@
 import { CATEGORY_ALIAS_SEED } from "../constants";
-import type { Category, CategoryRule, Transaction } from "../types";
+import type { Category, CategoryRule, CategoryRuleMatch, Transaction } from "../types";
 
 /**
  * Legacy aliases are applied first and real categories second, so that when a secondary category's
@@ -20,9 +20,26 @@ export function buildAliasLookup(categories: Category[]): Map<string, string> {
 	return map;
 }
 
-/** What a rule is tested against: the description and the counterparty, as one case-folded string. */
+/** What a "contains" or regex rule is tested against: description and counterparty as one
+ *  case-folded string. Unchanged, so every rule written before match modes existed still behaves
+ *  exactly as it did. */
 export function ruleHaystack(tx: Pick<Transaction, "description" | "counterparty">): string {
 	return `${tx.description} ${tx.counterparty ?? ""}`.toLowerCase();
+}
+
+/**
+ * The two whole-field modes compare against each field on its own rather than the joined haystack.
+ * Joining makes "exact" meaningless — no single field ever equals "description counterparty" — and
+ * would break "starts with" for any bank that puts the merchant in the counterparty and something
+ * generic like "Card payment" in the description.
+ */
+function ruleFields(tx: Pick<Transaction, "description" | "counterparty">): string[] {
+	return [tx.description ?? "", tx.counterparty ?? ""].map((v) => v.trim().toLowerCase()).filter((v) => v.length > 0);
+}
+
+/** A rule's effective mode: `match` when set, else the legacy `isRegex` flag, else "contains". */
+export function resolveRuleMatch(rule: Pick<CategoryRule, "match" | "isRegex">): CategoryRuleMatch {
+	return rule.match ?? (rule.isRegex ? "regex" : "contains");
 }
 
 /**
@@ -33,17 +50,27 @@ export function ruleHaystack(tx: Pick<Transaction, "description" | "counterparty
  * now the same predicate rather than two hand-written copies of it. An unparseable regex matches
  * nothing rather than throwing, exactly as it did inline.
  */
-export function ruleMatches(tx: Pick<Transaction, "description" | "counterparty">, rule: Pick<CategoryRule, "pattern" | "isRegex">): boolean {
-	if (!rule.pattern) return false;
-	const haystack = ruleHaystack(tx);
-	if (rule.isRegex) {
+export function ruleMatches(
+	tx: Pick<Transaction, "description" | "counterparty">,
+	rule: Pick<CategoryRule, "pattern" | "isRegex" | "match">
+): boolean {
+	// Ahead of every mode, regex included: an all-whitespace pattern is never deliberate, and each
+	// mode would otherwise fail differently and only by accident of the text it was tested against.
+	const needle = rule.pattern.trim().toLowerCase();
+	if (!needle) return false;
+	const mode = resolveRuleMatch(rule);
+
+	if (mode === "regex") {
 		try {
-			return new RegExp(rule.pattern, "i").test(haystack);
+			return new RegExp(rule.pattern, "i").test(ruleHaystack(tx));
 		} catch {
 			return false;
 		}
 	}
-	return haystack.includes(rule.pattern.toLowerCase());
+
+	if (mode === "exact") return ruleFields(tx).some((field) => field === needle);
+	if (mode === "starts-with") return ruleFields(tx).some((field) => field.startsWith(needle));
+	return ruleHaystack(tx).includes(rule.pattern.toLowerCase());
 }
 
 /** Returns the first matching rule's category, or undefined if nothing matches (falls back to "needs review"). */

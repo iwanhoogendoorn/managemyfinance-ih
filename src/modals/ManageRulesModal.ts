@@ -1,9 +1,16 @@
 import { App, Modal, Notice } from "obsidian";
 import { categoryChain } from "../categories";
-import { applyRules } from "../import/categorize";
+import { applyRules, resolveRuleMatch } from "../import/categorize";
 import type FinancePlugin from "../main";
-import type { CategoryRule } from "../types";
+import type { CategoryRule, CategoryRuleMatch } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
+
+const RULE_MATCH_BADGE: Record<CategoryRuleMatch, string> = {
+	contains: "CONTAINS",
+	exact: "EXACT",
+	"starts-with": "STARTS WITH",
+	regex: "REGEX",
+};
 
 /**
  * "IF description/counterparty contains X THEN category = Y" — the same CategoryRule model the
@@ -138,7 +145,12 @@ export class ManageRulesModal extends Modal {
 				const row = list.createDiv({ cls: "fp-rule-row" });
 				const patternCol = row.createDiv({ cls: "fp-rule-row-pattern" });
 				patternCol.createEl("code", { text: rule.pattern });
-				if (rule.isRegex) patternCol.createSpan({ cls: "fp-badge fp-tone-neutral", text: "REGEX" });
+				// Not just REGEX any more: an "exact" rule and a "contains" rule with the same pattern
+				// behave very differently, and a list that showed them identically would be lying.
+				const mode = resolveRuleMatch(rule);
+				if (mode !== "contains") {
+					patternCol.createSpan({ cls: "fp-badge fp-tone-neutral", text: RULE_MATCH_BADGE[mode] });
+				}
 
 				icon(row, "arrow-right", "fp-rule-row-arrow");
 
