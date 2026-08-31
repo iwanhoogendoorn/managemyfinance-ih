@@ -7513,3 +7513,10 @@
 .modal-container.fp-modal-stays-open > .modal-bg {
 	opacity: 0.35;
 }
+/* The dialog belongs to the tab it was opened from. Away from that tab it is
+   hidden rather than closed, so everything typed into it is still there when you
+   come back. `display: none` and not `visibility`, so it neither paints nor
+   takes a click while it is away. */
+.modal-container.fp-modal-stays-open.fp-modal-away {
+	display: none !important;
+}
