@@ -1,4 +1,5 @@
 import { Notice } from "obsidian";
+import { accountReviewProgress, reviewCounts } from "../../review";
 import { categoryChain, primaryCategories, resolvePrimaryId, secondaryCategoriesOf } from "../../categories";
 import { merchantKey, merchantLabel } from "../../import/merchantKey";
 import { dismissSuggestion, siblingsOf, unknownMerchants } from "../../import/merchantMemory";
@@ -319,16 +320,31 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	}
 
 	function renderCounters(): void {
-		const all = store.transactions;
-		const counts = { new: 0, approved: 0, flagged: 0 };
-		let uncategorized = 0;
-		for (const tx of all) {
-			counts[statusOf(tx)]++;
-			if (!tx.categoryId) uncategorized++;
-		}
+		countersEl?.remove();
+		countersEl = container.createDiv();
+		const host = countersEl;
+
+		// Scoped to the account being reviewed, not the whole ledger. Reading every account at once
+		// made "3,950 approved, 0 to review" the answer whichever account was selected, so the page
+		// reported the work finished while a freshly imported account sat untouched inside that number.
+		const scoped = reviewState.accountId
+			? store.transactions.filter((t) => t.accountId === reviewState.accountId)
+			: store.transactions;
+		const account = store.accounts.find((a) => a.id === reviewState.accountId);
+		const all = scoped;
+		const c = reviewCounts(scoped);
+		const counts = { new: c.toReview, approved: c.approved, flagged: c.flagged };
+		const uncategorized = c.uncategorized;
 		const done = all.length === 0 ? 0 : counts.approved / all.length;
 
-		const kpis = container.createDiv({ cls: "fp-stat-grid" });
+		if (account) {
+			host.createDiv({
+				cls: "fp-review-scope",
+				text: `Showing ${account.name} only — the figures below are this account's.`,
+			});
+		}
+
+		const kpis = host.createDiv({ cls: "fp-stat-grid" });
 		statTile(kpis, {
 			label: "To review",
 			value: String(counts.new),
@@ -354,6 +370,51 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			money: false,
 			sub: "regardless of review state",
 		});
+
+		renderAccountProgress(host);
+	}
+
+	/**
+	 * Per-account progress, so several accounts can be read at once rather than by cycling the filter.
+	 *
+	 * Only worth showing when there is more than one account: with a single one it would restate the
+	 * cards immediately above it.
+	 */
+	function renderAccountProgress(host: HTMLElement): void {
+		if (store.accounts.length < 2) return;
+		const progress = accountReviewProgress(store.transactions, store.accounts);
+
+		const wrap = host.createDiv({ cls: "fp-review-accounts" });
+		wrap.createDiv({ cls: "fp-form-section-label", text: "By account" });
+		const table = wrap.createEl("table", { cls: "fp-table" });
+		const headRow = table.createEl("thead").createEl("tr");
+		["Account", "To review", "Flagged", "Approved", "Uncategorized"].forEach((h, i) =>
+			headRow.createEl("th", { text: h, cls: i > 0 ? "fp-table-num" : "" })
+		);
+
+		const tbody = table.createEl("tbody");
+		for (const { account, counts } of progress) {
+			const outstanding = counts.toReview + counts.flagged;
+			const tr = tbody.createEl("tr", {
+				cls: "fp-table-row-clickable" + (account.id === reviewState.accountId ? " is-selected" : ""),
+			});
+			// Clicking sets the filter, which is the action the row makes you want to take.
+			tr.addEventListener("click", () => {
+				reviewState.accountId = reviewState.accountId === account.id ? "" : account.id;
+				reviewState.shown = PAGE_SIZE;
+				render();
+			});
+
+			const nameCell = tr.createEl("td");
+			nameCell.createSpan({ text: account.name });
+			if (counts.total === 0) badge(nameCell, "no transactions", "neutral");
+			else if (outstanding === 0) badge(nameCell, "done", "good");
+
+			tr.createEl("td", { cls: "fp-table-num", text: counts.toReview > 0 ? String(counts.toReview) : "—" });
+			tr.createEl("td", { cls: "fp-table-num", text: counts.flagged > 0 ? String(counts.flagged) : "—" });
+			tr.createEl("td", { cls: "fp-table-num", text: String(counts.approved) });
+			tr.createEl("td", { cls: "fp-table-num", text: counts.uncategorized > 0 ? String(counts.uncategorized) : "—" });
+		}
 	}
 
 	function renderControls(): void {
@@ -398,6 +459,9 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		accountSelect.addEventListener("change", () => {
 			reviewState.accountId = accountSelect.value;
 			reviewState.shown = PAGE_SIZE;
+			// The counters are scoped to the account too, so they have to follow the filter rather than
+			// keep reporting whatever was true when the page was first drawn.
+			renderCounters();
 			redrawList();
 		});
 
@@ -476,6 +540,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		renderTable(rows);
 	}
 
+	let countersEl: HTMLElement | undefined;
 	let bulkBarEl: HTMLElement | undefined;
 	let tableEl: HTMLElement | undefined;
 

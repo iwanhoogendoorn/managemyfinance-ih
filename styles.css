@@ -7669,3 +7669,19 @@
 .fp-table tr.is-overdue td:first-child {
 	box-shadow: inset 2px 0 0 var(--color-red, #dc2626);
 }
+
+/* Review, scoped to one account: says so, so a smaller number is never mistaken for progress. */
+.fp-review-scope {
+	margin: 10px 0 -4px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+/* Per-account progress — where the work actually is, without cycling the account filter. */
+.fp-review-accounts {
+	margin: 16px 0 4px;
+}
+.fp-review-accounts .fp-table td:first-child {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
