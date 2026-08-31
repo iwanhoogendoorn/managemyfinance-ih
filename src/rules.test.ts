@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor, seedRuleFor } from "./rules";
+import { amountGroups, changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor, seedRuleFor } from "./rules";
 import type { Category, Transaction } from "./types";
 
 
@@ -375,5 +375,102 @@ describe("previewRule — telling Apple from Apple Store", () => {
 	it("contains still sweeps up all four, which is why it is no longer the default", () => {
 		const p = previewRule(storeOf(appleLedger(), CATS), { pattern: "Apple", match: "contains" }, ELECTRONICS);
 		expect(p.total).toBe(4);
+	});
+});
+
+describe("amountGroups — the structure inside one merchant", () => {
+	function charge(amount: number, date: string): Transaction {
+		n++;
+		return { id: `t-${n}`, date, accountId: "acc", description: "Apple", amount, currency: "EUR", source: "manual" };
+	}
+
+	/** A monthly 9.99 subscription plus a handful of one-off purchases, all described "Apple". */
+	function ledger(): Transaction[] {
+		const subs = ["2026-01-24", "2026-02-24", "2026-03-24", "2026-04-24"].map((d) => charge(-9.99, d));
+		return [...subs, charge(-29.99, "2026-02-14"), charge(-3.49, "2026-03-19"), charge(-9.99, "2026-05-24")];
+	}
+
+	it("groups by amount, commonest first", () => {
+		const groups = amountGroups(ledger());
+		expect(groups[0].value).toBe(9.99);
+		expect(groups[0].count).toBe(5);
+		expect(groups.map((g) => g.value)).toEqual([9.99, 29.99, 3.49]);
+	});
+
+	it("reports the cadence that makes a subscription recognisable", () => {
+		const groups = amountGroups(ledger());
+		expect(groups[0].months).toBe(5);
+		expect(groups[0].medianGapDays).toBeGreaterThanOrEqual(28);
+		expect(groups[0].medianGapDays).toBeLessThanOrEqual(32);
+	});
+
+	it("reports no cadence below three charges — two points are a gap, not a rhythm", () => {
+		const groups = amountGroups(ledger());
+		expect(groups.find((g) => g.value === 29.99)?.medianGapDays).toBeUndefined();
+	});
+
+	it("treats a refund as the same amount as the charge", () => {
+		const groups = amountGroups([charge(-9.99, "2026-01-01"), charge(9.99, "2026-02-01")]);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].count).toBe(2);
+	});
+
+	it("keeps different currencies apart", () => {
+		const eur = charge(-9.99, "2026-01-01");
+		const usd = { ...charge(-9.99, "2026-02-01"), currency: "USD" };
+		expect(amountGroups([eur, usd])).toHaveLength(2);
+	});
+
+	it("survives rows with no date", () => {
+		const undated = { ...charge(-9.99, "2026-01-01"), date: "" };
+		expect(() => amountGroups([undated])).not.toThrow();
+		expect(amountGroups([undated])[0].count).toBe(1);
+	});
+
+	it("honours the limit", () => {
+		const many = Array.from({ length: 20 }, (_, i) => charge(-(i + 1), "2026-01-01"));
+		expect(amountGroups(many, 5)).toHaveLength(5);
+	});
+});
+
+describe("previewRule with an amount condition", () => {
+	const DIGITAL = "cat-digital";
+	const ELEC = "cat-elec";
+	const CATS: Category[] = [
+		{ id: DIGITAL, name: "Digital & IT", color: "#000", icon: "tag", aliases: [] },
+		{ id: ELEC, name: "Electronics", color: "#000", icon: "tag", aliases: [] },
+	];
+
+	function appleRows(): Transaction[] {
+		const rows = [tx("Apple", ELEC), tx("Apple", ELEC), tx("Apple", ELEC), tx("Apple", ELEC)];
+		rows[0].amount = -9.99;
+		rows[1].amount = -9.99;
+		rows[2].amount = -29.99;
+		rows[3].amount = -3.49;
+		return rows;
+	}
+
+	it("narrows an identical-description merchant down to one price point", () => {
+		const p = previewRule(
+			storeOf(appleRows(), CATS),
+			{ pattern: "Apple", match: "exact", amount: { op: "exactly", value: 9.99 } },
+			DIGITAL
+		);
+		expect(p.total).toBe(2);
+		expect(changedByPreview(p)).toHaveLength(2);
+	});
+
+	it("without the condition it takes the whole merchant", () => {
+		const p = previewRule(storeOf(appleRows(), CATS), { pattern: "Apple", match: "exact" }, DIGITAL);
+		expect(p.total).toBe(4);
+	});
+
+	it("a range catches the small purchases and leaves the big one", () => {
+		const p = previewRule(
+			storeOf(appleRows(), CATS),
+			{ pattern: "Apple", match: "exact", amount: { op: "at-most", value: 10 } },
+			DIGITAL
+		);
+		expect(p.total).toBe(3);
 	});
 });

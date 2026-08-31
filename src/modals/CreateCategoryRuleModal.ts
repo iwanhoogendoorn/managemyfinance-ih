@@ -4,9 +4,43 @@ import { formatMoney } from "../money";
 import { merchantKey } from "../import/merchantKey";
 import { remember } from "../import/merchantMemory";
 import type FinancePlugin from "../main";
-import { changedByPreview, previewRule, rulePatches, seedRuleFor, type RulePreview } from "../rules";
-import type { CategoryRule, CategoryRuleMatch, Transaction } from "../types";
+import { amountGroups, changedByPreview, previewRule, rulePatches, seedRuleFor, type RulePreview } from "../rules";
+import type { CategoryRule, CategoryRuleMatch, RuleAmountCondition, RuleAmountOp, Transaction } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
+
+const AMOUNT_OPS: { value: RuleAmountOp | "any"; label: string }[] = [
+	{ value: "any", label: "Any amount" },
+	{ value: "exactly", label: "Is exactly" },
+	{ value: "between", label: "Is between" },
+	{ value: "at-most", label: "Is at most" },
+	{ value: "at-least", label: "Is at least" },
+];
+
+function describeAmountCondition(c: RuleAmountCondition): string {
+	const money = (v: number): string => formatMoney(v, { currency: "EUR" });
+	switch (c.op) {
+		case "exactly":
+			return `Only charges of exactly ${money(c.value)}.`;
+		case "at-most":
+			return `Only charges of ${money(c.value)} or less.`;
+		case "at-least":
+			return `Only charges of ${money(c.value)} or more.`;
+		case "between": {
+			const lo = Math.min(c.value, c.value2 ?? c.value);
+			const hi = Math.max(c.value, c.value2 ?? c.value);
+			return `Only charges between ${money(lo)} and ${money(hi)}.`;
+		}
+	}
+}
+
+/** Accepts what people actually type — "9,99", "€9.99", " 9.99 ". Undefined for anything unreadable,
+ *  which is treated as "no condition yet" rather than as zero. */
+function parseAmountInput(raw: string): number | undefined {
+	const cleaned = raw.replace(/[^0-9.,-]/g, "").replace(",", ".");
+	if (!cleaned) return undefined;
+	const n = Number.parseFloat(cleaned);
+	return Number.isFinite(n) ? Math.abs(n) : undefined;
+}
 
 /** Ordered narrowest first, which is also the order they are worth trying in. */
 const MATCH_MODES: { value: CategoryRuleMatch; label: string; hint: string }[] = [
@@ -50,6 +84,9 @@ const ALREADY_CORRECT_LIMIT = 500;
 export class CreateCategoryRuleModal extends Modal {
 	private pattern: string;
 	private match: CategoryRuleMatch;
+	/** Unset means "any amount" — never presumed from the row you clicked, since one charge is not
+	 *  evidence that the amount is what identifies the merchant. */
+	private amount?: RuleAmountCondition;
 	/** Off by default: see `previewRule` on why transfers are held back from a merchant rule. */
 	private includeNeutral = false;
 	private value: CategoryPickerValue;
@@ -58,6 +95,8 @@ export class CreateCategoryRuleModal extends Modal {
 	 *  after the pattern widens arrives selected. */
 	private excluded = new Set<string>();
 	private submitLabelEl!: HTMLElement;
+	/** Set by render(); lets the amount chips below drive the controls above. */
+	private setAmountCondition: (next?: RuleAmountCondition) => void = () => {};
 	/** Remembered across re-renders — the preview panel is rebuilt on every keystroke. */
 	private showAlreadyCorrect = false;
 	private submitBtn!: HTMLButtonElement;
@@ -84,7 +123,7 @@ export class CreateCategoryRuleModal extends Modal {
 	private computePreview(): RulePreview {
 		return previewRule(
 			this.plugin.store,
-			{ pattern: this.pattern, match: this.match },
+			{ pattern: this.pattern, match: this.match, amount: this.amount },
 			this.targetCategoryId(),
 			{ includeNeutral: this.includeNeutral }
 		);
@@ -122,6 +161,8 @@ export class CreateCategoryRuleModal extends Modal {
 		const summary = c.createDiv({ cls: "fp-rule-preview-summary" });
 		summary.createSpan({ cls: "fp-rule-preview-count", text: String(p.total) });
 		summary.createSpan({ text: ` transaction${p.total === 1 ? " matches" : "s match"} — ${willChange} will change, ${p.alreadyCorrect.length} already correct.` });
+
+		this.renderAmountStrip(c, p);
 
 		if (p.uncategorized.length > 0) {
 			const row = c.createDiv({ cls: "fp-rule-preview-row" });
@@ -172,6 +213,49 @@ export class CreateCategoryRuleModal extends Modal {
 
 		this.renderChangeTable(c, p, target);
 		this.renderAlreadyCorrect(c, p, target);
+	}
+
+	/**
+	 * The distinct amounts inside the current match, each one a click away from becoming a condition.
+	 *
+	 * Where a merchant bills everything under one description this is the only readable structure in
+	 * the match, and reading it off a 201-row table by eye is not a thing anyone should have to do.
+	 * The cadence is shown, not judged: "35 · 33 months · ~30d apart" is enough to recognise a
+	 * subscription, and calling it one on the user's behalf would be right only until the first annual
+	 * plan.
+	 */
+	private renderAmountStrip(c: HTMLElement, p: RulePreview): void {
+		if (this.amount) {
+			const active = c.createDiv({ cls: "fp-rule-amount-active" });
+			active.createSpan({ text: describeAmountCondition(this.amount) });
+			const clear = active.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-tiny" });
+			clear.createSpan({ text: "Clear" });
+			clear.addEventListener("click", () => this.setAmountCondition(undefined));
+			return;
+		}
+
+		const all = [...changedByPreview(p), ...p.alreadyCorrect, ...p.protectedNeutral];
+		const groups = amountGroups(all);
+		// One amount is not a choice, and a match this small is already readable in the table below.
+		if (groups.length < 2 || all.length < 4) return;
+
+		const strip = c.createDiv({ cls: "fp-rule-amount-strip" });
+		strip.createDiv({ cls: "fp-rule-amount-strip-label", text: "Amounts in this match — click one to narrow to it" });
+		const chips = strip.createDiv({ cls: "fp-rule-amount-chips" });
+		groups.forEach((g) => {
+			const chip = chips.createEl("button", { cls: "fp-rule-amount-chip" });
+			chip.createSpan({ cls: "fp-rule-amount-chip-value", text: formatMoney(g.value, { currency: g.currency }) });
+			const cadence =
+				g.medianGapDays !== undefined && g.months > 2 ? ` · ${g.months} months · ~${g.medianGapDays}d apart` : "";
+			chip.createSpan({ cls: "fp-rule-amount-chip-meta", text: `${g.count}\u00d7${cadence}` });
+			chip.setAttribute(
+				"title",
+				g.medianGapDays !== undefined
+					? `${g.count} charges of this amount, across ${g.months} month${g.months === 1 ? "" : "s"}, typically ${g.medianGapDays} days apart.`
+					: `${g.count} charge${g.count === 1 ? "" : "s"} of this amount.`
+			);
+			chip.addEventListener("click", () => this.setAmountCondition({ op: "exactly", value: g.value }));
+		});
 	}
 
 	/**
@@ -398,6 +482,65 @@ export class CreateCategoryRuleModal extends Modal {
 		});
 		describeMode();
 
+		const amountRow = form.createDiv({ cls: "fp-form-row" });
+		amountRow.createEl("label", { text: "Amount" });
+		const amountControl = amountRow.createDiv({ cls: "fp-field-control" });
+		const amountLine = amountControl.createDiv({ cls: "fp-rule-amount-line" });
+		const amountSelect = amountLine.createEl("select", { cls: "fp-setup-select" });
+		AMOUNT_OPS.forEach(({ value, label }) => amountSelect.createEl("option", { text: label, value }));
+		amountSelect.value = this.amount?.op ?? "any";
+		const valueInput = amountLine.createEl("input", { type: "text", cls: "fp-rule-amount-input", attr: { inputmode: "decimal", placeholder: "0.00" } });
+		const andSpan = amountLine.createSpan({ cls: "fp-rule-amount-and", text: "and" });
+		const value2Input = amountLine.createEl("input", { type: "text", cls: "fp-rule-amount-input", attr: { inputmode: "decimal", placeholder: "0.00" } });
+		amountControl.createDiv({
+			cls: "fp-field-hint",
+			text: "Compared on the amount as printed, ignoring the minus sign — so a refund of the same size counts too. Useful where one merchant bills everything under the same description.",
+		});
+
+		const syncAmountInputs = (): void => {
+			const op = amountSelect.value;
+			amountLine.toggleClass("has-value", op !== "any");
+			amountLine.toggleClass("has-range", op === "between");
+			valueInput.toggle(op !== "any");
+			andSpan.toggle(op === "between");
+			value2Input.toggle(op === "between");
+		};
+		const readAmount = (): void => {
+			const op = amountSelect.value;
+			if (op === "any") {
+				this.amount = undefined;
+			} else {
+				const value = parseAmountInput(valueInput.value);
+				if (value === undefined) {
+					this.amount = undefined;
+				} else {
+					this.amount = { op: op as RuleAmountOp, value };
+					if (op === "between") this.amount.value2 = parseAmountInput(value2Input.value) ?? value;
+				}
+			}
+			this.renderPreview();
+		};
+		amountSelect.addEventListener("change", () => {
+			syncAmountInputs();
+			// Seed the box with this row's own amount the first time a condition is asked for, so the
+			// common case — "everything at exactly this price" — is one click rather than retyping it.
+			if (amountSelect.value !== "any" && !valueInput.value) {
+				valueInput.value = Math.abs(this.tx.amount).toFixed(2);
+			}
+			readAmount();
+		});
+		valueInput.addEventListener("input", readAmount);
+		value2Input.addEventListener("input", readAmount);
+		syncAmountInputs();
+		this.setAmountCondition = (next) => {
+			this.amount = next;
+			amountSelect.value = next?.op ?? "any";
+			valueInput.value = next ? next.value.toFixed(2) : "";
+			value2Input.value = next?.value2 !== undefined ? next.value2.toFixed(2) : "";
+			syncAmountInputs();
+			this.renderPreview();
+		};
+
 		const catRow = form.createDiv({ cls: "fp-form-row" });
 		catRow.createEl("label", { text: "File as" });
 		renderCategoryPicker(catRow.createDiv({ cls: "fp-field-control" }), {
@@ -447,6 +590,7 @@ export class CreateCategoryRuleModal extends Modal {
 			match: this.match,
 			categoryId: target,
 		};
+		if (this.amount) rule.amount = this.amount;
 		// Written alongside `match`, never instead of it, so anything still reading the old flag —
 		// ManageRulesModal's REGEX badge among them — keeps seeing the truth.
 		if (this.match === "regex") rule.isRegex = true;

@@ -199,9 +199,32 @@ export interface OneOffBudget {
  */
 export type CategoryRuleMatch = "contains" | "exact" | "starts-with" | "regex";
 
+export type RuleAmountOp = "exactly" | "between" | "at-most" | "at-least";
+
+/**
+ * An optional amount test on top of a rule's text match.
+ *
+ * Some merchants bill everything under one description. 201 rows described only "Apple" hold a
+ * €9.99/month subscription, a €5.99/month one that ended, and a long tail of one-off app purchases —
+ * no text can tell them apart, because there is no text. The amount is the only thing left.
+ *
+ * Compared on the *absolute* amount, in the transaction's own currency: people think in "the €9.99
+ * charge", not "-9.99", and a refund of a subscription belongs with the subscription rather than
+ * outside it. No FX conversion — a rule about €9.99 should not start matching a different sum because
+ * a rate moved.
+ */
+export interface RuleAmountCondition {
+	op: RuleAmountOp;
+	value: number;
+	/** Upper bound, "between" only. */
+	value2?: number;
+}
+
 export interface CategoryRule {
 	id: string;
 	pattern: string;
+	/** Narrows the text match further; unset means "any amount". */
+	amount?: RuleAmountCondition;
 	/** Superseded by `match`, kept so rules written before it keep working (and so does anything else
 	 *  still reading this flag). `match: "regex"` is written alongside it, never instead of it. */
 	isRegex?: boolean;

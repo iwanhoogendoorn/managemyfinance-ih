@@ -68,7 +68,7 @@ export function movingCount(preview: RulePreview): number {
  */
 export function previewRule(
 	store: RulePreviewStore,
-	rule: Pick<CategoryRule, "pattern" | "isRegex" | "match">,
+	rule: Pick<CategoryRule, "pattern" | "isRegex" | "match" | "amount">,
 	targetCategoryId: string | undefined,
 	opts: { includeNeutral?: boolean } = {}
 ): RulePreview {
@@ -193,4 +193,66 @@ export function seedRuleFor(tx: Pick<Transaction, "description" | "counterparty"
 	if (ruleMatches(tx, { pattern, match: "exact" })) return { pattern, match: "exact" };
 	if (ruleMatches(tx, { pattern, match: "starts-with" })) return { pattern, match: "starts-with" };
 	return { pattern, match: "contains" };
+}
+
+export interface AmountGroup {
+	/** Absolute amount, rounded to the cent — the value an "is exactly" condition would carry. */
+	value: number;
+	currency: string;
+	count: number;
+	/** How many distinct calendar months it appears in, and the median gap in days between charges.
+	 *  A monthly subscription shows a gap near 30 across many months; a one-off shows neither. */
+	months: number;
+	medianGapDays?: number;
+}
+
+/**
+ * The distinct amounts among a set of matches, commonest first.
+ *
+ * The answer to "how do I catch these" when every row carries the same description. 201 rows called
+ * only "Apple" are a €9.99/month subscription, a €5.99/month one that ran for a year, a €3.49 and a
+ * €0.99 both currently active, and a long tail of one-off app purchases — and none of that is visible
+ * in the text, because there is no text to read. It is entirely visible in the amounts.
+ *
+ * The cadence figures are reported, never acted on: "35 charges across 33 months, 30 days apart" is
+ * enough for a person to recognise a subscription, and guessing on their behalf would only be right
+ * until the first annual plan or the first merchant who bills monthly for something that isn't one.
+ */
+export function amountGroups(transactions: Transaction[], limit = 8): AmountGroup[] {
+	const buckets = new Map<string, { value: number; currency: string; dates: string[]; count: number }>();
+	for (const tx of transactions) {
+		if (typeof tx.amount !== "number" || !Number.isFinite(tx.amount)) continue;
+		const value = Math.round(Math.abs(tx.amount) * 100) / 100;
+		const currency = tx.currency || "EUR";
+		const key = `${currency}:${value.toFixed(2)}`;
+		const bucket = buckets.get(key) ?? { value, currency, dates: [], count: 0 };
+		if (tx.date) bucket.dates.push(tx.date);
+		bucket.count++;
+		buckets.set(key, bucket);
+	}
+	return Array.from(buckets.values())
+		.map((b) => ({
+			value: b.value,
+			currency: b.currency,
+			count: b.count,
+			months: new Set(b.dates.map((d) => d.slice(0, 7))).size,
+			medianGapDays: medianGapDays(b.dates),
+		}))
+		.sort((a, b) => b.count - a.count || b.value - a.value)
+		.slice(0, limit);
+}
+
+/** Median days between consecutive charges, or undefined below three of them — two points are a gap,
+ *  not a cadence. */
+function medianGapDays(dates: string[]): number | undefined {
+	const days = dates
+		.map((d) => Date.parse(d))
+		.filter((t) => Number.isFinite(t))
+		.sort((a, b) => a - b);
+	if (days.length < 3) return undefined;
+	const gaps: number[] = [];
+	for (let i = 1; i < days.length; i++) gaps.push((days[i] - days[i - 1]) / 86_400_000);
+	gaps.sort((a, b) => a - b);
+	const mid = Math.floor(gaps.length / 2);
+	return Math.round(gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2);
 }

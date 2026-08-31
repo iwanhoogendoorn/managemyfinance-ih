@@ -7321,3 +7321,75 @@
 .fp-rule-done-summary:hover {
 	color: var(--text-normal);
 }
+
+/* Amount condition: the control, and the breakdown of what is actually in the match. */
+.fp-rule-amount-line {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+.fp-rule-amount-input {
+	width: 92px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+.fp-rule-amount-and {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+.fp-rule-amount-active {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin: 8px 0 4px;
+	padding: 6px 10px;
+	border-radius: 6px;
+	background: var(--background-modifier-hover);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+}
+.fp-btn-tiny {
+	padding: 2px 8px;
+	font-size: var(--font-ui-smaller);
+}
+
+/* Where every row shares one description, this strip is the only readable structure in the match. */
+.fp-rule-amount-strip {
+	margin: 8px 0 4px;
+}
+.fp-rule-amount-strip-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	margin-bottom: 5px;
+}
+.fp-rule-amount-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.fp-rule-amount-chip {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 5px;
+	padding: 3px 9px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	cursor: pointer;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+}
+.fp-rule-amount-chip:hover {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+.fp-rule-amount-chip-value {
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+.fp-rule-amount-chip-meta {
+	color: var(--text-faint);
+}

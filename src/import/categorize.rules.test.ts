@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { applyRules, resolveRuleMatch, ruleMatches } from "./categorize";
+import { amountMatches, applyRules, resolveRuleMatch, ruleMatches } from "./categorize";
 import type { CategoryRule, Transaction } from "../types";
 
-function tx(description: string, counterparty?: string): Transaction {
-	return { id: "t1", date: "2026-01-01", accountId: "acc", description, counterparty, amount: -10, currency: "EUR", source: "manual" };
+function tx(description: string, counterparty?: string, amount = -10): Transaction {
+	return { id: "t1", date: "2026-01-01", accountId: "acc", description, counterparty, amount, currency: "EUR", source: "manual" };
 }
 
 describe("ruleMatches", () => {
@@ -118,5 +118,63 @@ describe("match modes", () => {
 			expect(ruleMatches(spacey, { pattern: "", match })).toBe(false);
 			expect(ruleMatches(spacey, { pattern: "   ", match })).toBe(false);
 		}
+	});
+});
+
+describe("amount conditions", () => {
+	it("is absent by default, so every rule written before them is untouched", () => {
+		expect(amountMatches(-10, undefined)).toBe(true);
+		expect(ruleMatches(tx("Apple", undefined, -9.99), { pattern: "Apple", match: "exact" })).toBe(true);
+	});
+
+	it("matches on the absolute amount, so a refund of the same size counts", () => {
+		const cond = { op: "exactly" as const, value: 9.99 };
+		expect(amountMatches(-9.99, cond)).toBe(true);
+		expect(amountMatches(9.99, cond)).toBe(true);
+	});
+
+	it("survives floating point — 9.99 is never bit-for-bit 9.99", () => {
+		// 0.1 + 9.89 lands a hair off 9.99; an exact === would drop the row.
+		expect(amountMatches(-(0.1 + 9.89), { op: "exactly", value: 9.99 })).toBe(true);
+		expect(amountMatches(-9.98, { op: "exactly", value: 9.99 })).toBe(false);
+		expect(amountMatches(-10.0, { op: "exactly", value: 9.99 })).toBe(false);
+	});
+
+	it("separates the subscription from the app purchases at the same merchant", () => {
+		// The case this exists for: 201 rows all described "Apple".
+		const rule = { pattern: "Apple", match: "exact" as const, amount: { op: "exactly" as const, value: 9.99 } };
+		expect(ruleMatches(tx("Apple", undefined, -9.99), rule)).toBe(true);
+		expect(ruleMatches(tx("Apple", undefined, -29.99), rule)).toBe(false);
+		expect(ruleMatches(tx("Apple", undefined, -3.49), rule)).toBe(false);
+	});
+
+	it("handles at-most and at-least inclusively", () => {
+		expect(amountMatches(-5, { op: "at-most", value: 5 })).toBe(true);
+		expect(amountMatches(-5.01, { op: "at-most", value: 5 })).toBe(false);
+		expect(amountMatches(-5, { op: "at-least", value: 5 })).toBe(true);
+		expect(amountMatches(-4.99, { op: "at-least", value: 5 })).toBe(false);
+	});
+
+	it("accepts a range typed high-then-low", () => {
+		const flipped = { op: "between" as const, value: 10, value2: 1 };
+		expect(amountMatches(-5, flipped)).toBe(true);
+		expect(amountMatches(-11, flipped)).toBe(false);
+	});
+
+	it("includes both ends of a range", () => {
+		const cond = { op: "between" as const, value: 1, value2: 10 };
+		expect(amountMatches(-1, cond)).toBe(true);
+		expect(amountMatches(-10, cond)).toBe(true);
+		expect(amountMatches(-10.02, cond)).toBe(false);
+	});
+
+	it("rejects a row with no usable amount rather than letting it through", () => {
+		expect(amountMatches(undefined, { op: "exactly", value: 9.99 })).toBe(false);
+		expect(amountMatches(Number.NaN, { op: "exactly", value: 9.99 })).toBe(false);
+	});
+
+	it("still requires the text to match — the amount only narrows", () => {
+		const rule = { pattern: "Apple", match: "exact" as const, amount: { op: "exactly" as const, value: 9.99 } };
+		expect(ruleMatches(tx("Spotify", undefined, -9.99), rule)).toBe(false);
 	});
 });
