@@ -7286,3 +7286,38 @@
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
+
+/* The already-correct matches, collapsed. Not actionable — nothing about them changes — but they are
+   how you tell a well-aimed pattern from one that is quietly catching more than you meant. */
+.fp-rule-done {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.fp-rule-done-summary {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: wrap;
+	cursor: pointer;
+	list-style: none;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.fp-rule-done-summary::-webkit-details-marker {
+	display: none;
+}
+/* A disclosure triangle that turns, since the native marker is hidden above. */
+.fp-rule-done-summary::before {
+	content: "›";
+	display: inline-block;
+	margin-right: 2px;
+	color: var(--text-faint);
+	transition: transform 120ms ease;
+}
+.fp-rule-done[open] > .fp-rule-done-summary::before {
+	transform: rotate(90deg);
+}
+.fp-rule-done-summary:hover {
+	color: var(--text-normal);
+}

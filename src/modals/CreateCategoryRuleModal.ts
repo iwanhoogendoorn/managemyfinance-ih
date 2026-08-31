@@ -8,6 +8,10 @@ import { changedByPreview, previewRule, rulePatches, seedPatternFor, type RulePr
 import type { CategoryRule, Transaction } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
 
+/** A read-only list this long is already past the point of being scanned; beyond it, narrowing the
+ *  pattern is the better answer than a longer list. */
+const ALREADY_CORRECT_LIMIT = 500;
+
 /**
  * Turn one transaction into a rule that files every other transaction from the same merchant.
  *
@@ -34,6 +38,8 @@ export class CreateCategoryRuleModal extends Modal {
 	 *  after the pattern widens arrives selected. */
 	private excluded = new Set<string>();
 	private submitLabelEl!: HTMLElement;
+	/** Remembered across re-renders — the preview panel is rebuilt on every keystroke. */
+	private showAlreadyCorrect = false;
 	private submitBtn!: HTMLButtonElement;
 
 	constructor(app: App, private plugin: FinancePlugin, private tx: Transaction, private onDone?: () => void) {
@@ -143,6 +149,7 @@ export class CreateCategoryRuleModal extends Modal {
 		}
 
 		this.renderChangeTable(c, p, target);
+		this.renderAlreadyCorrect(c, p, target);
 	}
 
 	/**
@@ -161,6 +168,8 @@ export class CreateCategoryRuleModal extends Modal {
 		const store = this.plugin.store;
 
 		if (rows.length === 0) {
+			// The disclosure rendered just below already names the already-correct rows, so this line
+			// only has to say that nothing moves.
 			c.createDiv({
 				cls: "fp-rule-preview-sample",
 				text:
@@ -247,6 +256,70 @@ export class CreateCategoryRuleModal extends Modal {
 		});
 
 		refreshHeader();
+	}
+
+	/**
+	 * The matches that are already filed where the rule wants them, behind a disclosure.
+	 *
+	 * They are not actionable — nothing about them changes, so there is nothing to tick — but they are
+	 * the evidence for whether the pattern is too broad. "Apple" reporting 203 rows already correct is
+	 * reassuring; the same 203 turning out to be full of things you never thought of as Apple purchases
+	 * is not, and a bare count cannot tell those apart. Collapsed by default so the rows that *do*
+	 * change stay the thing you see first.
+	 *
+	 * Populated only when opened, and the open/closed state is remembered across re-renders, since this
+	 * whole panel is rebuilt on every keystroke in the pattern box.
+	 */
+	private renderAlreadyCorrect(c: HTMLElement, p: RulePreview, target: string): void {
+		if (p.alreadyCorrect.length === 0) return;
+		const store = this.plugin.store;
+
+		const details = c.createEl("details", { cls: "fp-rule-done" });
+		details.open = this.showAlreadyCorrect;
+		const summary = details.createEl("summary", { cls: "fp-rule-done-summary" });
+		summary.createSpan({ cls: "fp-rule-preview-n", text: String(p.alreadyCorrect.length) });
+		summary.createSpan({ text: " already filed here — " });
+		const chain = categoryChain(store.categories, target);
+		categoryChainChip(summary, chain.primary, chain.secondary);
+
+		const body = details.createDiv();
+		let populated = false;
+		const populate = (): void => {
+			if (populated) return;
+			populated = true;
+			const wrap = body.createDiv({ cls: "fp-table-scroll fp-rule-table-scroll" });
+			const table = wrap.createEl("table", { cls: "fp-table fp-rule-table" });
+			const headRow = table.createEl("thead").createEl("tr");
+			headRow.createEl("th", { text: "Date" });
+			headRow.createEl("th", { text: "Description" });
+			headRow.createEl("th", { text: "Amount", cls: "fp-table-num" });
+			const tbody = table.createEl("tbody");
+			p.alreadyCorrect.slice(0, ALREADY_CORRECT_LIMIT).forEach((t) => {
+				const tr = tbody.createEl("tr");
+				tr.createEl("td", { text: t.date || "No date", cls: "fp-cell-date" });
+				const descCell = tr.createEl("td", { cls: "fp-sensitive" });
+				descCell.createDiv({ cls: "fp-rule-table-desc", text: t.description || "(no description)" });
+				if (t.counterparty && t.counterparty !== t.description) {
+					descCell.createDiv({ cls: "fp-rule-table-sub fp-sensitive", text: t.counterparty });
+				}
+				tr.createEl("td", {
+					cls: "fp-cell-amount fp-money " + (t.amount < 0 ? "is-negative" : "is-positive"),
+					text: formatMoney(t.amount, { currency: t.currency || "EUR" }),
+				});
+			});
+			if (p.alreadyCorrect.length > ALREADY_CORRECT_LIMIT) {
+				body.createDiv({
+					cls: "fp-rule-table-note",
+					text: `Showing the first ${ALREADY_CORRECT_LIMIT} of ${p.alreadyCorrect.length}. Narrow the match text to see fewer.`,
+				});
+			}
+		};
+
+		if (details.open) populate();
+		details.addEventListener("toggle", () => {
+			this.showAlreadyCorrect = details.open;
+			if (details.open) populate();
+		});
 	}
 
 	/** Selected rows, in ledger order — what submit writes and what the button counts. */
