@@ -1,4 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { activeAccounts } from "../accounts";
 import type FinancePlugin from "../main";
 import { formatMoney } from "../money";
@@ -13,7 +14,7 @@ import { icon, moneyInput } from "../ui/dom";
  * rather than typed by hand. Opening one of those here still allows editing its name/target/deadline/
  * priority; its tracking mode simply isn't offered as a choice.
  */
-export class GoalModal extends Modal {
+export class GoalModal extends FinanceModal {
 	private name: string;
 	private deadline: string;
 	private priority: number;

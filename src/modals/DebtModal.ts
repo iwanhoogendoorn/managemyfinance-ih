@@ -1,9 +1,9 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { activeAccounts } from "../accounts";
 import type FinancePlugin from "../main";
 import type { Debt, DebtCounterpartyKind, DebtDirection } from "../types";
 import { icon, moneyInput, type MoneyInputHandle } from "../ui/dom";
-import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
 
 const KINDS: { value: DebtCounterpartyKind; label: string }[] = [
 	{ value: "person", label: "Person" },
@@ -13,7 +13,7 @@ const KINDS: { value: DebtCounterpartyKind; label: string }[] = [
 ];
 
 /** Adding or editing one entry in the debts register. */
-export class DebtModal extends Modal {
+export class DebtModal extends FinanceModal {
 	private counterparty: string;
 	private kind: DebtCounterpartyKind;
 	private direction: DebtDirection;
@@ -46,7 +46,6 @@ export class DebtModal extends Modal {
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
 		this.contentEl.addClass("fp-account-modal");
-		keepOpenWhenClickingAway(this);
 		this.render();
 	}
 

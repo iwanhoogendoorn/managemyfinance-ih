@@ -1,4 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { aiFindMatches, buildCandidatePool, describeMatchResult, type AiMatch } from "../ai/matcher";
 import { categoryChain } from "../categories";
 import { merchantDisplayName, merchantKey } from "../import/merchantKey";
@@ -33,7 +34,7 @@ import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue
  */
 const CONFIDENT_MATCH = 0.85;
 
-export class BulkMatchModal extends Modal {
+export class BulkMatchModal extends FinanceModal {
 	private groups: MatchGroups;
 	private selected = new Set<string>();
 	private category: CategoryPickerValue = {};

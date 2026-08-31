@@ -1,12 +1,12 @@
-import { App, Modal, Notice } from "obsidian";
-import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER } from "../constants";
 import type FinancePlugin from "../main";
 import type { Account, AccountType } from "../types";
 import { icon, moneyInput } from "../ui/dom";
 
 /** Quick "add a container" flow — a new account starts empty; its transactions arrive via the next import. */
-export class CreateAccountModal extends Modal {
+export class CreateAccountModal extends FinanceModal {
 	private name = "";
 	private type: AccountType = "debit";
 	private iban = "";
@@ -19,7 +19,6 @@ export class CreateAccountModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
-		keepOpenWhenClickingAway(this);
 		const c = this.contentEl;
 		c.addClass("fp-account-modal");
 

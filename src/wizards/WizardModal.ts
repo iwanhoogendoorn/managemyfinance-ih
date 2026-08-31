@@ -1,4 +1,5 @@
-import { App, Modal } from "obsidian";
+import { App } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { icon } from "../ui/dom";
 
 /** Handed to a step's render() so it can tell the shell that its validity has changed. */
@@ -29,7 +30,7 @@ export interface WizardStep {
  * Used for focused, self-contained tasks like importing a file. First-run setup lives in SetupView
  * instead, since that's a full-tab experience rather than a dialog.
  */
-export class WizardModal extends Modal {
+export class WizardModal extends FinanceModal {
 	private stepIndex = 0;
 	private steps: WizardStep[];
 	private stepsEl!: HTMLElement;

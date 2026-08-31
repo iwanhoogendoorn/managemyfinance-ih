@@ -1,4 +1,5 @@
-import { App, Modal } from "obsidian";
+import { App } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { summarizeByMonth } from "../kpi";
 import type FinancePlugin from "../main";
 import { icon } from "../ui/dom";
@@ -7,7 +8,7 @@ import { formatEUR, formatPct, metricRow, yearHeaderRow } from "../ui/metricsTab
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** The year → month drill-down: same metrics as the yearly table, one column per month instead. */
-export class MonthDrilldownModal extends Modal {
+export class MonthDrilldownModal extends FinanceModal {
 	constructor(app: App, private plugin: FinancePlugin, private year: string, private accountName?: string, private accountId?: string) {
 		super(app);
 	}

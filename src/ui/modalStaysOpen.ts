@@ -1,4 +1,4 @@
-import type { Modal } from "obsidian";
+import { Modal } from "obsidian";
 import { VIEW_TYPE_FINANCE } from "../constants";
 
 /**
@@ -63,4 +63,22 @@ export function keepOpenWhenClickingAway(modal: Modal): void {
 		for (const ref of refs) workspace.offref(ref);
 		onClose();
 	};
+}
+
+/**
+ * The base every dialog in this plugin extends, so none of them can forget.
+ *
+ * The behaviour above was originally opted into one modal at a time, which lasted exactly until the
+ * import wizard — three steps and a file into it — evaporated on a click at a workspace tab. A rule
+ * that has to be remembered at thirty call sites is a rule that holds at twenty-nine.
+ *
+ * Applied in `open()` rather than `onOpen()` because every subclass overrides `onOpen` and none of
+ * them override `open`, so there is nothing for a subclass to forget to call. Obsidian has built
+ * `containerEl` by this point.
+ */
+export class FinanceModal extends Modal {
+	open(): void {
+		super.open();
+		keepOpenWhenClickingAway(this);
+	}
 }

@@ -1,4 +1,5 @@
-import { App, Modal } from "obsidian";
+import { App } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { accountStats, allAccountStats, orphanedTransactions, type AccountStats } from "../accountStats";
 import { tracksBalance } from "../accounts";
 import { ACCOUNT_TYPE_META } from "../constants";
@@ -6,7 +7,6 @@ import type FinancePlugin from "../main";
 import { formatMoney } from "../money";
 import type { Account } from "../types";
 import { badge, icon } from "../ui/dom";
-import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
 
 /**
  * What an account holds, and how every account compares.
@@ -19,14 +19,13 @@ import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
  * One dialog serves both the per-account and the overall case, because they are the same figures at
  * two zoom levels and keeping them in two places is how they end up disagreeing.
  */
-export class AccountStatsModal extends Modal {
+export class AccountStatsModal extends FinanceModal {
 	constructor(app: App, private plugin: FinancePlugin, private accountId?: string) {
 		super(app);
 	}
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal", "fp-stats-modal");
-		keepOpenWhenClickingAway(this);
 		this.render();
 	}
 

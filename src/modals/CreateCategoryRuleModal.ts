@@ -1,5 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
-import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { categoryChain } from "../categories";
 import { formatMoney } from "../money";
 import { merchantKey } from "../import/merchantKey";
@@ -111,7 +111,7 @@ const ALREADY_CORRECT_LIMIT = 500;
  * deliberately *does* overwrite rows that already have a category: filing the stragglers is the point,
  * and the preview is what makes that defensible rather than destructive.
  */
-export class CreateCategoryRuleModal extends Modal {
+export class CreateCategoryRuleModal extends FinanceModal {
 	private pattern: string;
 	private match: CategoryRuleMatch;
 	/** Unset means "any amount" — never presumed from the row you clicked, since one charge is not
@@ -164,7 +164,6 @@ export class CreateCategoryRuleModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal", "fp-rules-modal");
-		keepOpenWhenClickingAway(this);
 		this.render();
 	}
 

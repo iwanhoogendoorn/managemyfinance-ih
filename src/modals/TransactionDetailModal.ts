@@ -1,4 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { categoryChain } from "../categories";
 import { formatMoney } from "../money";
 import type FinancePlugin from "../main";
@@ -28,7 +29,7 @@ function row(container: HTMLElement, label: string, value: string | HTMLElement,
  * and deleting live here too — this is where you land when a row looks wrong, so it's where the fix
  * has to be.
  */
-export class TransactionDetailModal extends Modal {
+export class TransactionDetailModal extends FinanceModal {
 	constructor(app: App, private plugin: FinancePlugin, private tx: Transaction) {
 		super(app);
 	}

@@ -1,5 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
-import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER, CURRENCIES } from "../constants";
 import { accountBalanceParts, type AccountBalanceParts } from "../kpi";
 import type FinancePlugin from "../main";
@@ -40,7 +40,7 @@ function fraction(raw: string): number | undefined {
  * Changing the type is a pure relabel: it changes which dashboard the account gets and how it's
  * treated in transfer detection, and touches no transaction.
  */
-export class EditAccountModal extends Modal {
+export class EditAccountModal extends FinanceModal {
 	private name: string;
 	private type: AccountType;
 	private currency: string;
@@ -98,7 +98,6 @@ export class EditAccountModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
-		keepOpenWhenClickingAway(this);
 		const c = this.contentEl;
 		c.addClass("fp-account-modal");
 

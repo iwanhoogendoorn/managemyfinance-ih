@@ -1,4 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { ACCOUNT_TYPE_META } from "../constants";
 import { formatMoneyRounded } from "../money";
 import { accountStats } from "../kpi";
@@ -12,7 +13,7 @@ function formatEUR(n: number): string {
 }
 
 /** Full account roster: per-account transaction count and net total, plus add/remove — the "exact numbers per account" view. */
-export class ManageAccountsModal extends Modal {
+export class ManageAccountsModal extends FinanceModal {
 	constructor(app: App, private plugin: FinancePlugin, private onChange?: () => void) {
 		super(app);
 	}

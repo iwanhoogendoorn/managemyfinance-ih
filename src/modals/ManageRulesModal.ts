@@ -1,4 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Notice } from "obsidian";
+import { FinanceModal } from "../ui/modalStaysOpen";
 import { categoryChain } from "../categories";
 import { applyRules, resolveRuleMatch } from "../import/categorize";
 import { describeAmountCondition } from "../rules";
@@ -20,7 +21,7 @@ const RULE_MATCH_BADGE: Record<CategoryRuleMatch, string> = {
  * Rules are tried top to bottom (first match wins, same as applyRules), so reordering matters —
  * hence the up/down buttons rather than a plain list.
  */
-export class ManageRulesModal extends Modal {
+export class ManageRulesModal extends FinanceModal {
 	private newPattern = "";
 	private newIsRegex = false;
 	private newCategoryValue: CategoryPickerValue = {};
