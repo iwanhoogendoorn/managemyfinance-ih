@@ -2,7 +2,7 @@ import { Notice } from "obsidian";
 import { accountReviewProgress, reviewCounts } from "../../review";
 import { categoryChain, primaryCategories, resolvePrimaryId, secondaryCategoriesOf } from "../../categories";
 import { merchantKey, merchantLabel } from "../../import/merchantKey";
-import { dismissSuggestion, siblingsOf, unknownMerchants } from "../../import/merchantMemory";
+import { dismissSuggestion, unknownMerchants } from "../../import/merchantMemory";
 import type FinancePlugin from "../../main";
 import { formatMoney } from "../../money";
 import { BulkMatchModal } from "../../modals/BulkMatchModal";
@@ -540,6 +540,8 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		renderTable(rows);
 	}
 
+	/** Rebuilt once per redraw — see uncategorizedByMerchant. */
+	let siblingCounts = new Map<string, number>();
 	let countersEl: HTMLElement | undefined;
 	let bulkBarEl: HTMLElement | undefined;
 	let tableEl: HTMLElement | undefined;
@@ -631,7 +633,27 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		});
 	}
 
+	/**
+	 * How many *other* uncategorized rows each merchant still has, counted once per redraw.
+	 *
+	 * The hint under each description used to call `siblingsOf(store.transactions, tx)`, which scans
+	 * the whole ledger and derives a merchant key for every row it passes. Called once per rendered
+	 * row that is 100 x 7,153 = 715,300 key derivations for a single keystroke in the search box, and
+	 * it cost 2.8 seconds each time. The counts are the same for every row in the batch, so they are
+	 * built in one pass and read as a lookup.
+	 */
+	function uncategorizedByMerchant(): Map<string, number> {
+		const counts = new Map<string, number>();
+		for (const tx of store.transactions) {
+			if (tx.categoryId) continue;
+			const key = merchantKey(tx);
+			if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+		}
+		return counts;
+	}
+
 	function renderTable(rows: Transaction[]): void {
+		siblingCounts = uncategorizedByMerchant();
 		// Its own class as well, so the column rules can key off the *pane's* width via a container
 		// query. A viewport media query is the wrong measure here: this view lives in a split pane, so
 		// a narrow pane in a wide window would keep every column and crush the description.
@@ -814,7 +836,9 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		// How many other rows a decision here will settle — the reason one click is worth making.
 		const key = merchantKey(tx);
 		if (key) {
-			const others = siblingsOf(store.transactions, tx).filter((t) => !t.categoryId).length;
+			// This row's own uncategorized state is already counted in the map, so subtract it to keep
+			// the wording true: "more uncategorized" means besides this one.
+			const others = (siblingCounts.get(key) ?? 0) - (tx.categoryId ? 0 : 1);
 			if (others > 0) {
 				descCell.createDiv({
 					cls: "fp-review-merchant-hint",

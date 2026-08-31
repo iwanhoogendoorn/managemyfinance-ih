@@ -212,8 +212,30 @@ export function merchantSourceText(tx: Pick<Transaction, "description" | "counte
  * recognizable name at all (a bare reference number, an empty row). Undefined means "don't group
  * this" — never group everything unrecognizable together under one key.
  */
+/**
+ * Cached by the two strings it reads, not by transaction identity.
+ *
+ * `merchantKey` is pure but not cheap — lowercasing, a dozen regex replaces, tokenising — and it is
+ * called from everywhere: the review list, similarity matching, the unknown-merchant scan, account
+ * stats. A ledger has far fewer distinct descriptions than rows, so the same handful of strings are
+ * re-derived thousands of times over.
+ *
+ * Keyed on the inputs rather than the object because a transaction's description is editable; an
+ * identity cache would keep answering with the old name after a row was corrected.
+ */
+const keyCache = new Map<string, string | undefined>();
+/** Bounded so a very large import can't grow this without limit; far above any real vault's count of
+ *  distinct descriptions, and clearing wholesale is cheaper than tracking recency. */
+const KEY_CACHE_LIMIT = 20000;
+
 export function merchantKey(tx: Pick<Transaction, "description" | "counterparty">): string | undefined {
-	return keyFrom(merchantSourceText(tx));
+	const cacheKey = `${tx.description ?? ""}\u0000${tx.counterparty ?? ""}`;
+	const hit = keyCache.get(cacheKey);
+	if (hit !== undefined || keyCache.has(cacheKey)) return hit;
+	const key = keyFrom(merchantSourceText(tx));
+	if (keyCache.size >= KEY_CACHE_LIMIT) keyCache.clear();
+	keyCache.set(cacheKey, key);
+	return key;
 }
 
 function keyFrom(raw: string): string | undefined {
