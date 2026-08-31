@@ -10,7 +10,7 @@ import { buildRecheckTargets } from "../../ai/recheck";
 import { RecheckModal } from "../../modals/RecheckModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import type { ReviewStatus, Transaction } from "../../types";
-import { badge, categoryChainChip, emptyState, icon, moneyInput, renderCategoryPicker, statTile } from "../../ui/dom";
+import { badge, categoryChainChip, emptyState, icon, moneyInput, renderCategoryPicker, searchInput, statTile } from "../../ui/dom";
 
 type StatusFilter = "all" | ReviewStatus | "uncategorized";
 
@@ -419,16 +419,14 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 
 	function renderControls(): void {
 		const controls = container.createDiv({ cls: "fp-ledger-controls" });
-		const search = controls.createEl("input", {
-			type: "text",
-			cls: "fp-search",
+		searchInput(controls, {
 			placeholder: "Search description, counterparty or notes…",
-		});
-		search.value = reviewState.search;
-		search.addEventListener("input", () => {
-			reviewState.search = search.value;
-			reviewState.shown = PAGE_SIZE;
-			redrawList();
+			value: reviewState.search,
+			onChange: (value) => {
+				reviewState.search = value;
+				reviewState.shown = PAGE_SIZE;
+				redrawList();
+			},
 		});
 
 		const filterRow = container.createDiv({ cls: "fp-ledger-filters" });

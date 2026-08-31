@@ -7695,3 +7695,46 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+/* Search box with a clear button inside its right-hand edge. The button only exists once there is
+   something to clear, so an empty field looks like a plain input rather than a control with a dead
+   affordance parked in it. */
+.fp-search-wrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.fp-search-wrap .fp-search {
+	width: 100%;
+	/* Room for the button, so a long query never runs underneath it. */
+	padding-right: 30px;
+}
+.fp-search-clear {
+	position: absolute;
+	right: 6px;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.fp-search-clear.is-visible {
+	display: inline-flex;
+}
+.fp-search-clear:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+.fp-search-clear .svg-icon {
+	width: 14px;
+	height: 14px;
+}

@@ -9,7 +9,7 @@ import type FinancePlugin from "../../main";
 import type { ReviewStatus, Transaction } from "../../types";
 import { describeRuleScope } from "../../rules";
 import { renderAttachmentControl } from "../../ui/attachment";
-import { categoryChainChip, emptyState, icon, renderCategoryPicker, type CategoryPickerValue } from "../../ui/dom";
+import { categoryChainChip, emptyState, icon, renderCategoryPicker, searchInput, type CategoryPickerValue } from "../../ui/dom";
 import { openImportWizard } from "../../wizards/ImportWizard";
 import { openInvoiceMatchWizard } from "../../wizards/InvoiceMatchWizard";
 
@@ -130,12 +130,13 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin, opts
 	// control beside it narrows. Adding a transaction and editing rules are page-level actions and live
 	// in the page's own headers — repeating them here only made two places to look.
 	const filterRow = container.createDiv({ cls: "fp-ledger-filters" });
-	const search = filterRow.createEl("input", {
-		type: "text",
+	// The element is still returned and read by `draw()`, which reads every control's value in one
+	// place rather than tracking each one's changes separately.
+	const search = searchInput(filterRow, {
 		placeholder: "Search description or counterparty…",
-		cls: "fp-search",
+		value: filterState.search,
+		onChange: () => redrawFromFirstPage(),
 	});
-	search.value = filterState.search;
 
 	let accountSelect: HTMLSelectElement | undefined;
 	if (showAccountColumn) {
@@ -588,7 +589,6 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin, opts
 	}
 
 	draw();
-	search.addEventListener("input", redrawFromFirstPage);
 	accountSelect?.addEventListener("change", redrawFromFirstPage);
 	primarySelect.addEventListener("change", () => {
 		populateSecondaryFilter(primarySelect.value, "");
