@@ -7842,3 +7842,42 @@
 .fp-merchant-more {
 	margin-top: 8px;
 }
+
+/* The "By merchant" panel folds away once its merchants are filed. Collapsed it keeps its counts, so
+   the header still says what is inside rather than becoming a title with no reason to open it. */
+.fp-merchant-panel-toggle {
+	cursor: pointer;
+	min-width: 0;
+}
+.fp-merchant-panel-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.fp-merchant-panel-title h3 {
+	margin: 0;
+}
+.fp-merchant-panel-chevron {
+	display: inline-flex;
+	color: var(--text-faint);
+}
+.fp-merchant-panel-chevron .svg-icon {
+	width: 15px;
+	height: 15px;
+	transition: transform 120ms ease;
+}
+.fp-merchant-panel:not(.is-collapsed) .fp-merchant-panel-chevron .svg-icon {
+	transform: rotate(90deg);
+}
+.fp-merchant-panel-summary {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+.fp-merchant-panel-toggle:hover .fp-merchant-panel-chevron,
+.fp-merchant-panel-toggle:hover .fp-merchant-panel-summary {
+	color: var(--text-muted);
+}
+.fp-merchant-panel.is-collapsed {
+	padding-bottom: 12px;
+}

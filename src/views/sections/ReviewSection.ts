@@ -473,11 +473,42 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		const ranked = [...groups.entries()].filter(([, g]) => g.count > 1).sort((a, b) => b[1].count - a[1].count);
 		if (ranked.length === 0) return;
 
-		const card = container.createDiv({ cls: "fp-card fp-merchant-panel" });
-		const head = card.createDiv({ cls: "fp-section-header" });
-		const headText = head.createDiv();
-		headText.createEl("h3", { text: "By merchant" });
 		const covered = ranked.reduce((n, [, g]) => n + g.count, 0);
+		const collapsed = plugin.settings.reviewMerchantPanelCollapsed === true;
+		const card = container.createDiv({ cls: "fp-card fp-merchant-panel" + (collapsed ? " is-collapsed" : "") });
+		const head = card.createDiv({ cls: "fp-section-header" });
+
+		// A div with a role, not a button: a theme that styles `button` wins over a plain class, which
+		// has already turned two headings in this branch into grey pills with centred text.
+		const headText = head.createDiv({
+			cls: "fp-merchant-panel-toggle",
+			attr: { role: "button", tabindex: "0", "aria-expanded": String(!collapsed) },
+		});
+		const titleRow = headText.createDiv({ cls: "fp-merchant-panel-title" });
+		icon(titleRow, "chevron-right", "fp-merchant-panel-chevron");
+		titleRow.createEl("h3", { text: "By merchant" });
+		// Collapsed, the header still has to say what is in there, or folding it away turns it into a
+		// heading with no reason to open it.
+		titleRow.createSpan({
+			cls: "fp-merchant-panel-summary",
+			text: `${ranked.length} merchant${ranked.length === 1 ? "" : "s"} · ${covered} row${covered === 1 ? "" : "s"}`,
+		});
+		const toggle = (): void => {
+			plugin.settings.reviewMerchantPanelCollapsed = !collapsed;
+			void plugin.saveSettings();
+			render();
+		};
+		headText.addEventListener("click", toggle);
+		headText.addEventListener("keydown", (ev) => {
+			if (ev.key === "Enter" || ev.key === " ") {
+				ev.preventDefault();
+				toggle();
+			}
+		});
+
+		// Collapsed is the title row and its counts, nothing else — the paragraph explaining the
+		// remainder is worth reading once, not every time the panel is folded away.
+		if (collapsed) return;
 		// The gap between `covered` and the queue is the whole reason this panel does not cover
 		// everything, so it says what the difference is made of rather than leaving the two numbers
 		// side by side inviting the question.

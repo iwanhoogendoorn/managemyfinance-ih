@@ -49,6 +49,9 @@ export interface FinanceSettings {
 	activeAccountId?: string;
 	/** Selects a workspace page that isn't account-scoped, e.g. the subscriptions tracker. */
 	activeView?: FinanceViewId;
+	/** Whether Review's "By merchant" panel is folded away. It sits above the queue and is worth
+	 *  hiding once its merchants are filed, without losing it. */
+	reviewMerchantPanelCollapsed?: boolean;
 	/** Whether the sidebar's "Closed" group is open. Collapsed by default: a closed account is history
 	 *  you occasionally consult, not something that should compete with the accounts you use. */
 	closedAccountsExpanded?: boolean;
