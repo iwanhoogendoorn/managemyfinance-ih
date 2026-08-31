@@ -206,3 +206,32 @@ describe("which field names the payee", () => {
 		expect(merchantKey({ description: "", counterparty: "" })).toBeUndefined();
 	});
 });
+
+describe("administrative words are not a merchant", () => {
+	it("does not build a key out of reference vocabulary", () => {
+		// "Kenmerk … Omschrijving Klantnummer" is an invoice reference; Eneco is in the next column.
+		expect(merchantKey({ description: "Kenmerk  8002227925600011 Omschrijving  Klantnummer", counterparty: "ENECO SERVICES" })).toBe(
+			"eneco services"
+		);
+		expect(merchantKey({ description: "kenmerk 3021601156831408 Rel.nr. 436815672 Periode 0", counterparty: "CZ Groep Zorgverzekeraar" })).toBe(
+			"cz groep zorgverzekeraar"
+		);
+	});
+
+	it("stops different companies merging under the word their description opened with", () => {
+		// Six payees, XS4ALL and A.T.O. Electro among them, were all filed under "factuurnummer".
+		const a = merchantKey({ description: "Factuurnummer 201623896", counterparty: "XS4ALL" });
+		const b = merchantKey({ description: "Factuurnummer 900012345", counterparty: "A.T.O. Electro B.V." });
+		expect(a).not.toBe(b);
+		expect(a).toBe("xs4all");
+	});
+
+	it("leaves a real name that merely contains a reference word alone", () => {
+		// Only whole tokens are dropped, so a trading name survives intact.
+		expect(merchantKey({ description: "Nummer Vijf Cafe" })).toContain("vijf");
+	});
+
+	it("still returns nothing when the description is only admin words and there is no counterparty", () => {
+		expect(merchantKey({ description: "Factuurnummer 201623896", counterparty: "" })).toBeUndefined();
+	});
+});

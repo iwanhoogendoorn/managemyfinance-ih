@@ -101,9 +101,41 @@ const LEADING_STOPWORDS = new Set([
 	"the",
 ]);
 
+/**
+ * The words a bank writes around a reference number rather than around a payee.
+ *
+ * Dutch bank descriptions are frequently nothing but these: "Kenmerk 8002227925600011 Omschrijving
+ * Klantnummer" is an invoice reference and says nothing about who was paid — Eneco is in the next
+ * column. Left in, they formed keys made entirely of admin vocabulary, and those keys then merged
+ * *different companies*: six payees, among them XS4ALL and A.T.O. Electro, all filed together under
+ * "factuurnummer" because that is the word their descriptions happened to open with.
+ *
+ * Only words that are purely administrative, never part of a trading name.
+ */
+const REFERENCE_WORDS = new Set([
+	"kenmerk",
+	"betalingskenmerk",
+	"factuurnummer",
+	"factuur",
+	"klantnummer",
+	"relatienummer",
+	"relnr",
+	"rel",
+	"nr",
+	"nummer",
+	"referentie",
+	"omschrijving",
+	"periode",
+	"termijn",
+	"btw",
+	"iban",
+	"bic",
+]);
+
 /** A token that's mostly digits, or a known reference marker, carries no merchant identity. */
 function isNoiseToken(token: string): boolean {
 	if (!token) return true;
+	if (REFERENCE_WORDS.has(token)) return true;
 	// Pure numbers: branch numbers, till ids, reference numbers.
 	if (/^\d+$/.test(token)) return true;
 	// Dates and times in any of the shapes a bank export uses.
