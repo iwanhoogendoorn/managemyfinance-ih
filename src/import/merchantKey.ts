@@ -158,13 +158,21 @@ const ACCOUNT_LIKE = /^[a-z]{0,2}[\s\d]*$|^[a-z]{2}\d{2}[a-z0-9]{10,}$/i;
  * belongs to.
  *
  * So a description that reads as a terminal line defers to the counterparty, unless that is itself
- * an account number, which is what banks that put an IBAN there would offer instead.
+ * an account number, which is what banks that put an IBAN there would offer instead. A description
+ * that names nobody at all — a bare reference like "2014-0051" — defers to it too, rather than
+ * leaving the row with no merchant identity while the company sits in the next column.
+ *
+ * Exported because the *label* has to come from the same field as the key. Choosing them separately
+ * is how a row ends up correctly grouped under "CCV*Huffels Horeca" while still being shown, and sent
+ * to a model, as "UTRECHT 08-11-2014 15:08 Pas: 4333".
  */
-function merchantText(tx: Pick<Transaction, "description" | "counterparty">): string {
+export function merchantSourceText(tx: Pick<Transaction, "description" | "counterparty">): string {
 	const description = `${tx.description ?? ""}`.trim();
 	const counterparty = `${tx.counterparty ?? ""}`.trim();
-	if (counterparty && !ACCOUNT_LIKE.test(counterparty) && TERMINAL_LINE.test(description)) return counterparty;
-	return description || counterparty;
+	const namedCounterparty = counterparty && !ACCOUNT_LIKE.test(counterparty) ? counterparty : "";
+	if (namedCounterparty && TERMINAL_LINE.test(description)) return namedCounterparty;
+	if (description && keyFrom(description)) return description;
+	return namedCounterparty || description || counterparty;
 }
 
 /**
@@ -173,14 +181,7 @@ function merchantText(tx: Pick<Transaction, "description" | "counterparty">): st
  * this" — never group everything unrecognizable together under one key.
  */
 export function merchantKey(tx: Pick<Transaction, "description" | "counterparty">): string | undefined {
-	const primary = keyFrom(merchantText(tx));
-	if (primary) return primary;
-	// The chosen field named nobody — a bare reference like "2014-0051". Rather than give up while the
-	// other field is sitting there holding "Snowcone B.V.", try it. 232 rows of this one import had a
-	// real company in the counterparty and no merchant identity at all, so they reached neither the
-	// rules nor the model that could have filed them.
-	const other = `${tx.counterparty ?? ""}`.trim();
-	return other && !ACCOUNT_LIKE.test(other) ? keyFrom(other) : undefined;
+	return keyFrom(merchantSourceText(tx));
 }
 
 function keyFrom(raw: string): string | undefined {
