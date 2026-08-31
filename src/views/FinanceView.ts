@@ -17,6 +17,7 @@ import { openCreatePortfolioWizard } from "../wizards/PortfolioWizard";
 import { renderAccountPage } from "./sections/AccountPage";
 import { renderBudgetsSection } from "./sections/BudgetsSection";
 import { renderCardsSection } from "./sections/CardsSection";
+import { renderDebtsSection } from "./sections/DebtsSection";
 import { renderCategoriesSection } from "./sections/CategoriesSection";
 import { renderCompareSection } from "./sections/CompareSection";
 import { renderReportsSection } from "./sections/ReportsSection";
@@ -40,7 +41,7 @@ interface NavTabDef {
 	badgeCount?: number;
 }
 
-const DEFAULT_NAV_ORDER = ["all-accounts", "strategy", "budgets", "categories", "subscriptions", "cards", "review", "reports", "compare"];
+const DEFAULT_NAV_ORDER = ["all-accounts", "strategy", "budgets", "categories", "subscriptions", "debts", "cards", "review", "reports", "compare"];
 
 function possessive(name: string): string {
 	const trimmed = name.trim();
@@ -361,6 +362,13 @@ export class FinanceView extends ItemView {
 				icon: "repeat",
 				isActive: activeView === "subscriptions",
 				onClick: () => void this.selectView("subscriptions"),
+			},
+			debts: {
+				id: "debts",
+				label: "Debts",
+				icon: "handshake",
+				isActive: activeView === "debts",
+				onClick: () => void this.selectView("debts"),
 			},
 			cards: {
 				id: "cards",
@@ -710,6 +718,9 @@ export class FinanceView extends ItemView {
 				break;
 			case "subscriptions":
 				renderSubscriptionsSection(this.bodyEl, this.plugin);
+				break;
+			case "debts":
+				renderDebtsSection(this.bodyEl, this.plugin);
 				break;
 			case "cards":
 				renderCardsSection(this.bodyEl, this.plugin);

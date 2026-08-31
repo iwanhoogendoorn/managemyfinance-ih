@@ -326,6 +326,43 @@ export interface Card {
  * per year inside it, so a source is a durable partition of the data rather than a label.
  * "manual" is the one that isn't an importer — it's a row you typed yourself.
  */
+/** Which way a debt points. "owe" is money you owe someone; "owed" is money owed to you. */
+export type DebtDirection = "owe" | "owed";
+
+export type DebtCounterpartyKind = "person" | "company" | "bank" | "other";
+
+/**
+ * One debt between you and someone else — a bank, a company, or a person.
+ *
+ * Deliberately a register and nothing more. It records who, how much, since when, when it is due and
+ * whether it is settled, and it touches no other figure in the plugin: net worth, budgets and every
+ * report are exactly as they were with or without it. That is the whole point. A forgotten €20 to a
+ * friend has no business quietly reshaping a headline number, and the alternative — asking every debt
+ * to be reconciled before it can be written down — is how a note-to-self becomes bookkeeping.
+ *
+ * Distinct from the debt-carrying *accounts* the Strategy page plans a payoff for. Those are real
+ * accounts with balances and APRs. These are the ones that live on a scrap of paper.
+ */
+export interface Debt {
+	id: string;
+	/** Who the debt is with. Free text: a bank, a shop, a person. */
+	counterparty: string;
+	kind?: DebtCounterpartyKind;
+	direction: DebtDirection;
+	/** The original amount, always positive — `direction` carries which way it points. */
+	amount: number;
+	currency: string;
+	/** Repaid so far, positive. Absent means nothing yet. */
+	paid?: number;
+	/** When the debt started, ISO. */
+	date: string;
+	dueDate?: string;
+	settledDate?: string;
+	notes?: string;
+	/** Optionally the account it relates to — a reference only, never a balance adjustment. */
+	accountId?: string;
+}
+
 export type TransactionSource =
 	| "ing"
 	| "trade-republic"

@@ -14,6 +14,7 @@ import type {
 	Card,
 	Category,
 	CategoryRule,
+	Debt,
 	ImportBatch,
 	OneOffBudget,
 	Portfolio,
@@ -28,6 +29,7 @@ export type FinanceViewId =
 	| "budgets"
 	| "categories"
 	| "subscriptions"
+	| "debts"
 	| "cards"
 	| "review"
 	| "reports"
@@ -235,6 +237,8 @@ export class FinanceStore {
 	rules: CategoryRule[] = [];
 	transactions: Transaction[] = [];
 	subscriptions: Subscription[] = [];
+	/** Informal debts with people and companies — a register, deliberately outside every total. See Debt. */
+	debts: Debt[] = [];
 	cards: Card[] = [];
 	/** merchant key → what this portfolio has learned about it. See import/merchantMemory.ts. */
 	merchants: MerchantMap = {};
@@ -289,6 +293,7 @@ export class FinanceStore {
 		this.accounts = await this.readJson<Account[]>(this.path("data", "accounts.json"), []);
 		this.rules = await this.readJson<CategoryRule[]>(this.path("data", "rules.json"), []);
 		this.subscriptions = await this.readJson<Subscription[]>(this.path("data", "subscriptions.json"), []);
+		this.debts = await this.readJson<Debt[]>(this.path("data", "debts.json"), []);
 		this.cards = await this.readJson<Card[]>(this.path("data", "cards.json"), []);
 		this.merchants = await this.readJson<MerchantMap>(this.path("data", "merchants.json"), {});
 		this.snapshots = await this.readJson<BalanceSnapshot[]>(this.path("data", "snapshots.json"), []);
@@ -479,6 +484,10 @@ export class FinanceStore {
 
 	async saveSubscriptions(): Promise<void> {
 		await this.app.vault.adapter.write(this.path("data", "subscriptions.json"), JSON.stringify(this.subscriptions, null, "\t"));
+	}
+
+	async saveDebts(): Promise<void> {
+		await this.app.vault.adapter.write(this.path("data", "debts.json"), JSON.stringify(this.debts, null, "\t"));
 	}
 
 	async saveCards(): Promise<void> {
@@ -788,6 +797,7 @@ export class FinanceStore {
 		await this.saveCategories();
 		await this.saveRules();
 		await this.saveSubscriptions();
+		await this.saveDebts();
 		await this.saveCards();
 		await this.saveMerchants();
 		await this.saveSnapshots();

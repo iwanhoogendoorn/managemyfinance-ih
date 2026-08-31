@@ -7605,3 +7605,67 @@
 .fp-form-inline-check {
 	margin: 2px 0 4px;
 }
+
+/* ---------------------------------------------------------------------------
+   Debts register. Its own island by design — nothing here feeds any other total.
+   --------------------------------------------------------------------------- */
+.fp-debt-summary {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 10px;
+	margin: 14px 0 18px;
+}
+.fp-debt-card {
+	padding: 12px 14px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+}
+/* A left edge rather than coloured text: the amounts stay legible, and which way a debt points is
+   readable before you have read the label. */
+.fp-debt-card.is-owe {
+	border-left: 3px solid var(--color-red, #dc2626);
+}
+.fp-debt-card.is-owed {
+	border-left: 3px solid var(--color-green, #16a34a);
+}
+.fp-debt-card-label {
+	font-size: var(--font-ui-smaller);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-faint);
+}
+.fp-debt-card-value {
+	margin-top: 2px;
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+.fp-debt-card-note {
+	margin-top: 3px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.fp-debt-kind-icon {
+	display: inline-flex;
+	margin-right: 6px;
+	color: var(--text-faint);
+	vertical-align: middle;
+}
+.fp-debt-kind-icon .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+.fp-debt-note {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+/* Settled rows stay readable — you keep them to remember they are done — but stop competing with
+   the ones that still need something. */
+.fp-table tr.is-settled td {
+	opacity: 0.6;
+}
+.fp-table tr.is-overdue td:first-child {
+	box-shadow: inset 2px 0 0 var(--color-red, #dc2626);
+}
