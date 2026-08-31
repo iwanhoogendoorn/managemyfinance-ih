@@ -478,9 +478,21 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		const headText = head.createDiv();
 		headText.createEl("h3", { text: "By merchant" });
 		const covered = ranked.reduce((n, [, g]) => n + g.count, 0);
+		// The gap between `covered` and the queue is the whole reason this panel does not cover
+		// everything, so it says what the difference is made of rather than leaving the two numbers
+		// side by side inviting the question.
+		const singles = [...groups.values()].filter((g) => g.count === 1).length;
+		const unnamed = scope.length - covered - singles;
+		const remainder: string[] = [];
+		if (singles > 0) remainder.push(`${singles} merchant${singles === 1 ? "" : "s"} appearing once each`);
+		if (unnamed > 0) remainder.push(`${unnamed} with no merchant name`);
 		headText.createDiv({
 			cls: "fp-section-subtitle",
-			text: `${ranked.length} merchants with more than one row here, covering ${covered} of ${scope.length}. Filing one files all of them.`,
+			text:
+				`${ranked.length} merchant${ranked.length === 1 ? "" : "s"} with more than one row, covering ${covered} of the ${scope.length} here — filing one files all of them.` +
+				(remainder.length > 0
+					? ` The other ${scope.length - covered} are ${remainder.join(" and ")} — nothing to group, so they are in the list below.`
+					: ""),
 		});
 		if (reviewState.merchantKey) {
 			const clear = head.createEl("button", { cls: "fp-btn fp-btn-ghost" });
