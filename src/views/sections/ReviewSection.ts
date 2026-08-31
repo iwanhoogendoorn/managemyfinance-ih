@@ -18,6 +18,8 @@ interface ReviewFilterState {
 	search: string;
 	status: StatusFilter;
 	accountId: string;
+	/** Scopes the queue to one merchant key — see the "By merchant" panel. "" for all. */
+	merchantKey: string;
 	/** A primary category id, "__uncategorized", or "" for all. */
 	categoryPrimaryId: string;
 	categorySecondaryId: string;
@@ -38,6 +40,7 @@ const reviewState: ReviewFilterState = {
 	search: "",
 	status: "new",
 	accountId: "",
+	merchantKey: "",
 	categoryPrimaryId: "",
 	categorySecondaryId: "",
 	dateFrom: "",
@@ -73,6 +76,21 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 
 	/** Rows matching every active filter, newest first — the "shown" cap is applied after this. */
 	function filtered(): Transaction[] {
+		return applyFilters(true);
+	}
+
+	/**
+	 * The same rows the merchant filter is not applied to.
+	 *
+	 * The "By merchant" panel groups these, so that choosing a merchant narrows the list below without
+	 * reducing the panel to the single merchant you just chose from — which would leave nowhere to go
+	 * next but back.
+	 */
+	function filteredIgnoringMerchant(): Transaction[] {
+		return applyFilters(false);
+	}
+
+	function applyFilters(withMerchant: boolean): Transaction[] {
 		const needle = reviewState.search.trim().toLowerCase();
 		// The "hide approved" preference only applies to the broad filters. Asking explicitly for
 		// approved rows always shows them — a setting that could make a filter return nothing it names
@@ -91,6 +109,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			})
 			.filter((t) => !needle || `${t.description} ${t.counterparty ?? ""} ${t.notes ?? ""}`.toLowerCase().includes(needle))
 			.filter((t) => !reviewState.accountId || t.accountId === reviewState.accountId)
+			.filter((t) => !withMerchant || !reviewState.merchantKey || merchantKey(t) === reviewState.merchantKey)
 			.filter((t) => {
 				const primary = reviewState.categoryPrimaryId;
 				if (!primary) return true;
@@ -315,6 +334,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		renderCounters();
 		renderControls();
 		const rows = filtered();
+		renderMerchantPanel();
 		renderBulkBar(rows);
 		renderTable(rows);
 	}
@@ -415,6 +435,118 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			tr.createEl("td", { cls: "fp-table-num", text: String(counts.approved) });
 			tr.createEl("td", { cls: "fp-table-num", text: counts.uncategorized > 0 ? String(counts.uncategorized) : "—" });
 		}
+	}
+
+	/** How many merchants the panel lists before "show all" — enough to cover the bulk of a queue
+	 *  without becoming a second list to scroll past. */
+	const MERCHANT_PANEL_LIMIT = 12;
+
+	/**
+	 * The queue grouped by who was paid, with a category picker per merchant.
+	 *
+	 * A review queue is not a list of decisions, it is a list of *rows* — and the same decision is
+	 * spread across all of them. On this ledger 1,076 rows needing attention are 608 merchants, and
+	 * the twenty biggest account for 310 of those rows: VMware alone is 75, Hoofdweg 47, PayPal 41.
+	 * Filing those one row at a time is 310 identical judgements. Here it is twenty.
+	 *
+	 * It deliberately does not replace the row list. 468 of those merchants have a single row, and
+	 * nothing about grouping helps them — the panel takes the head of the distribution and leaves the
+	 * tail to the list below, which is what the list is good at.
+	 */
+	function renderMerchantPanel(): void {
+		// Grouped from the rows matching every filter *except* the merchant one, so picking a merchant
+		// narrows the list below without emptying the panel you picked it from.
+		const scope = reviewState.merchantKey ? filteredIgnoringMerchant() : filtered();
+		const groups = new Map<string, { count: number; name: string }>();
+		for (const tx of scope) {
+			const key = merchantKey(tx);
+			if (!key) continue;
+			const entry = groups.get(key) ?? { count: 0, name: merchantLabel(key) };
+			entry.count++;
+			groups.set(key, entry);
+		}
+		// One row per merchant is what the list below already does well; a panel of them is just the
+		// same list with fewer columns.
+		const ranked = [...groups.entries()].filter(([, g]) => g.count > 1).sort((a, b) => b[1].count - a[1].count);
+		if (ranked.length === 0) return;
+
+		const card = container.createDiv({ cls: "fp-card fp-merchant-panel" });
+		const head = card.createDiv({ cls: "fp-section-header" });
+		const headText = head.createDiv();
+		headText.createEl("h3", { text: "By merchant" });
+		const covered = ranked.reduce((n, [, g]) => n + g.count, 0);
+		headText.createDiv({
+			cls: "fp-section-subtitle",
+			text: `${ranked.length} merchants with more than one row here, covering ${covered} of ${scope.length}. Filing one files all of them.`,
+		});
+		if (reviewState.merchantKey) {
+			const clear = head.createEl("button", { cls: "fp-btn fp-btn-ghost" });
+			icon(clear, "x");
+			clear.createSpan({ text: "Show all merchants" });
+			clear.addEventListener("click", () => {
+				reviewState.merchantKey = "";
+				reviewState.shown = PAGE_SIZE;
+				render();
+			});
+		}
+
+		const shown = merchantPanelExpanded ? ranked : ranked.slice(0, MERCHANT_PANEL_LIMIT);
+		const list = card.createDiv({ cls: "fp-merchant-list" });
+		for (const [key, group] of shown) {
+			renderMerchantRow(list, key, group.name, group.count);
+		}
+
+		if (ranked.length > shown.length || merchantPanelExpanded) {
+			const more = card.createEl("button", { cls: "fp-btn fp-btn-ghost fp-merchant-more" });
+			more.createSpan({
+				text: merchantPanelExpanded ? "Show fewer" : `Show all ${ranked.length} merchants`,
+			});
+			more.addEventListener("click", () => {
+				merchantPanelExpanded = !merchantPanelExpanded;
+				render();
+			});
+		}
+	}
+
+	function renderMerchantRow(list: HTMLElement, key: string, name: string, count: number): void {
+		const isActive = reviewState.merchantKey === key;
+		const row = list.createDiv({ cls: "fp-merchant-row" + (isActive ? " is-active" : "") });
+
+		const nameBtn = row.createEl("button", { cls: "fp-merchant-name" });
+		nameBtn.createSpan({ cls: "fp-merchant-count", text: String(count) });
+		nameBtn.createSpan({ text: name });
+		nameBtn.setAttribute("title", isActive ? "Showing only this merchant — click to show all" : `Show only ${name}`);
+		nameBtn.addEventListener("click", () => {
+			reviewState.merchantKey = isActive ? "" : key;
+			reviewState.shown = PAGE_SIZE;
+			render();
+		});
+
+		// Its own picker per row rather than one shared control: the whole point is deciding several
+		// merchants in a row without a selection step between each.
+		let pending: string | undefined;
+		const pickerWrap = row.createDiv({ cls: "fp-merchant-picker" });
+		renderCategoryPicker(pickerWrap, {
+			categories: store.categories,
+			primaryPlaceholder: "Set category…",
+			onChange: ({ primaryId, secondaryId }) => {
+				pending = secondaryId ?? primaryId;
+				applyBtn.disabled = !pending;
+			},
+		});
+
+		const applyBtn = row.createEl("button", { cls: "fp-btn fp-btn-primary fp-merchant-apply" });
+		icon(applyBtn, "check-check");
+		applyBtn.createSpan({ text: `File ${count}` });
+		applyBtn.disabled = true;
+		applyBtn.addEventListener("click", () => {
+			if (!pending) return;
+			// Every row of this merchant currently in scope, not only the page on screen.
+			const ids = filteredIgnoringMerchant()
+				.filter((t) => merchantKey(t) === key)
+				.map((t) => t.id);
+			void categorizeAndApprove(ids, pending);
+		});
 	}
 
 	function renderControls(): void {
@@ -518,6 +650,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		clearBtn.addEventListener("click", () => {
 			reviewState.search = "";
 			reviewState.accountId = "";
+			reviewState.merchantKey = "";
 			reviewState.categoryPrimaryId = "";
 			reviewState.categorySecondaryId = "";
 			reviewState.dateFrom = "";
@@ -540,6 +673,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 
 	/** Rebuilt once per redraw — see uncategorizedByMerchant. */
 	let siblingCounts = new Map<string, number>();
+	let merchantPanelExpanded = false;
 	let countersEl: HTMLElement | undefined;
 	let bulkBarEl: HTMLElement | undefined;
 	let tableEl: HTMLElement | undefined;

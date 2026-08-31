@@ -7744,3 +7744,72 @@
 	width: 14px;
 	height: 14px;
 }
+
+/* ---------------------------------------------------------------------------
+   Review, grouped by merchant. A queue is a list of rows, but the decisions in
+   it repeat — filing the biggest merchants one row at a time is the same
+   judgement made dozens of times.
+   --------------------------------------------------------------------------- */
+.fp-merchant-panel {
+	margin: 14px 0;
+	padding: 14px 16px;
+}
+.fp-merchant-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 10px;
+}
+.fp-merchant-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	padding: 6px 8px;
+	border-radius: 6px;
+}
+.fp-merchant-row:hover {
+	background: var(--background-modifier-hover);
+}
+.fp-merchant-row.is-active {
+	background: var(--background-modifier-hover);
+	box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
+.fp-merchant-name {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 8px;
+	flex: 1 1 220px;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	cursor: pointer;
+	text-align: left;
+	font-size: var(--font-ui-small);
+	height: auto;
+}
+.fp-merchant-name:hover {
+	color: var(--interactive-accent);
+}
+/* The count leads: it is the reason to act on this row rather than scroll past it. */
+.fp-merchant-count {
+	min-width: 2.5em;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-muted);
+}
+.fp-merchant-picker {
+	flex: 0 1 auto;
+}
+.fp-merchant-picker .fp-category-picker {
+	margin: 0;
+}
+.fp-merchant-apply {
+	flex: 0 0 auto;
+}
+.fp-merchant-more {
+	margin-top: 8px;
+}
