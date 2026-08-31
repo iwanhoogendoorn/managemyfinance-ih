@@ -7410,3 +7410,18 @@
 	height: 12px;
 	color: var(--interactive-accent);
 }
+
+/* Expanded, the strip can hold every distinct amount a merchant has ever billed — 49 of them here —
+   so it scrolls rather than pushing the table it is meant to be filtering off the screen. */
+.fp-rule-amount-chips.is-expanded {
+	max-height: 168px;
+	overflow-y: auto;
+	padding-right: 4px;
+}
+.fp-rule-amount-chip.is-more {
+	border-style: dashed;
+	color: var(--text-muted);
+}
+.fp-rule-amount-chip.is-more:hover {
+	color: var(--text-normal);
+}

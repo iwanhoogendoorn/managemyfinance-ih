@@ -217,8 +217,12 @@ export interface AmountGroup {
  * The cadence figures are reported, never acted on: "35 charges across 33 months, 30 days apart" is
  * enough for a person to recognise a subscription, and guessing on their behalf would only be right
  * until the first annual plan or the first merchant who bills monthly for something that isn't one.
+ *
+ * Returns every distinct amount by default. Deciding how many to *show* belongs to the caller, which
+ * is the only place that knows which ones the user has already picked — and a picked amount that fell
+ * off the end of a truncated list would be one the user could no longer un-pick.
  */
-export function amountGroups(transactions: Transaction[], limit = 8): AmountGroup[] {
+export function amountGroups(transactions: Transaction[], limit = Number.POSITIVE_INFINITY): AmountGroup[] {
 	const buckets = new Map<string, { value: number; currency: string; dates: string[]; count: number }>();
 	for (const tx of transactions) {
 		if (typeof tx.amount !== "number" || !Number.isFinite(tx.amount)) continue;

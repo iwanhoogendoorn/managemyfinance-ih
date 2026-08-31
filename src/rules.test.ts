@@ -427,9 +427,16 @@ describe("amountGroups — the structure inside one merchant", () => {
 		expect(amountGroups([undated])[0].count).toBe(1);
 	});
 
-	it("honours the limit", () => {
+	it("honours an explicit limit", () => {
 		const many = Array.from({ length: 20 }, (_, i) => charge(-(i + 1), "2026-01-01"));
 		expect(amountGroups(many, 5)).toHaveLength(5);
+	});
+
+	it("returns every distinct amount by default", () => {
+		// The caller decides how many to show, because only it knows which are already picked — and a
+		// picked amount truncated out of the list is one the user can no longer un-pick.
+		const many = Array.from({ length: 20 }, (_, i) => charge(-(i + 1), "2026-01-01"));
+		expect(amountGroups(many)).toHaveLength(20);
 	});
 });
 

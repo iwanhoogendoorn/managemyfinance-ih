@@ -75,6 +75,11 @@ const MATCH_MODES: { value: CategoryRuleMatch; label: string; hint: string }[] =
 	{ value: "regex", label: "Regular expression", hint: "Matched case-insensitively against the description and counterparty together." },
 ];
 
+/** Enough chips to cover a merchant's real price points without turning the dialog into a wall of
+ *  one-off purchases — this ledger has 49 distinct Apple amounts, 37 of them appearing once or twice.
+ *  Everything beyond it is one click away. */
+const AMOUNT_CHIP_LIMIT = 12;
+
 /** A read-only list this long is already past the point of being scanned; beyond it, narrowing the
  *  pattern is the better answer than a longer list. */
 const ALREADY_CORRECT_LIMIT = 500;
@@ -112,6 +117,7 @@ export class CreateCategoryRuleModal extends Modal {
 	private setAmountCondition: (next?: RuleAmountCondition) => void = () => {};
 	/** Remembered across re-renders — the preview panel is rebuilt on every keystroke. */
 	private showAlreadyCorrect = false;
+	private showAllAmounts = false;
 	private submitBtn!: HTMLButtonElement;
 
 	constructor(app: App, private plugin: FinancePlugin, private tx: Transaction, private onDone?: () => void) {
@@ -262,6 +268,13 @@ export class CreateCategoryRuleModal extends Modal {
 		const picked = selectedAmounts(this.amount);
 		const isPicked = (value: number): boolean => picked.some((v) => Math.abs(v - value) < 0.005);
 
+		// The commonest handful, plus every amount already picked wherever it sorts. A picked chip that
+		// fell off the end of the list would be one the user could see the effect of but never undo.
+		const shown = this.showAllAmounts
+			? groups
+			: [...groups.slice(0, AMOUNT_CHIP_LIMIT), ...groups.slice(AMOUNT_CHIP_LIMIT).filter((g) => isPicked(g.value))];
+		const hidden = groups.length - shown.length;
+
 		const strip = c.createDiv({ cls: "fp-rule-amount-strip" });
 		strip.createDiv({
 			cls: "fp-rule-amount-strip-label",
@@ -269,8 +282,8 @@ export class CreateCategoryRuleModal extends Modal {
 				? `Amounts in this merchant — ${picked.length} picked, click to add or remove`
 				: "Amounts in this merchant — click to pick one or more",
 		});
-		const chips = strip.createDiv({ cls: "fp-rule-amount-chips" });
-		groups.forEach((g) => {
+		const chips = strip.createDiv({ cls: "fp-rule-amount-chips" + (this.showAllAmounts ? " is-expanded" : "") });
+		shown.forEach((g) => {
 			const on = isPicked(g.value);
 			const chip = chips.createEl("button", { cls: "fp-rule-amount-chip" + (on ? " is-picked" : "") });
 			if (on) icon(chip, "check");
@@ -286,6 +299,17 @@ export class CreateCategoryRuleModal extends Modal {
 			);
 			chip.addEventListener("click", () => this.toggleAmount(g.value));
 		});
+
+		if (hidden > 0 || this.showAllAmounts) {
+			const more = chips.createEl("button", { cls: "fp-rule-amount-chip is-more" });
+			more.createSpan({
+				text: this.showAllAmounts ? "Show fewer" : `+${hidden} more amount${hidden === 1 ? "" : "s"}`,
+			});
+			more.addEventListener("click", () => {
+				this.showAllAmounts = !this.showAllAmounts;
+				this.renderPreview();
+			});
+		}
 	}
 
 	/**
