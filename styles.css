@@ -7491,3 +7491,25 @@
 	width: 15px;
 	height: 15px;
 }
+
+/* ---------------------------------------------------------------------------
+   Dialogs that survive a click elsewhere in Obsidian.
+
+   The backdrop stops taking pointer events, which does two things at once: no
+   click ever lands on it, so nothing dismisses the dialog by accident, and the
+   click reaches whatever is behind, so switching workspace tabs actually works
+   while a half-filled form stays exactly as it was. Escape and the dialog's own
+   Cancel button are unaffected — only the accidental dismissal goes away.
+   --------------------------------------------------------------------------- */
+.modal-container.fp-modal-stays-open,
+.modal-container.fp-modal-stays-open > .modal-bg {
+	pointer-events: none;
+}
+.modal-container.fp-modal-stays-open > .modal {
+	pointer-events: auto;
+}
+/* A lighter backdrop, because this one is not blocking anything and shouldn't
+   look as though it is. */
+.modal-container.fp-modal-stays-open > .modal-bg {
+	opacity: 0.35;
+}

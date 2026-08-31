@@ -1,4 +1,5 @@
 import { App, Modal, Notice } from "obsidian";
+import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
 import { categoryChain } from "../categories";
 import { CURRENCIES } from "../constants";
 import { stableHash } from "../hash";
@@ -73,6 +74,7 @@ export class TransactionEditModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
+		keepOpenWhenClickingAway(this);
 		const c = this.contentEl;
 		c.addClass("fp-account-modal");
 

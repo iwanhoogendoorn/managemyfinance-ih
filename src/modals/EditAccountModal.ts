@@ -1,4 +1,5 @@
 import { App, Modal, Notice } from "obsidian";
+import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER, CURRENCIES } from "../constants";
 import { accountBalanceParts, type AccountBalanceParts } from "../kpi";
 import type FinancePlugin from "../main";
@@ -96,6 +97,7 @@ export class EditAccountModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
+		keepOpenWhenClickingAway(this);
 		const c = this.contentEl;
 		c.addClass("fp-account-modal");
 

@@ -1,4 +1,5 @@
 import { App, Modal, Notice } from "obsidian";
+import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
 import { categoryChain } from "../categories";
 import { formatMoney } from "../money";
 import { merchantKey } from "../import/merchantKey";
@@ -163,6 +164,7 @@ export class CreateCategoryRuleModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal", "fp-rules-modal");
+		keepOpenWhenClickingAway(this);
 		this.render();
 	}
 

@@ -1,4 +1,5 @@
 import { App, Modal, Notice } from "obsidian";
+import { keepOpenWhenClickingAway } from "../ui/modalStaysOpen";
 import { ACCOUNT_TYPE_META } from "../constants";
 import { netWorth, snapshotAsOf } from "../kpi";
 import type FinancePlugin from "../main";
@@ -35,6 +36,7 @@ export class BalanceSnapshotModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("fp-wizard-modal");
+		keepOpenWhenClickingAway(this);
 		this.contentEl.addClass("fp-account-modal");
 		this.render();
 	}
