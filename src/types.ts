@@ -318,6 +318,7 @@ export type TransactionSource =
 	| "revolut"
 	| "bunq"
 	| "n26"
+	| "knab"
 	| "camt"
 	| "mt940"
 	| "ofx"
