@@ -76,7 +76,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 
 	/** Rows matching every active filter, newest first — the "shown" cap is applied after this. */
 	function filtered(): Transaction[] {
-		return applyFilters(true);
+		return applyFilters();
 	}
 
 	/**
@@ -87,17 +87,23 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	 * next but back.
 	 */
 	function filteredIgnoringMerchant(): Transaction[] {
-		return applyFilters(false);
+		return applyFilters({ merchant: false });
 	}
 
-	function applyFilters(withMerchant: boolean): Transaction[] {
-		const needle = reviewState.search.trim().toLowerCase();
+	/**
+	 * `ignoreStatus` and `ignoreSearch` exist for the empty state, which has to answer "where did they
+	 * go" — a question you can only answer by running the same filters with one of them lifted.
+	 */
+	function applyFilters(opts: { merchant?: boolean; ignoreStatus?: boolean; ignoreSearch?: boolean } = {}): Transaction[] {
+		const withMerchant = opts.merchant !== false;
+		const needle = opts.ignoreSearch ? "" : reviewState.search.trim().toLowerCase();
 		// The "hide approved" preference only applies to the broad filters. Asking explicitly for
 		// approved rows always shows them — a setting that could make a filter return nothing it names
 		// would just read as a bug.
 		const hideApproved = plugin.settings.reviewHideApproved !== false;
 		return store.transactions
 			.filter((t) => {
+				if (opts.ignoreStatus) return true;
 				switch (reviewState.status) {
 					case "all":
 						return !hideApproved || statusOf(t) !== "approved";
@@ -471,11 +477,13 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		// One row per merchant is what the list below already does well; a panel of them is just the
 		// same list with fewer columns.
 		const ranked = [...groups.entries()].filter(([, g]) => g.count > 1).sort((a, b) => b[1].count - a[1].count);
+		merchantPanelEl = undefined;
 		if (ranked.length === 0) return;
 
 		const covered = ranked.reduce((n, [, g]) => n + g.count, 0);
 		const collapsed = plugin.settings.reviewMerchantPanelCollapsed === true;
 		const card = container.createDiv({ cls: "fp-card fp-merchant-panel" + (collapsed ? " is-collapsed" : "") });
+		merchantPanelEl = card;
 		const head = card.createDiv({ cls: "fp-section-header" });
 
 		// A div with a role, not a button: a theme that styles `button` wins over a plain class, which
@@ -771,6 +779,31 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			redrawList();
 		});
 
+		// The merchant filter's only control used to live inside the "By merchant" panel — which hides
+		// itself the moment nothing in scope has more than one row. Approving a merchant's last rows
+		// therefore left the filter switched on, invisible, and clearable only by wiping every other
+		// filter with it. It belongs in the row with the filters it behaves like.
+		if (reviewState.merchantKey) {
+			const chip = filterRow.createDiv({
+				cls: "fp-filter-chip",
+				attr: { role: "button", tabindex: "0", title: "Stop filtering by this merchant" },
+			});
+			chip.createSpan({ cls: "fp-filter-chip-label", text: merchantLabel(reviewState.merchantKey) });
+			icon(chip, "x", "fp-filter-chip-x");
+			const drop = (): void => {
+				reviewState.merchantKey = "";
+				reviewState.shown = PAGE_SIZE;
+				render();
+			};
+			chip.addEventListener("click", drop);
+			chip.addEventListener("keydown", (ev) => {
+				if (ev.key === "Enter" || ev.key === " ") {
+					ev.preventDefault();
+					drop();
+				}
+			});
+		}
+
 		const clearBtn = filterRow.createEl("button", { cls: "fp-btn fp-btn-ghost", text: "Clear filters" });
 		clearBtn.addEventListener("click", () => {
 			reviewState.search = "";
@@ -786,12 +819,20 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		});
 	}
 
-	/** Re-runs the filter and redraws only the list + bulk bar, so typing in the search box doesn't
-	 *  rebuild (and steal focus from) the controls above it. */
+	/** Re-runs the filter and redraws the merchant panel, list and bulk bar, so typing in the search
+	 *  box doesn't rebuild (and steal focus from) the controls above it.
+	 *
+	 *  The panel used to be left standing here, which put two contradictory answers on one screen: a
+	 *  search that emptied the queue left "39 merchants · 142 rows" sitting above "0 transactions match
+	 *  these filters". Worse, the merchants it still listed were the pre-search ones, so clicking one
+	 *  set a merchant filter that could not intersect the search — silently, since the merchant filter
+	 *  has no control of its own in the filter row. */
 	function redrawList(): void {
 		const rows = filtered();
+		merchantPanelEl?.remove();
 		bulkBarEl?.remove();
 		tableEl?.remove();
+		renderMerchantPanel();
 		renderBulkBar(rows);
 		renderTable(rows);
 	}
@@ -801,6 +842,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	let merchantPanelExpanded = false;
 	const expandedMerchants = new Set<string>();
 	let countersEl: HTMLElement | undefined;
+	let merchantPanelEl: HTMLElement | undefined;
 	let bulkBarEl: HTMLElement | undefined;
 	let tableEl: HTMLElement | undefined;
 
@@ -910,6 +952,81 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		return counts;
 	}
 
+	/**
+	 * Why the queue is empty, and the way back out of it.
+	 *
+	 * "Nothing left to review with these filters" is true and useless. Approving the last rows of a
+	 * search empties the list the instant you do it, and the page then looks identical to one where the
+	 * search never matched anything — so finishing a merchant reads as the review having vanished. The
+	 * two cases are only distinguishable by re-running the same filters with one lifted, which is
+	 * exactly what this does: it says which filter is holding the rows back, and offers to lift that
+	 * one rather than making "Clear filters" the only exit.
+	 */
+	function renderEmptyQueue(card: HTMLElement): void {
+		const searching = reviewState.search.trim();
+		const inScope = applyFilters({ ignoreStatus: true });
+		const reviewed = inScope.filter((t) => statusOf(t) !== "new");
+		const elsewhere = searching ? applyFilters({ ignoreSearch: true }).length : 0;
+
+		const lines: string[] = [];
+		if (reviewState.status === "new" && reviewed.length > 0 && reviewed.length === inScope.length) {
+			const approved = reviewed.filter((t) => statusOf(t) === "approved").length;
+			const flagged = reviewed.length - approved;
+			const parts = [approved > 0 ? `${approved} approved` : "", flagged > 0 ? `${flagged} flagged` : ""].filter(Boolean);
+			lines.push(
+				`Done here — all ${reviewed.length} transaction${reviewed.length === 1 ? "" : "s"} matching these filters ${
+					reviewed.length === 1 ? "has" : "have"
+				} been reviewed (${parts.join(", ")}). Nothing was lost.`
+			);
+		} else if (reviewState.status === "new") {
+			lines.push("Nothing left to review with these filters — everything here has been approved or flagged.");
+		} else {
+			lines.push("No transactions match these filters.");
+		}
+		if (searching && elsewhere > 0) {
+			lines.push(`${elsewhere} more still ${elsewhere === 1 ? "needs" : "need"} attention outside the search for "${searching}".`);
+		}
+		card.createEl("p", { cls: "fp-step-desc", text: lines.join(" ") });
+
+		const outs = card.createDiv({ cls: "fp-empty-actions" });
+		const escape = (label: string, iconName: string, act: () => void): void => {
+			const btn = outs.createEl("button", { cls: "fp-btn fp-btn-secondary" });
+			icon(btn, iconName);
+			btn.createSpan({ text: label });
+			btn.addEventListener("click", act);
+		};
+
+		if (searching && elsewhere > 0) {
+			escape("Clear the search", "x", () => {
+				reviewState.search = "";
+				reviewState.shown = PAGE_SIZE;
+				render();
+			});
+		}
+		if (reviewState.merchantKey) {
+			escape(`Stop filtering by ${merchantLabel(reviewState.merchantKey)}`, "users", () => {
+				reviewState.merchantKey = "";
+				reviewState.shown = PAGE_SIZE;
+				render();
+			});
+		}
+		// Named after the bucket it actually switches to, not "show the reviewed": the "everything except
+		// approved" filter would hide the approved ones again, so a button promising them would open on
+		// an empty list — the exact failure this whole block exists to undo.
+		if (reviewState.status === "new" && reviewed.length > 0) {
+			const approved = reviewed.filter((t) => statusOf(t) === "approved").length;
+			const flagged = reviewed.length - approved;
+			const target: StatusFilter = approved >= flagged ? "approved" : "flagged";
+			const n = approved >= flagged ? approved : flagged;
+			escape(`Show the ${n} ${target}`, target === "approved" ? "check-check" : "flag", () => {
+				reviewState.status = target;
+				reviewState.shown = PAGE_SIZE;
+				selected.clear();
+				render();
+			});
+		}
+	}
+
 	function renderTable(rows: Transaction[]): void {
 		siblingCounts = uncategorizedByMerchant();
 		// Its own class as well, so the column rules can key off the *pane's* width via a container
@@ -919,13 +1036,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		tableEl = card;
 
 		if (rows.length === 0) {
-			card.createEl("p", {
-				cls: "fp-step-desc",
-				text:
-					reviewState.status === "new"
-						? "Nothing left to review with these filters — everything here has been approved or flagged."
-						: "No transactions match these filters.",
-			});
+			renderEmptyQueue(card);
 			return;
 		}
 
