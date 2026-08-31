@@ -199,7 +199,7 @@ export interface OneOffBudget {
  */
 export type CategoryRuleMatch = "contains" | "exact" | "starts-with" | "regex";
 
-export type RuleAmountOp = "exactly" | "between" | "at-most" | "at-least";
+export type RuleAmountOp = "exactly" | "any-of" | "between" | "at-most" | "at-least";
 
 /**
  * An optional amount test on top of a rule's text match.
@@ -218,6 +218,13 @@ export interface RuleAmountCondition {
 	value: number;
 	/** Upper bound, "between" only. */
 	value2?: number;
+	/**
+	 * "any-of" only: the set of amounts to accept. A merchant that bills one description at several
+	 * price points needs several of them in one rule — the €9.99 and €2.99 and €6.99 subscriptions
+	 * belong in one category, and three separate rules over the same pattern would be three things to
+	 * keep in step, in an order where the first match wins.
+	 */
+	values?: number[];
 }
 
 export interface CategoryRule {

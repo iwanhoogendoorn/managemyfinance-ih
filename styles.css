@@ -7393,3 +7393,20 @@
 .fp-rule-amount-chip-meta {
 	color: var(--text-faint);
 }
+
+/* A picked amount. The tick matters more than the tint: at a glance you are counting ticks, not
+   comparing two shades of the same chip. */
+.fp-rule-amount-chip.is-picked {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+	font-weight: 500;
+}
+.fp-rule-amount-chip.is-picked .fp-rule-amount-chip-meta {
+	color: var(--text-muted);
+}
+.fp-rule-amount-chip .svg-icon {
+	width: 12px;
+	height: 12px;
+	color: var(--interactive-accent);
+}

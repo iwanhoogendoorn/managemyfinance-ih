@@ -178,3 +178,42 @@ describe("amount conditions", () => {
 		expect(ruleMatches(tx("Spotify", undefined, -9.99), rule)).toBe(false);
 	});
 });
+
+describe("any-of amounts", () => {
+	it("accepts any amount in the set", () => {
+		const cond = { op: "any-of" as const, value: 9.99, values: [9.99, 2.99, 6.99] };
+		expect(amountMatches(-9.99, cond)).toBe(true);
+		expect(amountMatches(-2.99, cond)).toBe(true);
+		expect(amountMatches(-6.99, cond)).toBe(true);
+		expect(amountMatches(-5.99, cond)).toBe(false);
+		expect(amountMatches(-29.99, cond)).toBe(false);
+	});
+
+	it("carries the same epsilon as the single-value case", () => {
+		expect(amountMatches(-(0.1 + 9.89), { op: "any-of", value: 9.99, values: [9.99, 2.99] })).toBe(true);
+	});
+
+	it("matches refunds of a picked amount", () => {
+		expect(amountMatches(9.99, { op: "any-of", value: 9.99, values: [9.99, 2.99] })).toBe(true);
+	});
+
+	it("falls back to the single value when the set is missing or empty", () => {
+		// A malformed condition should still mean something rather than silently matching nothing.
+		expect(amountMatches(-9.99, { op: "any-of", value: 9.99 })).toBe(true);
+		expect(amountMatches(-9.99, { op: "any-of", value: 9.99, values: [] })).toBe(true);
+		expect(amountMatches(-2.99, { op: "any-of", value: 9.99, values: [] })).toBe(false);
+	});
+
+	it("gathers several subscriptions at one merchant into a single rule", () => {
+		// Three price points, one category, one rule — rather than three rules over the same pattern
+		// competing for first-match-wins.
+		const rule = {
+			pattern: "Apple",
+			match: "exact" as const,
+			amount: { op: "any-of" as const, value: 9.99, values: [9.99, 2.99, 6.99] },
+		};
+		expect(ruleMatches(tx("Apple", undefined, -9.99), rule)).toBe(true);
+		expect(ruleMatches(tx("Apple", undefined, -2.99), rule)).toBe(true);
+		expect(ruleMatches(tx("Apple", undefined, -29.99), rule)).toBe(false);
+	});
+});

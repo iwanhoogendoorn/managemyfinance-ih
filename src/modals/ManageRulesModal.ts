@@ -8,6 +8,10 @@ import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue
 function describeAmountBadge(c: RuleAmountCondition): string {
 	const n = (v: number): string => v.toFixed(2);
 	if (c.op === "exactly") return `= ${n(c.value)}`;
+	if (c.op === "any-of") {
+		const values = c.values?.length ? c.values : [c.value];
+		return values.length === 1 ? `= ${n(values[0])}` : `= ${values.map(n).join(" / ")}`;
+	}
 	if (c.op === "at-most") return `\u2264 ${n(c.value)}`;
 	if (c.op === "at-least") return `\u2265 ${n(c.value)}`;
 	const lo = Math.min(c.value, c.value2 ?? c.value);

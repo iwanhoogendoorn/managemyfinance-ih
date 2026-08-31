@@ -10,6 +10,7 @@ import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue
 
 const AMOUNT_OPS: { value: RuleAmountOp | "any"; label: string }[] = [
 	{ value: "any", label: "Any amount" },
+	{ value: "any-of", label: "Is one of the amounts I pick" },
 	{ value: "exactly", label: "Is exactly" },
 	{ value: "between", label: "Is between" },
 	{ value: "at-most", label: "Is at most" },
@@ -21,6 +22,12 @@ function describeAmountCondition(c: RuleAmountCondition): string {
 	switch (c.op) {
 		case "exactly":
 			return `Only charges of exactly ${money(c.value)}.`;
+		case "any-of": {
+			const values = c.values?.length ? c.values : [c.value];
+			if (values.length === 1) return `Only charges of exactly ${money(values[0])}.`;
+			const listed = values.map(money);
+			return `Only charges of ${listed.slice(0, -1).join(", ")} or ${listed[listed.length - 1]}.`;
+		}
 		case "at-most":
 			return `Only charges of ${money(c.value)} or less.`;
 		case "at-least":
@@ -31,6 +38,12 @@ function describeAmountCondition(c: RuleAmountCondition): string {
 			return `Only charges between ${money(lo)} and ${money(hi)}.`;
 		}
 	}
+}
+
+/** The amounts an "any-of" condition currently holds, in the order they were picked. */
+function selectedAmounts(c?: RuleAmountCondition): number[] {
+	if (!c || c.op !== "any-of") return [];
+	return c.values?.length ? c.values : [c.value];
 }
 
 /** Accepts what people actually type — "9,99", "€9.99", " 9.99 ". Undefined for anything unreadable,
@@ -231,22 +244,39 @@ export class CreateCategoryRuleModal extends Modal {
 			const clear = active.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-tiny" });
 			clear.createSpan({ text: "Clear" });
 			clear.addEventListener("click", () => this.setAmountCondition(undefined));
-			return;
 		}
 
-		const all = [...changedByPreview(p), ...p.alreadyCorrect, ...p.protectedNeutral];
+		// Deliberately built from the match *without* the amount condition. Narrowing to €9.99 leaves a
+		// match containing only €9.99, so chips drawn from it would collapse to the one already chosen
+		// and there would be no way to add a second amount — the exact thing multi-select is for.
+		const unfiltered = previewRule(
+			this.plugin.store,
+			{ pattern: this.pattern, match: this.match },
+			this.targetCategoryId()
+		);
+		const all = [...changedByPreview(unfiltered), ...unfiltered.alreadyCorrect, ...unfiltered.protectedNeutral];
 		const groups = amountGroups(all);
 		// One amount is not a choice, and a match this small is already readable in the table below.
 		if (groups.length < 2 || all.length < 4) return;
 
+		const picked = selectedAmounts(this.amount);
+		const isPicked = (value: number): boolean => picked.some((v) => Math.abs(v - value) < 0.005);
+
 		const strip = c.createDiv({ cls: "fp-rule-amount-strip" });
-		strip.createDiv({ cls: "fp-rule-amount-strip-label", text: "Amounts in this match — click one to narrow to it" });
+		strip.createDiv({
+			cls: "fp-rule-amount-strip-label",
+			text: picked.length
+				? `Amounts in this merchant — ${picked.length} picked, click to add or remove`
+				: "Amounts in this merchant — click to pick one or more",
+		});
 		const chips = strip.createDiv({ cls: "fp-rule-amount-chips" });
 		groups.forEach((g) => {
-			const chip = chips.createEl("button", { cls: "fp-rule-amount-chip" });
+			const on = isPicked(g.value);
+			const chip = chips.createEl("button", { cls: "fp-rule-amount-chip" + (on ? " is-picked" : "") });
+			if (on) icon(chip, "check");
 			chip.createSpan({ cls: "fp-rule-amount-chip-value", text: formatMoney(g.value, { currency: g.currency }) });
 			const cadence =
-				g.medianGapDays !== undefined && g.months > 2 ? ` · ${g.months} months · ~${g.medianGapDays}d apart` : "";
+				g.medianGapDays !== undefined && g.months > 2 ? ` \u00b7 ${g.months} months \u00b7 ~${g.medianGapDays}d apart` : "";
 			chip.createSpan({ cls: "fp-rule-amount-chip-meta", text: `${g.count}\u00d7${cadence}` });
 			chip.setAttribute(
 				"title",
@@ -254,8 +284,24 @@ export class CreateCategoryRuleModal extends Modal {
 					? `${g.count} charges of this amount, across ${g.months} month${g.months === 1 ? "" : "s"}, typically ${g.medianGapDays} days apart.`
 					: `${g.count} charge${g.count === 1 ? "" : "s"} of this amount.`
 			);
-			chip.addEventListener("click", () => this.setAmountCondition({ op: "exactly", value: g.value }));
+			chip.addEventListener("click", () => this.toggleAmount(g.value));
 		});
+	}
+
+	/**
+	 * Add or remove one amount from the picked set.
+	 *
+	 * Clicking a chip while some other kind of condition is active replaces it rather than trying to
+	 * combine the two — "at most €5 and also exactly €9.99" is not a thing anyone means. Removing the
+	 * last picked amount clears the condition entirely rather than leaving an empty set that would
+	 * match nothing at all.
+	 */
+	private toggleAmount(value: number): void {
+		const current = selectedAmounts(this.amount);
+		const next = current.some((v) => Math.abs(v - value) < 0.005)
+			? current.filter((v) => Math.abs(v - value) >= 0.005)
+			: [...current, value];
+		this.setAmountCondition(next.length === 0 ? undefined : { op: "any-of", value: next[0], values: next });
 	}
 
 	/**
@@ -492,23 +538,31 @@ export class CreateCategoryRuleModal extends Modal {
 		const valueInput = amountLine.createEl("input", { type: "text", cls: "fp-rule-amount-input", attr: { inputmode: "decimal", placeholder: "0.00" } });
 		const andSpan = amountLine.createSpan({ cls: "fp-rule-amount-and", text: "and" });
 		const value2Input = amountLine.createEl("input", { type: "text", cls: "fp-rule-amount-input", attr: { inputmode: "decimal", placeholder: "0.00" } });
+		const pickHint = amountLine.createSpan({ cls: "fp-rule-amount-and", text: "— pick them from the list below" });
 		amountControl.createDiv({
 			cls: "fp-field-hint",
 			text: "Compared on the amount as printed, ignoring the minus sign — so a refund of the same size counts too. Useful where one merchant bills everything under the same description.",
 		});
 
+		// "any-of" is driven entirely by the chips below, so it shows no boxes of its own.
+		const typedOp = (op: string): boolean => op !== "any" && op !== "any-of";
 		const syncAmountInputs = (): void => {
 			const op = amountSelect.value;
-			amountLine.toggleClass("has-value", op !== "any");
+			amountLine.toggleClass("has-value", typedOp(op));
 			amountLine.toggleClass("has-range", op === "between");
-			valueInput.toggle(op !== "any");
+			valueInput.toggle(typedOp(op));
 			andSpan.toggle(op === "between");
 			value2Input.toggle(op === "between");
+			pickHint.toggle(op === "any-of");
 		};
 		const readAmount = (): void => {
 			const op = amountSelect.value;
 			if (op === "any") {
 				this.amount = undefined;
+			} else if (op === "any-of") {
+				// Keep whatever is already picked; the chips are the only way in or out of this set.
+				const picked = selectedAmounts(this.amount);
+				this.amount = picked.length ? { op: "any-of", value: picked[0], values: picked } : undefined;
 			} else {
 				const value = parseAmountInput(valueInput.value);
 				if (value === undefined) {
@@ -524,7 +578,7 @@ export class CreateCategoryRuleModal extends Modal {
 			syncAmountInputs();
 			// Seed the box with this row's own amount the first time a condition is asked for, so the
 			// common case — "everything at exactly this price" — is one click rather than retyping it.
-			if (amountSelect.value !== "any" && !valueInput.value) {
+			if (typedOp(amountSelect.value) && !valueInput.value) {
 				valueInput.value = Math.abs(this.tx.amount).toFixed(2);
 			}
 			readAmount();
@@ -535,8 +589,15 @@ export class CreateCategoryRuleModal extends Modal {
 		this.setAmountCondition = (next) => {
 			this.amount = next;
 			amountSelect.value = next?.op ?? "any";
-			valueInput.value = next ? next.value.toFixed(2) : "";
-			value2Input.value = next?.value2 !== undefined ? next.value2.toFixed(2) : "";
+			// The typed boxes keep their own value for the ops that use them; "any-of" leaves them be
+			// so switching back to "is exactly" doesn't land on an empty field.
+			if (next && next.op !== "any-of") {
+				valueInput.value = next.value.toFixed(2);
+				value2Input.value = next.value2 !== undefined ? next.value2.toFixed(2) : "";
+			} else if (!next) {
+				valueInput.value = "";
+				value2Input.value = "";
+			}
 			syncAmountInputs();
 			this.renderPreview();
 		};

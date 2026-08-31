@@ -53,6 +53,12 @@ export function amountMatches(amount: number | undefined, condition: CategoryRul
 	switch (condition.op) {
 		case "exactly":
 			return Math.abs(value - Math.abs(condition.value)) <= AMOUNT_EPSILON;
+		case "any-of": {
+			// Falls back to the single `value` so a malformed condition still means something rather
+			// than silently matching nothing.
+			const values = condition.values?.length ? condition.values : [condition.value];
+			return values.some((v) => Math.abs(value - Math.abs(v)) <= AMOUNT_EPSILON);
+		}
 		case "at-most":
 			return value <= Math.abs(condition.value) + AMOUNT_EPSILON;
 		case "at-least":
