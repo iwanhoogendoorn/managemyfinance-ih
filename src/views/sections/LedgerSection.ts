@@ -388,7 +388,7 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin, opts
 			item
 				.setTitle("Create category rule from this merchant…")
 				.setIcon("wand-2")
-				.onClick(() => new CreateCategoryRuleModal(plugin.app, plugin, t, () => draw()).open())
+				.onClick(() => new CreateCategoryRuleModal(plugin.app, plugin, { tx: t, onDone: () => draw() }).open())
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>

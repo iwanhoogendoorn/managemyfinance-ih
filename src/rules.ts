@@ -260,3 +260,23 @@ function medianGapDays(dates: string[]): number | undefined {
 	const mid = Math.floor(gaps.length / 2);
 	return Math.round(gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2);
 }
+
+/**
+ * Rows still carrying an edited rule's stamp that the rule no longer matches.
+ *
+ * Narrowing a rule — dropping an amount from its set, tightening "contains" to "exact" — leaves the
+ * rows it used to govern still wearing its badge. They keep their category, because re-filing them to
+ * nothing would be a second edit nobody asked for, but they stop claiming this rule put them there,
+ * since it no longer would. The patch touches `categoryRuleId` alone and never `categoryId`, which
+ * also keeps it clear of the store's own stale-provenance rule (that one fires on patches that *set*
+ * a category).
+ */
+export function staleStampPatches(transactions: Transaction[], rule: CategoryRule): Map<string, Partial<Transaction>> {
+	const patches = new Map<string, Partial<Transaction>>();
+	for (const tx of transactions) {
+		if (tx.categoryRuleId !== rule.id) continue;
+		if (ruleMatches(tx, rule)) continue;
+		patches.set(tx.id, { categoryRuleId: undefined });
+	}
+	return patches;
+}

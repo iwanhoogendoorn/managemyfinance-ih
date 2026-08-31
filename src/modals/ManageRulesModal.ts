@@ -1,6 +1,7 @@
 import { App, Modal, Notice } from "obsidian";
 import { categoryChain } from "../categories";
 import { applyRules, resolveRuleMatch } from "../import/categorize";
+import { CreateCategoryRuleModal } from "./CreateCategoryRuleModal";
 import type FinancePlugin from "../main";
 import type { CategoryRule, CategoryRuleMatch, RuleAmountCondition } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
@@ -184,6 +185,21 @@ export class ManageRulesModal extends Modal {
 				icon(downBtn, "chevron-down");
 				if (idx === store.rules.length - 1) downBtn.setAttr("disabled", "true");
 				downBtn.addEventListener("click", () => void this.move(idx, 1));
+
+				// The same dialog the rule was written in, so a rule's match mode and amount condition are
+				// editable by the controls that created them rather than by a second, lesser form.
+				const editBtn = actions.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
+				icon(editBtn, "pencil");
+				editBtn.setAttribute("aria-label", `Edit rule "${rule.pattern}"`);
+				editBtn.addEventListener("click", () => {
+					new CreateCategoryRuleModal(this.app, this.plugin, {
+						rule,
+						onDone: () => {
+							this.render();
+							this.onChange?.();
+						},
+					}).open();
+				});
 
 				const deleteBtn = actions.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-icon" });
 				icon(deleteBtn, "trash-2");

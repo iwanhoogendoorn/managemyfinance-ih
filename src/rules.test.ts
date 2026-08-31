@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { amountGroups, changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor, seedRuleFor } from "./rules";
-import type { Category, Transaction } from "./types";
+import { amountGroups, changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor, seedRuleFor, staleStampPatches } from "./rules";
+import type { Category, CategoryRule, Transaction } from "./types";
 
 
 /** previewRule classifies each match, so it needs the accounts and categories, not just the rows. */
@@ -479,5 +479,68 @@ describe("previewRule with an amount condition", () => {
 			DIGITAL
 		);
 		expect(p.total).toBe(3);
+	});
+});
+
+describe("staleStampPatches — editing a rule narrower", () => {
+	const SOFTWARE = "cat-software";
+	const RULE: CategoryRule = {
+		id: "rule-1",
+		pattern: "Apple",
+		match: "exact",
+		categoryId: SOFTWARE,
+		amount: { op: "any-of", value: 2.99, values: [2.99, 5.99] },
+	};
+
+	function stamped(amount: number, ruleId?: string): Transaction {
+		const t = tx("Apple", SOFTWARE);
+		t.amount = amount;
+		t.categoryRuleId = ruleId;
+		return t;
+	}
+
+	it("unstamps a row the narrowed rule no longer reaches", () => {
+		// The €5.99 charges were dropped from the rule's set; their badge would otherwise keep claiming
+		// a rule governs them when it no longer does.
+		const rows = [stamped(-2.99, "rule-1"), stamped(-5.99, "rule-1")];
+		const narrowed: CategoryRule = { ...RULE, amount: { op: "any-of", value: 2.99, values: [2.99] } };
+		const patches = staleStampPatches(rows, narrowed);
+
+		expect(patches.size).toBe(1);
+		expect(patches.get(rows[1].id)).toEqual({ categoryRuleId: undefined });
+	});
+
+	it("never touches the category, only the stamp", () => {
+		const rows = [stamped(-5.99, "rule-1")];
+		const narrowed: CategoryRule = { ...RULE, amount: { op: "any-of", value: 2.99, values: [2.99] } };
+		const patch = staleStampPatches(rows, narrowed).get(rows[0].id)!;
+
+		expect("categoryId" in patch).toBe(false);
+		expect(Object.keys(patch)).toEqual(["categoryRuleId"]);
+	});
+
+	it("leaves rows the rule still matches alone", () => {
+		const rows = [stamped(-2.99, "rule-1"), stamped(-5.99, "rule-1")];
+		expect(staleStampPatches(rows, RULE).size).toBe(0);
+	});
+
+	it("ignores rows stamped by a different rule", () => {
+		const rows = [stamped(-29.99, "rule-other"), stamped(-29.99, undefined)];
+		expect(staleStampPatches(rows, RULE).size).toBe(0);
+	});
+
+	it("unstamps when the pattern itself stops matching", () => {
+		const rows = [stamped(-2.99, "rule-1")];
+		const renamed: CategoryRule = { ...RULE, pattern: "Spotify" };
+		expect(staleStampPatches(rows, renamed).size).toBe(1);
+	});
+
+	it("unstamps when the mode is tightened from contains to exact", () => {
+		const row = tx("Apple Store", SOFTWARE);
+		row.amount = -2.99;
+		row.categoryRuleId = "rule-1";
+		const tightened: CategoryRule = { ...RULE, match: "exact" };
+		expect(staleStampPatches([row], tightened).size).toBe(1);
+		expect(staleStampPatches([row], { ...RULE, match: "contains" }).size).toBe(0);
 	});
 });

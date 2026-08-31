@@ -4,7 +4,8 @@ import { formatMoney } from "../money";
 import { merchantKey } from "../import/merchantKey";
 import { remember } from "../import/merchantMemory";
 import type FinancePlugin from "../main";
-import { amountGroups, changedByPreview, previewRule, rulePatches, seedRuleFor, type RulePreview } from "../rules";
+import { resolveRuleMatch } from "../import/categorize";
+import { amountGroups, changedByPreview, previewRule, rulePatches, seedRuleFor, staleStampPatches, type RulePreview } from "../rules";
 import type { CategoryRule, CategoryRuleMatch, RuleAmountCondition, RuleAmountOp, Transaction } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
 
@@ -75,6 +76,14 @@ const MATCH_MODES: { value: CategoryRuleMatch; label: string; hint: string }[] =
 	{ value: "regex", label: "Regular expression", hint: "Matched case-insensitively against the description and counterparty together." },
 ];
 
+export interface CreateCategoryRuleOptions {
+	/** Seed a new rule from this row — the right-click entry point. */
+	tx?: Transaction;
+	/** Edit this existing rule instead of creating one. Takes precedence over `tx`. */
+	rule?: CategoryRule;
+	onDone?: () => void;
+}
+
 /** Enough chips to cover a merchant's real price points without turning the dialog into a wall of
  *  one-off purchases — this ledger has 49 distinct Apple amounts, 37 of them appearing once or twice.
  *  Everything beyond it is one click away. */
@@ -120,8 +129,29 @@ export class CreateCategoryRuleModal extends Modal {
 	private showAllAmounts = false;
 	private submitBtn!: HTMLButtonElement;
 
-	constructor(app: App, private plugin: FinancePlugin, private tx: Transaction, private onDone?: () => void) {
+	/** The row this was seeded from, when creating. Absent when editing an existing rule. */
+	private readonly tx?: Transaction;
+	/** The rule being edited, when editing. Absent when creating. */
+	private readonly editing?: CategoryRule;
+	private readonly onDone?: () => void;
+
+	constructor(app: App, private plugin: FinancePlugin, opts: CreateCategoryRuleOptions) {
 		super(app);
+		this.tx = opts.tx;
+		this.editing = opts.rule;
+		this.onDone = opts.onDone;
+
+		if (opts.rule) {
+			this.pattern = opts.rule.pattern;
+			this.match = resolveRuleMatch(opts.rule);
+			this.amount = opts.rule.amount;
+			const chain = categoryChain(plugin.store.categories, opts.rule.categoryId);
+			this.value = { primaryId: chain.primary?.id, secondaryId: chain.secondary?.id };
+			return;
+		}
+
+		const tx = opts.tx;
+		if (!tx) throw new Error("CreateCategoryRuleModal needs either a transaction to seed from or a rule to edit");
 		const seed = seedRuleFor(tx);
 		this.pattern = seed.pattern;
 		this.match = seed.match;
@@ -157,13 +187,13 @@ export class CreateCategoryRuleModal extends Modal {
 		if (!this.pattern.trim()) {
 			c.createDiv({ cls: "fp-step-desc", text: "Type something to match on and this will show you what it would catch." });
 			this.submitBtn.disabled = true;
-			this.submitLabelEl.setText("Create rule");
+			this.submitLabelEl.setText(this.editing ? "Save rule" : "Create rule");
 			return;
 		}
 		if (!target) {
 			c.createDiv({ cls: "fp-step-desc", text: "Pick the category this merchant belongs in." });
 			this.submitBtn.disabled = true;
-			this.submitLabelEl.setText("Create rule");
+			this.submitLabelEl.setText(this.editing ? "Save rule" : "Create rule");
 			return;
 		}
 
@@ -173,7 +203,7 @@ export class CreateCategoryRuleModal extends Modal {
 
 		if (p.total === 0) {
 			c.createDiv({ cls: "fp-step-desc", text: "Nothing in the ledger matches that yet. The rule will still be saved and will catch future imports." });
-			this.submitLabelEl.setText("Create rule");
+			this.submitLabelEl.setText(this.editing ? "Save rule" : "Create rule");
 			return;
 		}
 
@@ -505,7 +535,8 @@ export class CreateCategoryRuleModal extends Modal {
 
 	private updateSubmitLabel(p: RulePreview): void {
 		const n = this.selectedRows(p).length;
-		this.submitLabelEl.setText(n === 0 ? "Create rule only" : `Create rule & update ${n} transaction${n === 1 ? "" : "s"}`);
+		const verb = this.editing ? "Save rule" : "Create rule";
+		this.submitLabelEl.setText(n === 0 ? `${verb} only` : `${verb} & update ${n} transaction${n === 1 ? "" : "s"}`);
 	}
 
 	private render(): void {
@@ -514,7 +545,7 @@ export class CreateCategoryRuleModal extends Modal {
 
 		const head = c.createDiv({ cls: "fp-detail-header" });
 		const headText = head.createDiv();
-		headText.createDiv({ cls: "fp-detail-desc", text: "Create a category rule" });
+		headText.createDiv({ cls: "fp-detail-desc", text: this.editing ? "Edit category rule" : "Create a category rule" });
 		headText.createDiv({
 			cls: "fp-section-subtitle",
 			text: "Files every transaction whose description or counterparty contains this text, now and on every future import.",
@@ -522,9 +553,11 @@ export class CreateCategoryRuleModal extends Modal {
 
 		const form = c.createDiv({ cls: "fp-form" });
 
-		const fromRow = form.createDiv({ cls: "fp-form-row" });
-		fromRow.createEl("label", { text: "From" });
-		fromRow.createDiv({ cls: "fp-field-hint fp-sensitive", text: this.tx.description });
+		if (this.tx) {
+			const fromRow = form.createDiv({ cls: "fp-form-row" });
+			fromRow.createEl("label", { text: "From" });
+			fromRow.createDiv({ cls: "fp-field-hint fp-sensitive", text: this.tx.description });
+		}
 
 		const patternRow = form.createDiv({ cls: "fp-form-row" });
 		patternRow.createEl("label", { text: "Match text" });
@@ -602,7 +635,8 @@ export class CreateCategoryRuleModal extends Modal {
 			syncAmountInputs();
 			// Seed the box with this row's own amount the first time a condition is asked for, so the
 			// common case — "everything at exactly this price" — is one click rather than retyping it.
-			if (typedOp(amountSelect.value) && !valueInput.value) {
+			// Only when seeded from a row — editing has no single charge to borrow a figure from.
+			if (typedOp(amountSelect.value) && !valueInput.value && this.tx) {
 				valueInput.value = Math.abs(this.tx.amount).toFixed(2);
 			}
 			readAmount();
@@ -647,7 +681,7 @@ export class CreateCategoryRuleModal extends Modal {
 		cancel.addEventListener("click", () => this.close());
 		this.submitBtn = right.createEl("button", { cls: "fp-btn fp-btn-primary" });
 		icon(this.submitBtn, "check");
-		this.submitLabelEl = this.submitBtn.createSpan({ text: "Create rule" });
+		this.submitLabelEl = this.submitBtn.createSpan({ text: this.editing ? "Save rule" : "Create rule" });
 		this.submitBtn.addEventListener("click", () => void this.submit());
 
 		this.renderPreview();
@@ -669,21 +703,34 @@ export class CreateCategoryRuleModal extends Modal {
 		}
 
 		const store = this.plugin.store;
-		const rule: CategoryRule = {
+		const existing = this.editing ? store.rules.find((r) => r.id === this.editing!.id) : undefined;
+		if (this.editing && !existing) {
+			new Notice("That rule no longer exists — it may have been deleted in another window.");
+			this.close();
+			return;
+		}
+
+		const rule: CategoryRule = existing ?? {
 			id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 			pattern,
 			match: this.match,
 			categoryId: target,
 		};
-		if (this.amount) rule.amount = this.amount;
+		rule.pattern = pattern;
+		rule.match = this.match;
+		rule.categoryId = target;
+		rule.amount = this.amount;
 		// Written alongside `match`, never instead of it, so anything still reading the old flag —
 		// ManageRulesModal's REGEX badge among them — keeps seeing the truth.
-		if (this.match === "regex") rule.isRegex = true;
+		rule.isRegex = this.match === "regex" ? true : undefined;
 
-		// Ahead of the built-ins and of every older rule: a rule you just wrote about a merchant you
-		// were just looking at is the most specific intent in the list, and applyRules takes the first
-		// match. Appending would let a broad old keyword rule keep winning.
-		store.rules.unshift(rule);
+		if (!existing) {
+			// Ahead of the built-ins and of every older rule: a rule you just wrote about a merchant you
+			// were just looking at is the most specific intent in the list, and applyRules takes the
+			// first match. Appending would let a broad old keyword rule keep winning. An edited rule
+			// keeps its position, since its place in the order is part of what the user set up.
+			store.rules.unshift(rule);
+		}
 		await store.saveRules();
 
 		const p = this.computePreview();
@@ -698,6 +745,16 @@ export class CreateCategoryRuleModal extends Modal {
 		const skipped = changedByPreview(p).length - writing.length;
 
 		const patches = rulePatches(p, this.excluded, rule);
+		// Narrowing an existing rule leaves rows it used to govern still wearing its badge. They keep
+		// the category — re-filing them to nothing would be a second, unasked-for edit — but they stop
+		// claiming this rule put them there, because it no longer would.
+		let unstamped = 0;
+		if (existing) {
+			for (const [id, patch] of staleStampPatches(store.transactions, rule)) {
+				patches.set(id, patch);
+				unstamped++;
+			}
+		}
 		const changed = patches.size > 0 ? await store.updateTransactions(patches) : 0;
 
 		// Teach merchant memory too, exactly as the import-time rule pass does — otherwise the next
@@ -708,10 +765,14 @@ export class CreateCategoryRuleModal extends Modal {
 		}
 		if (changed > 0) await store.saveMerchants();
 
+		const verb = existing ? "Rule updated" : "Rule saved";
+		const tail = unstamped > 0 ? ` ${unstamped} no longer covered by it.` : "";
 		new Notice(
 			p.total === 0
-				? `Rule saved for "${pattern}" — nothing matched yet, but future imports will.`
-				: `Rule saved — ${filled} categorized, ${moved} moved` + (skipped > 0 ? `, ${skipped} left as they were.` : ".")
+				? `${verb} for "${pattern}" — nothing matches it yet, but future imports will.${tail}`
+				: `${verb} — ${filled} categorized, ${moved} moved` +
+						(skipped > 0 ? `, ${skipped} left as they were.` : ".") +
+						tail
 		);
 		this.close();
 		this.onDone?.();
