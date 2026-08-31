@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedByPreview, movingCount, previewRule, seedPatternFor } from "./rules";
+import { changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor } from "./rules";
 import type { Category, Transaction } from "./types";
 
 
@@ -217,5 +217,87 @@ describe("previewRule — money movements are not merchant spending", () => {
 
 		expect(p.protectedNeutral).toHaveLength(0);
 		expect(movingCount(p)).toBe(2);
+	});
+});
+
+describe("rulePatches — what actually gets written", () => {
+	const GROCERIES = "cat-groceries";
+	const SHOPPING = "cat-shopping";
+	const CATS: Category[] = [
+		{ id: GROCERIES, name: "Groceries", color: "#000", icon: "tag", aliases: [] },
+		{ id: SHOPPING, name: "Shopping", color: "#000", icon: "tag", aliases: [] },
+	];
+	const RULE = { id: "rule-1", categoryId: GROCERIES };
+
+	function ledger(): Transaction[] {
+		return [
+			tx("Albert Heijn 1", SHOPPING), // moves
+			tx("Albert Heijn 2", SHOPPING), // moves
+			tx("Albert Heijn 3"), //           fills a blank
+			tx("Albert Heijn 4", GROCERIES), // already correct
+		];
+	}
+
+	it("writes every ticked row and stamps it with the rule", () => {
+		const rows = ledger();
+		const p = previewRule(storeOf(rows, CATS), { pattern: "Albert Heijn" }, GROCERIES);
+		const patches = rulePatches(p, new Set(), RULE);
+
+		expect(patches.size).toBe(4);
+		for (const patch of patches.values()) {
+			expect(patch).toEqual({ categoryId: GROCERIES, categoryRuleId: "rule-1" });
+		}
+	});
+
+	it("writes nothing for an unticked row — not the category, and not the stamp", () => {
+		// A row the rule was told to skip must not end up wearing the rule's badge.
+		const rows = ledger();
+		const p = previewRule(storeOf(rows, CATS), { pattern: "Albert Heijn" }, GROCERIES);
+		const skipped = changedByPreview(p)[0];
+		const patches = rulePatches(p, new Set([skipped.id]), RULE);
+
+		expect(patches.has(skipped.id)).toBe(false);
+		expect(patches.size).toBe(3);
+	});
+
+	it("still stamps rows that were already filed correctly", () => {
+		const rows = ledger();
+		const p = previewRule(storeOf(rows, CATS), { pattern: "Albert Heijn" }, GROCERIES);
+		const patches = rulePatches(p, new Set(), RULE);
+
+		const already = p.alreadyCorrect[0];
+		expect(patches.get(already.id)).toEqual({ categoryId: GROCERIES, categoryRuleId: "rule-1" });
+	});
+
+	it("is a no-op for a row this same rule already stamped", () => {
+		// Re-confirming an unchanged rule shouldn't rewrite every ledger file it touches.
+		const rows = ledger();
+		rows[3].categoryRuleId = "rule-1";
+		const p = previewRule(storeOf(rows, CATS), { pattern: "Albert Heijn" }, GROCERIES);
+		const patches = rulePatches(p, new Set(), RULE);
+
+		expect(patches.has(rows[3].id)).toBe(false);
+	});
+
+	it("writes nothing at all when every row is unticked", () => {
+		const rows = [tx("Albert Heijn 1", SHOPPING), tx("Albert Heijn 2", SHOPPING)];
+		const p = previewRule(storeOf(rows, CATS), { pattern: "Albert Heijn" }, GROCERIES);
+		const patches = rulePatches(p, new Set(rows.map((t) => t.id)), RULE);
+
+		expect(patches.size).toBe(0);
+	});
+
+	it("never writes a protected transfer unless it was opted in", () => {
+		const TRANSFERS = "cat-transfers";
+		const cats: Category[] = [...CATS, { id: TRANSFERS, name: "Transfers", color: "#000", icon: "repeat", aliases: [] }];
+		const topUp = tx("Albert Heijn Pay top-up", TRANSFERS);
+		topUp.amount = 50;
+		const rows = [tx("Albert Heijn 1", SHOPPING), topUp];
+
+		const held = previewRule(storeOf(rows, cats), { pattern: "Albert Heijn" }, GROCERIES);
+		expect(rulePatches(held, new Set(), RULE).has(topUp.id)).toBe(false);
+
+		const optedIn = previewRule(storeOf(rows, cats), { pattern: "Albert Heijn" }, GROCERIES, { includeNeutral: true });
+		expect(rulePatches(optedIn, new Set(), RULE).has(topUp.id)).toBe(true);
 	});
 });

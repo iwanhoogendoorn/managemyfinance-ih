@@ -1,9 +1,10 @@
 import { App, Modal, Notice } from "obsidian";
 import { categoryChain } from "../categories";
+import { formatMoney } from "../money";
 import { merchantKey } from "../import/merchantKey";
 import { remember } from "../import/merchantMemory";
 import type FinancePlugin from "../main";
-import { changedByPreview, movingCount, previewRule, seedPatternFor, type RulePreview } from "../rules";
+import { changedByPreview, previewRule, rulePatches, seedPatternFor, type RulePreview } from "../rules";
 import type { CategoryRule, Transaction } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
 
@@ -29,6 +30,10 @@ export class CreateCategoryRuleModal extends Modal {
 	private includeNeutral = false;
 	private value: CategoryPickerValue;
 	private previewEl!: HTMLElement;
+	/** Rows the user has explicitly unticked. Exclusions rather than inclusions, so a row that appears
+	 *  after the pattern widens arrives selected. */
+	private excluded = new Set<string>();
+	private submitLabelEl!: HTMLElement;
 	private submitBtn!: HTMLButtonElement;
 
 	constructor(app: App, private plugin: FinancePlugin, private tx: Transaction, private onDone?: () => void) {
@@ -66,11 +71,13 @@ export class CreateCategoryRuleModal extends Modal {
 		if (!this.pattern.trim()) {
 			c.createDiv({ cls: "fp-step-desc", text: "Type something to match on and this will show you what it would catch." });
 			this.submitBtn.disabled = true;
+			this.submitLabelEl.setText("Create rule");
 			return;
 		}
 		if (!target) {
 			c.createDiv({ cls: "fp-step-desc", text: "Pick the category this merchant belongs in." });
 			this.submitBtn.disabled = true;
+			this.submitLabelEl.setText("Create rule");
 			return;
 		}
 
@@ -80,6 +87,7 @@ export class CreateCategoryRuleModal extends Modal {
 
 		if (p.total === 0) {
 			c.createDiv({ cls: "fp-step-desc", text: "Nothing in the ledger matches that yet. The rule will still be saved and will catch future imports." });
+			this.submitLabelEl.setText("Create rule");
 			return;
 		}
 
@@ -134,15 +142,121 @@ export class CreateCategoryRuleModal extends Modal {
 			});
 		}
 
-		const sample = c.createDiv({ cls: "fp-rule-preview-sample" });
-		sample.createDiv({ cls: "fp-form-section-label", text: "Examples" });
-		const matched = [...p.uncategorized, ...moving.flatMap(([, rows]) => rows), ...p.alreadyCorrect];
-		matched.slice(0, 5).forEach((tx) => {
-			sample.createDiv({ cls: "fp-rule-preview-example fp-sensitive", text: `${tx.date || "No date"} · ${tx.description}` });
-		});
-		if (matched.length > 5) {
-			sample.createDiv({ cls: "fp-step-desc", text: `…and ${matched.length - 5} more.` });
+		this.renderChangeTable(c, p, target);
+	}
+
+	/**
+	 * Every row the rule is about to write, each one tickable and ticked to begin with.
+	 *
+	 * A count and five examples told you the rule was broad without telling you *which* rows it had
+	 * swept up, and on a pattern like "Apple" the difference between 1 correct move and 55 wrong ones
+	 * is only visible row by row. This is the same shape as the Review page's own list, for the same
+	 * reason: deciding is faster when the evidence is a list you can act on than when it's a number.
+	 *
+	 * Exclusions are tracked rather than inclusions, so a row that appears after you widen the pattern
+	 * arrives ticked — the default stays "do the obvious thing", and unticking is always deliberate.
+	 */
+	private renderChangeTable(c: HTMLElement, p: RulePreview, target: string): void {
+		const rows = changedByPreview(p);
+		const store = this.plugin.store;
+
+		if (rows.length === 0) {
+			c.createDiv({
+				cls: "fp-rule-preview-sample",
+				text:
+					p.alreadyCorrect.length > 0
+						? "Nothing to change — every match is already filed here. The rule will keep them that way."
+						: "Nothing to change.",
+			});
+			this.updateSubmitLabel(p);
+			return;
 		}
+
+		const head = c.createDiv({ cls: "fp-rule-table-head" });
+		const headLabel = head.createDiv({ cls: "fp-form-section-label", text: "Will change" });
+		const toChain = categoryChain(store.categories, target);
+		const dest = head.createDiv({ cls: "fp-rule-table-dest" });
+		dest.createSpan({ text: "all ticked rows → " });
+		categoryChainChip(dest, toChain.primary, toChain.secondary);
+
+		const wrap = c.createDiv({ cls: "fp-table-scroll fp-rule-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fp-table fp-rule-table" });
+		const headRow = table.createEl("thead").createEl("tr");
+		const selectAllTh = headRow.createEl("th", { cls: "fp-ledger-th-select" });
+		const selectAll = selectAllTh.createEl("input", { type: "checkbox" });
+		selectAll.setAttribute("aria-label", "Select every row shown");
+		headRow.createEl("th", { text: "Date" });
+		headRow.createEl("th", { text: "Description" });
+		headRow.createEl("th", { text: "Currently" });
+		headRow.createEl("th", { text: "Amount", cls: "fp-table-num" });
+
+		const tbody = table.createEl("tbody");
+		const countEl = headLabel.createSpan({ cls: "fp-rule-table-count" });
+
+		const refreshHeader = (): void => {
+			const picked = rows.filter((t) => !this.excluded.has(t.id)).length;
+			countEl.setText(` — ${picked} of ${rows.length} selected`);
+			selectAll.checked = picked === rows.length;
+			selectAll.indeterminate = picked > 0 && picked < rows.length;
+			this.updateSubmitLabel(p);
+		};
+
+		rows.forEach((t) => {
+			const tr = tbody.createEl("tr", { cls: "fp-rule-table-row" });
+			const checkCell = tr.createEl("td", { cls: "fp-ledger-td-select" });
+			const check = checkCell.createEl("input", { type: "checkbox" });
+			check.checked = !this.excluded.has(t.id);
+			check.setAttribute("aria-label", `Include ${t.description}`);
+			tr.toggleClass("is-excluded", this.excluded.has(t.id));
+			check.addEventListener("change", () => {
+				if (check.checked) this.excluded.delete(t.id);
+				else this.excluded.add(t.id);
+				tr.toggleClass("is-excluded", !check.checked);
+				// Only the header counters depend on this — redrawing the table would drop focus and
+				// make ticking a run of rows unusable (the same reason ReviewSection doesn't).
+				refreshHeader();
+			});
+
+			tr.createEl("td", { text: t.date || "No date", cls: "fp-cell-date" });
+			const descCell = tr.createEl("td", { cls: "fp-sensitive" });
+			descCell.createDiv({ cls: "fp-rule-table-desc", text: t.description || "(no description)" });
+			if (t.counterparty && t.counterparty !== t.description) {
+				descCell.createDiv({ cls: "fp-rule-table-sub fp-sensitive", text: t.counterparty });
+			}
+			const fromCell = tr.createEl("td");
+			const from = categoryChain(store.categories, t.categoryId);
+			if (from.primary) categoryChainChip(fromCell, from.primary, from.secondary);
+			else fromCell.createSpan({ cls: "fp-budget-hint-text", text: "Uncategorized" });
+			tr.createEl("td", {
+				cls: "fp-cell-amount fp-money " + (t.amount < 0 ? "is-negative" : "is-positive"),
+				text: formatMoney(t.amount, { currency: t.currency || "EUR" }),
+			});
+		});
+
+		selectAll.addEventListener("change", () => {
+			if (selectAll.checked) rows.forEach((t) => this.excluded.delete(t.id));
+			else rows.forEach((t) => this.excluded.add(t.id));
+			tbody.findAll("input[type=checkbox]").forEach((el) => ((el as HTMLInputElement).checked = selectAll.checked));
+			tbody.findAll("tr").forEach((el) => el.toggleClass("is-excluded", !selectAll.checked));
+			refreshHeader();
+		});
+
+		c.createDiv({
+			cls: "fp-rule-table-note",
+			text: "Unticked rows keep the category they have now. The rule is still created either way.",
+		});
+
+		refreshHeader();
+	}
+
+	/** Selected rows, in ledger order — what submit writes and what the button counts. */
+	private selectedRows(p: RulePreview): Transaction[] {
+		return changedByPreview(p).filter((t) => !this.excluded.has(t.id));
+	}
+
+	private updateSubmitLabel(p: RulePreview): void {
+		const n = this.selectedRows(p).length;
+		this.submitLabelEl.setText(n === 0 ? "Create rule only" : `Create rule & update ${n} transaction${n === 1 ? "" : "s"}`);
 	}
 
 	private render(): void {
@@ -203,7 +317,7 @@ export class CreateCategoryRuleModal extends Modal {
 		cancel.addEventListener("click", () => this.close());
 		this.submitBtn = right.createEl("button", { cls: "fp-btn fp-btn-primary" });
 		icon(this.submitBtn, "check");
-		this.submitBtn.createSpan({ text: "Create rule" });
+		this.submitLabelEl = this.submitBtn.createSpan({ text: "Create rule" });
 		this.submitBtn.addEventListener("click", () => void this.submit());
 
 		this.renderPreview();
@@ -239,30 +353,31 @@ export class CreateCategoryRuleModal extends Modal {
 		await store.saveRules();
 
 		const p = this.computePreview();
-		const patches = new Map<string, Partial<Transaction>>();
-		for (const tx of changedByPreview(p)) {
-			patches.set(tx.id, { categoryId: target, categoryRuleId: rule.id });
-		}
-		// Rows already filed correctly still get the stamp, so the badge tells the truth about every
-		// row the rule now owns rather than only the ones that happened to move today.
-		for (const tx of p.alreadyCorrect) {
-			if (tx.categoryRuleId !== rule.id) patches.set(tx.id, { categoryId: target, categoryRuleId: rule.id });
-		}
+		// Only the rows still ticked. An unticked row keeps the category it has, and deliberately does
+		// not get the rule's stamp either — the badge means "this rule filed this row", and a row the
+		// rule was told to leave alone would be lying about its own provenance.
+		const writing = this.selectedRows(p);
+		// Counted now, not after the write: `updateTransactions` assigns onto these very objects, so
+		// reading `!t.categoryId` afterwards would report every filled blank as zero.
+		const filled = writing.filter((t) => !t.categoryId).length;
+		const moved = writing.length - filled;
+		const skipped = changedByPreview(p).length - writing.length;
+
+		const patches = rulePatches(p, this.excluded, rule);
 		const changed = patches.size > 0 ? await store.updateTransactions(patches) : 0;
 
 		// Teach merchant memory too, exactly as the import-time rule pass does — otherwise the next
 		// import re-decides this merchant from scratch and can disagree with the rule that just ran.
-		for (const tx of changedByPreview(p)) {
+		for (const tx of writing) {
 			const key = merchantKey(tx);
 			if (key) store.merchants = remember(store.merchants, key, target, "rule");
 		}
 		if (changed > 0) await store.saveMerchants();
 
-		const moved = movingCount(p);
 		new Notice(
 			p.total === 0
 				? `Rule saved for "${pattern}" — nothing matched yet, but future imports will.`
-				: `Rule saved — ${p.uncategorized.length} categorized, ${moved} moved.`
+				: `Rule saved — ${filled} categorized, ${moved} moved` + (skipped > 0 ? `, ${skipped} left as they were.` : ".")
 		);
 		this.close();
 		this.onDone?.();

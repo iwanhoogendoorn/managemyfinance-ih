@@ -140,3 +140,34 @@ export function seedPatternFor(tx: Pick<Transaction, "description" | "counterpar
 	const head = (firstNumeric > 0 ? words.slice(0, firstNumeric) : words).join(" ");
 	return head.replace(/[\s\-\u2013\u2014,;:.]+$/, "").trim() || raw;
 }
+
+/**
+ * The exact ledger writes a confirmed rule should make.
+ *
+ * Pure and exported so the destructive step can be tested without a vault: getting this wrong writes
+ * to someone's ledger, and "it looked right in the dialog" is not evidence about what gets written.
+ *
+ * Three decisions live here. Only ticked rows are written — an unticked row keeps its category *and*
+ * gets no stamp, because the badge means "this rule filed this row" and a row the rule was told to
+ * skip would be lying about its own provenance. Rows already sitting in the target are stamped even
+ * though their category doesn't move, so the badge describes every row the rule now governs rather
+ * than only those that happened to change today. And a row already stamped by this same rule is left
+ * out entirely, so re-confirming an unchanged rule is a no-op rather than a rewrite of every file it
+ * touches.
+ */
+export function rulePatches(
+	preview: RulePreview,
+	excludedIds: ReadonlySet<string>,
+	rule: Pick<CategoryRule, "id" | "categoryId">
+): Map<string, Partial<Transaction>> {
+	const patches = new Map<string, Partial<Transaction>>();
+	for (const tx of changedByPreview(preview)) {
+		if (excludedIds.has(tx.id)) continue;
+		patches.set(tx.id, { categoryId: rule.categoryId, categoryRuleId: rule.id });
+	}
+	for (const tx of preview.alreadyCorrect) {
+		if (tx.categoryRuleId === rule.id) continue;
+		patches.set(tx.id, { categoryId: rule.categoryId, categoryRuleId: rule.id });
+	}
+	return patches;
+}

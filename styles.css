@@ -7225,3 +7225,64 @@
 	white-space: nowrap;
 	padding: 2px 0;
 }
+
+/* The reviewable list of rows a rule is about to write — same shape as the Review page's own table,
+   so the gesture (glance, untick the odd one, commit) is already familiar. */
+.fp-rule-table-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.fp-rule-table-count {
+	font-weight: 400;
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--text-muted);
+}
+.fp-rule-table-dest {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+/* Capped so a broad pattern can't push the footer buttons off the bottom of the screen — the list
+   scrolls inside the dialog instead of the dialog growing without limit. */
+.fp-rule-table-scroll {
+	max-height: 320px;
+	overflow-y: auto;
+	margin-top: 6px;
+}
+.fp-rule-table td {
+	vertical-align: middle;
+}
+.fp-rule-table-desc {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 260px;
+}
+.fp-rule-table-sub {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 260px;
+}
+/* Unticked rows stay readable — you need to see what you chose to skip — but read as inactive. */
+.fp-rule-table-row.is-excluded td:not(.fp-ledger-td-select) {
+	opacity: 0.45;
+	text-decoration: line-through;
+	text-decoration-thickness: 1px;
+}
+.fp-rule-table-note {
+	margin-top: 8px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
