@@ -136,12 +136,54 @@ function isNoiseToken(token: string): boolean {
 const MAX_TOKENS = 5;
 
 /**
+ * A card-terminal receipt line: where and when the card was used, not who was paid.
+ *
+ * Dutch banks write these as a place, a timestamp and the card's last digits — "BUNNIK 08-11-2014
+ * 16:20 Pas: 4333". The shop's name is nowhere in it; it is in the counterparty column beside it.
+ */
+const TERMINAL_LINE = /\bpas\s*:|\bcard\s*:|\b\d{2}[-/.]\d{2}[-/.]\d{2,4}\b.*\b\d{1,2}:\d{2}\b/i;
+
+/** An account number rather than a name — no use as a merchant identity, and what banks like ING put
+ *  in the counterparty column. */
+const ACCOUNT_LIKE = /^[a-z]{0,2}[\s\d]*$|^[a-z]{2}\d{2}[a-z0-9]{10,}$/i;
+
+/**
+ * Which of the two fields actually names the payee.
+ *
+ * Description first is right for the banks whose description *is* the merchant, and was the only
+ * rule here. It is exactly backwards for a card payment, where the description is the terminal's
+ * location and the merchant sits in the counterparty: keying on it collapsed 595 unrelated
+ * transactions across one city into a single merchant called "rotterdam pas", which no rule could
+ * categorise and no amount of asking a model could rescue — it was being asked what category a city
+ * belongs to.
+ *
+ * So a description that reads as a terminal line defers to the counterparty, unless that is itself
+ * an account number, which is what banks that put an IBAN there would offer instead.
+ */
+function merchantText(tx: Pick<Transaction, "description" | "counterparty">): string {
+	const description = `${tx.description ?? ""}`.trim();
+	const counterparty = `${tx.counterparty ?? ""}`.trim();
+	if (counterparty && !ACCOUNT_LIKE.test(counterparty) && TERMINAL_LINE.test(description)) return counterparty;
+	return description || counterparty;
+}
+
+/**
  * The stable key for a transaction's merchant, or undefined when the description carries no
  * recognizable name at all (a bare reference number, an empty row). Undefined means "don't group
  * this" — never group everything unrecognizable together under one key.
  */
 export function merchantKey(tx: Pick<Transaction, "description" | "counterparty">): string | undefined {
-	const raw = `${tx.description ?? ""}`.trim() || `${tx.counterparty ?? ""}`.trim();
+	const primary = keyFrom(merchantText(tx));
+	if (primary) return primary;
+	// The chosen field named nobody — a bare reference like "2014-0051". Rather than give up while the
+	// other field is sitting there holding "Snowcone B.V.", try it. 232 rows of this one import had a
+	// real company in the counterparty and no merchant identity at all, so they reached neither the
+	// rules nor the model that could have filed them.
+	const other = `${tx.counterparty ?? ""}`.trim();
+	return other && !ACCOUNT_LIKE.test(other) ? keyFrom(other) : undefined;
+}
+
+function keyFrom(raw: string): string | undefined {
 	if (!raw) return undefined;
 
 	let s = raw.toLowerCase();
