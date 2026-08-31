@@ -3,7 +3,7 @@ import { FinanceModal } from "../ui/modalStaysOpen";
 import { summarizeByMonth } from "../kpi";
 import type FinancePlugin from "../main";
 import { icon } from "../ui/dom";
-import { formatEUR, formatPct, metricRow, yearHeaderRow } from "../ui/metricsTable";
+import { formatEUR, formatPct, metricRow, metricsTable, yearHeaderRow } from "../ui/metricsTable";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -27,8 +27,9 @@ export class MonthDrilldownModal extends FinanceModal {
 		if (!hasActivity) {
 			c.createEl("p", { cls: "fp-step-desc", text: "No transactions recorded for this year." });
 		} else {
-			const wrap = c.createDiv({ cls: "fp-table-scroll" });
-			const table = wrap.createEl("table", { cls: "fp-table fp-table-metrics" });
+			// `metricsTable` brings its own scroll wrapper; a second one around it would nest two
+			// scrollers and give the inner one nothing to scroll.
+			const table = metricsTable(c);
 			yearHeaderRow(table, MONTH_LABELS);
 			const tbody = table.createEl("tbody");
 
