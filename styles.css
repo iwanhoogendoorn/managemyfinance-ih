@@ -7192,6 +7192,19 @@
 	padding-left: 8px;
 	margin-left: -2px;
 }
+/* Matches the rule is deliberately not touching — transfers it would otherwise recast as spending.
+   Blue rather than the movers' orange: this is the dialog protecting you, not warning you. */
+.fp-rule-preview-row.is-protected {
+	border-left: 2px solid var(--color-blue, var(--interactive-accent));
+	padding-left: 8px;
+	margin-left: -2px;
+}
+.fp-rule-preview-optin {
+	margin: 4px 0 2px 10px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
 .fp-rule-preview-n {
 	font-weight: 700;
 	color: var(--text-normal);

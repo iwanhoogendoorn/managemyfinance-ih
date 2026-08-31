@@ -25,6 +25,8 @@ import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue
 export class CreateCategoryRuleModal extends Modal {
 	private pattern: string;
 	private isRegex = false;
+	/** Off by default: see `previewRule` on why transfers are held back from a merchant rule. */
+	private includeNeutral = false;
 	private value: CategoryPickerValue;
 	private previewEl!: HTMLElement;
 	private submitBtn!: HTMLButtonElement;
@@ -47,7 +49,12 @@ export class CreateCategoryRuleModal extends Modal {
 	}
 
 	private computePreview(): RulePreview {
-		return previewRule(this.plugin.store.transactions, { pattern: this.pattern, isRegex: this.isRegex }, this.targetCategoryId());
+		return previewRule(
+			this.plugin.store,
+			{ pattern: this.pattern, isRegex: this.isRegex },
+			this.targetCategoryId(),
+			{ includeNeutral: this.includeNeutral }
+		);
 	}
 
 	private renderPreview(): void {
@@ -78,7 +85,7 @@ export class CreateCategoryRuleModal extends Modal {
 
 		const summary = c.createDiv({ cls: "fp-rule-preview-summary" });
 		summary.createSpan({ cls: "fp-rule-preview-count", text: String(p.total) });
-		summary.createSpan({ text: ` transaction${p.total === 1 ? "" : "s"} match — ${willChange} will change, ${p.alreadyCorrect.length} already correct.` });
+		summary.createSpan({ text: ` transaction${p.total === 1 ? " matches" : "s match"} — ${willChange} will change, ${p.alreadyCorrect.length} already correct.` });
 
 		if (p.uncategorized.length > 0) {
 			const row = c.createDiv({ cls: "fp-rule-preview-row" });
@@ -99,6 +106,32 @@ export class CreateCategoryRuleModal extends Modal {
 			row.createSpan({ cls: "fp-rule-preview-arrow", text: "→" });
 			const to = categoryChain(store.categories, target);
 			categoryChainChip(row, to.primary, to.secondary);
+		}
+
+		// Rendered whenever there are neutral matches at all, not only while they are being held back —
+		// otherwise ticking the box removes the box, and there is no way to change your mind.
+		if (p.protectedNeutral.length > 0) {
+			// Only while they are being held back does this group need a line of its own. Once opted in
+			// they appear among the movers above, and repeating the count here said "54" twice.
+			if (!p.neutralIncluded) {
+				const row = c.createDiv({ cls: "fp-rule-preview-row is-protected" });
+				row.createSpan({ cls: "fp-rule-preview-n", text: String(p.protectedNeutral.length) });
+				row.createSpan({
+					text: ` left alone — transfers and other money movements, not spending on this merchant (e.g. "${p.protectedNeutral[0].description}").`,
+				});
+			}
+			const optIn = c.createEl("label", { cls: "fp-checkbox-row fp-rule-preview-optin" });
+			const optInInput = optIn.createEl("input", { type: "checkbox" });
+			optInInput.checked = this.includeNeutral;
+			optIn.createSpan({
+				text: p.neutralIncluded
+					? `Re-filing ${p.protectedNeutral.length} transfer${p.protectedNeutral.length === 1 ? "" : "s"} as spending — untick to leave them alone`
+					: "Re-file these too",
+			});
+			optInInput.addEventListener("change", () => {
+				this.includeNeutral = optInInput.checked;
+				this.renderPreview();
+			});
 		}
 
 		const sample = c.createDiv({ cls: "fp-rule-preview-sample" });

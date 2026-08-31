@@ -1,3 +1,4 @@
+import { classifyTransaction, isEconomicallyNeutral, type ClassifyStore } from "./finance/semantics";
 import { ruleMatches } from "./import/categorize";
 import type { CategoryRule, Transaction } from "./types";
 
@@ -16,11 +17,25 @@ export interface RulePreview {
 	uncategorized: Transaction[];
 	/** Matching rows filed elsewhere, which the rule will move, keyed by their current category id. */
 	moving: Map<string, Transaction[]>;
+	/**
+	 * Matching rows the rule would turn from a money movement into spending — the "Apple Pay top-up"
+	 * problem described on `previewRule`. Always reported, whether or not they are being written: the
+	 * caller needs the count to offer the opt-in, and a group that vanished the moment you opted in
+	 * would leave no way to opt back out. Check `neutralIncluded` for which it is.
+	 */
+	protectedNeutral: Transaction[];
+	/** True when `protectedNeutral` is also being written, i.e. the caller passed `includeNeutral`. */
+	neutralIncluded: boolean;
 	/** Every matching row, however it is classified above. */
 	total: number;
 }
 
-/** Rows the rule will write to: the blanks it fills plus the rows it moves. Not `alreadyCorrect`. */
+export interface RulePreviewStore extends ClassifyStore {
+	transactions: Transaction[];
+}
+
+/** Rows the rule will write to: the blanks it fills plus the rows it moves. Not `alreadyCorrect`,
+ *  and never `protectedNeutral` — opting those in moves them into the buckets above instead. */
 export function changedByPreview(preview: RulePreview): Transaction[] {
 	return [...preview.uncategorized, ...Array.from(preview.moving.values()).flat()];
 }
@@ -35,22 +50,54 @@ export function movingCount(preview: RulePreview): number {
  * stragglers consistently is the whole point of creating a rule from a transaction you are looking
  * at, and the caller is expected to show `moving` in full before writing anything.
  *
+ * One class of row is held back regardless: a match the rule would flip from a money movement into
+ * spending. A ledger of Apple purchases also contains "Apple Pay top-up by *1234" — money arriving
+ * via a payment method that happens to share the merchant's name — and a pattern of "Apple" sweeps up
+ * all 54 of them alongside the 204 real purchases. They are not mis-filed Apple charges to be
+ * corrected; they are a different kind of row entirely.
+ *
+ * The test is deliberately "would this change flip it", not "is it a transfer": each match is
+ * classified as it stands and again as it would stand under the new category, and it is protected
+ * only when the first is economically neutral and the second is not. So a rule that files things
+ * *into* Transfers or Savings moves them freely — nothing is being reclassified — and the rule needs
+ * no list of category names of its own, deferring instead to the one classifier the whole plugin
+ * shares. `includeNeutral` exists because it is a default, not a veto.
+ *
  * An empty pattern or a missing target matches nothing rather than everything: `"".includes()` is
  * true for every string, so the guard is load-bearing, not defensive decoration.
  */
 export function previewRule(
-	transactions: Transaction[],
+	store: RulePreviewStore,
 	rule: Pick<CategoryRule, "pattern" | "isRegex">,
-	targetCategoryId: string | undefined
+	targetCategoryId: string | undefined,
+	opts: { includeNeutral?: boolean } = {}
 ): RulePreview {
-	const preview: RulePreview = { alreadyCorrect: [], uncategorized: [], moving: new Map(), total: 0 };
+	const includeNeutral = !!opts.includeNeutral;
+	const preview: RulePreview = {
+		alreadyCorrect: [],
+		uncategorized: [],
+		moving: new Map(),
+		protectedNeutral: [],
+		neutralIncluded: includeNeutral,
+		total: 0,
+	};
 	if (!rule.pattern.trim() || !targetCategoryId) return preview;
 
-	for (const tx of transactions) {
+	for (const tx of store.transactions) {
 		if (!ruleMatches(tx, rule)) continue;
 		preview.total++;
+
+		if (tx.categoryId === targetCategoryId) {
+			preview.alreadyCorrect.push(tx);
+			continue;
+		}
+
+		if (wouldFlipToSpending(store, tx, targetCategoryId)) {
+			preview.protectedNeutral.push(tx);
+			if (!includeNeutral) continue;
+		}
+
 		if (!tx.categoryId) preview.uncategorized.push(tx);
-		else if (tx.categoryId === targetCategoryId) preview.alreadyCorrect.push(tx);
 		else {
 			const bucket = preview.moving.get(tx.categoryId) ?? [];
 			bucket.push(tx);
@@ -58,6 +105,13 @@ export function previewRule(
 		}
 	}
 	return preview;
+}
+
+/** Neutral as it stands, not neutral under the proposed category — i.e. the rule would recast a
+ *  movement between your own accounts as money you spent. */
+function wouldFlipToSpending(store: ClassifyStore, tx: Transaction, targetCategoryId: string): boolean {
+	if (!isEconomicallyNeutral(classifyTransaction(store, tx))) return false;
+	return !isEconomicallyNeutral(classifyTransaction(store, { ...tx, categoryId: targetCategoryId }));
 }
 
 /**
