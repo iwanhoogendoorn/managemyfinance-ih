@@ -7699,15 +7699,21 @@
 /* Search box with a clear button inside its right-hand edge. The button only exists once there is
    something to clear, so an empty field looks like a plain input rather than a control with a dead
    affordance parked in it. */
+/* Sized by the input it holds, not by the row. `.fp-search` caps itself at 360px, so a wrapper that
+   stretched to fill the toolbar left the clear button pinned to the row's right edge — 700px adrift
+   of the box it belongs to. Inheriting the same cap keeps the two together at any width. */
 .fp-search-wrap {
 	position: relative;
 	display: flex;
 	align-items: center;
 	flex: 1 1 auto;
+	width: 100%;
+	max-width: 360px;
 	min-width: 0;
 }
 .fp-search-wrap .fp-search {
 	width: 100%;
+	max-width: none;
 	/* Room for the button, so a long query never runs underneath it. */
 	padding-right: 30px;
 }
