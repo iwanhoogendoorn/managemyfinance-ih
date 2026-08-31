@@ -7685,3 +7685,13 @@
 	align-items: center;
 	gap: 8px;
 }
+
+/* The bank's own line under a payee name — the location and timestamp of a card payment, which is
+   worth seeing but is not what the row is about. */
+.fp-match-row-line {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
