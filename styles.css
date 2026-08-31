@@ -7524,22 +7524,17 @@
 /* The "Closed" group: a disclosure rather than a second list. Closed accounts are history you
    occasionally consult, and a sidebar that gives them the same weight as the accounts you use is a
    sidebar that gets longer every year without getting more useful. */
-.fp-nav-closed-header {
-	padding-right: 6px;
-}
+
 .fp-nav-closed-toggle {
 	display: flex;
 	align-items: center;
-	gap: 4px;
 	width: 100%;
-	padding: 0;
-	border: none;
-	background: transparent;
-	box-shadow: none;
 	cursor: pointer;
-	text-align: left;
-	color: inherit;
-	height: auto;
+}
+/* The label keeps the exact margin "ACCOUNTS" has, so the two headings share a left edge. */
+.fp-nav-closed-chevron {
+	margin-left: auto;
+	margin-right: 6px;
 }
 .fp-nav-closed-toggle:hover .fp-nav-section-label {
 	color: var(--text-muted);

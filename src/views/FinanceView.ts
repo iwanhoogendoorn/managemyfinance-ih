@@ -484,19 +484,35 @@ export class FinanceView extends ItemView {
 			const closedHeader = this.navItemsEl.createDiv({
 				cls: "fp-nav-section-header fp-nav-closed-header" + (closedExpanded ? " is-expanded" : ""),
 			});
-			const toggle = closedHeader.createEl("button", { cls: "fp-nav-closed-toggle" });
-			icon(toggle, "chevron-right", "fp-nav-closed-chevron");
+			// A div, not a button: a theme that styles `button` at all beats a plain class selector, and
+			// this one came out as a grey pill with centred text sitting where a quiet section label
+			// belongs. Nothing here needs to be a button except the click, which a role and a tabindex
+			// give it without inheriting a single visual opinion.
+			const toggle = closedHeader.createDiv({
+				cls: "fp-nav-closed-toggle",
+				attr: { role: "button", tabindex: "0" },
+			});
+			// Label first, chevron at the far right: it puts "Closed" on the exact left edge as "Accounts"
+			// instead of 15px in, and it mirrors the Accounts row, whose controls sit on the right too.
 			toggle.createSpan({ cls: "fp-nav-section-label", text: `Closed (${closed.length})` });
+			icon(toggle, "chevron-right", "fp-nav-closed-chevron");
 			toggle.setAttribute("aria-expanded", String(closedExpanded));
 			// Disabled rather than hidden while you are looking at one of them: collapsing the group
 			// would take the page you are on off the list.
 			if (activeIsClosed) {
 				toggle.setAttribute("title", "Showing because you're viewing a closed account");
 			} else {
-				toggle.addEventListener("click", () => {
+				const flip = (): void => {
 					this.plugin.settings.closedAccountsExpanded = !closedExpanded;
 					void this.plugin.saveSettings();
 					this.renderNav();
+				};
+				toggle.addEventListener("click", flip);
+				toggle.addEventListener("keydown", (ev) => {
+					if (ev.key === "Enter" || ev.key === " ") {
+						ev.preventDefault();
+						flip();
+					}
 				});
 			}
 			if (closedExpanded) closed.forEach(renderAccount);
