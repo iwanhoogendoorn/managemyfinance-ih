@@ -7133,17 +7133,33 @@
 .fp-rule-mark {
 	display: inline-flex;
 	align-items: center;
+	gap: 3px;
 	margin-left: 6px;
+	padding: 1px 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-faint);
 	vertical-align: middle;
-	cursor: help;
+	cursor: pointer;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	line-height: 1.4;
+	height: auto;
 }
 .fp-rule-mark .svg-icon {
-	width: 13px;
-	height: 13px;
+	width: 11px;
+	height: 11px;
 }
 .fp-ledger-row:hover .fp-rule-mark {
 	color: var(--text-muted);
+}
+.fp-rule-mark:hover {
+	color: var(--text-normal);
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
 }
 
 /* The same fact stated in full in the transaction detail modal, where there is room for the pattern. */
@@ -7158,6 +7174,9 @@
 .fp-rule-note .svg-icon {
 	width: 13px;
 	height: 13px;
+}
+.fp-rule-note .fp-btn-tiny {
+	margin-left: 2px;
 }
 
 .fp-rule-preview {

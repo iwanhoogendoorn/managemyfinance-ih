@@ -1,6 +1,6 @@
 import { classifyTransaction, isEconomicallyNeutral, type ClassifyStore } from "./finance/semantics";
-import { ruleMatches } from "./import/categorize";
-import type { CategoryRule, CategoryRuleMatch, Transaction } from "./types";
+import { resolveRuleMatch, ruleMatches } from "./import/categorize";
+import type { CategoryRule, CategoryRuleMatch, RuleAmountCondition, Transaction } from "./types";
 
 /**
  * What a rule would do to the ledger, grouped by where each matching row currently sits.
@@ -279,4 +279,45 @@ export function staleStampPatches(transactions: Transaction[], rule: CategoryRul
 		patches.set(tx.id, { categoryRuleId: undefined });
 	}
 	return patches;
+}
+
+/** "€9.99", "€9.99 / €2.99 / €6.99", "≤ €5.00", "€1.00–€10.00" — the condition in as few characters
+ *  as stay true. Amounts are formatted by the caller so this stays currency-agnostic. */
+export function describeAmountCondition(c: RuleAmountCondition, money: (v: number) => string): string {
+	switch (c.op) {
+		case "exactly":
+			return money(c.value);
+		case "any-of": {
+			const values = c.values?.length ? c.values : [c.value];
+			return values.map(money).join(" / ");
+		}
+		case "at-most":
+			return `\u2264 ${money(c.value)}`;
+		case "at-least":
+			return `\u2265 ${money(c.value)}`;
+		case "between": {
+			const lo = Math.min(c.value, c.value2 ?? c.value);
+			const hi = Math.max(c.value, c.value2 ?? c.value);
+			return `${money(lo)}\u2013${money(hi)}`;
+		}
+	}
+}
+
+const RULE_MATCH_TEXT: Record<CategoryRuleMatch, string> = {
+	contains: "contains",
+	exact: "exact match",
+	"starts-with": "starts with",
+	regex: "regex",
+};
+
+/**
+ * How a rule reaches its rows, in one phrase — "exact match, €9.99" or "contains, ≤ €5.00".
+ *
+ * One definition shared by the ledger's marker, the rules list and the transaction detail, because
+ * three hand-written versions of the same sentence is three chances for one of them to describe a
+ * rule the plugin no longer has.
+ */
+export function describeRuleScope(rule: Pick<CategoryRule, "match" | "isRegex" | "amount">, money: (v: number) => string): string {
+	const mode = RULE_MATCH_TEXT[resolveRuleMatch(rule)];
+	return rule.amount ? `${mode}, ${describeAmountCondition(rule.amount, money)}` : mode;
 }

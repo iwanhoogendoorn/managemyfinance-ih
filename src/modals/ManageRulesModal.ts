@@ -1,24 +1,11 @@
 import { App, Modal, Notice } from "obsidian";
 import { categoryChain } from "../categories";
 import { applyRules, resolveRuleMatch } from "../import/categorize";
+import { describeAmountCondition } from "../rules";
 import { CreateCategoryRuleModal } from "./CreateCategoryRuleModal";
 import type FinancePlugin from "../main";
-import type { CategoryRule, CategoryRuleMatch, RuleAmountCondition } from "../types";
+import type { CategoryRule, CategoryRuleMatch } from "../types";
 import { categoryChainChip, icon, renderCategoryPicker, type CategoryPickerValue } from "../ui/dom";
-
-function describeAmountBadge(c: RuleAmountCondition): string {
-	const n = (v: number): string => v.toFixed(2);
-	if (c.op === "exactly") return `= ${n(c.value)}`;
-	if (c.op === "any-of") {
-		const values = c.values?.length ? c.values : [c.value];
-		return values.length === 1 ? `= ${n(values[0])}` : `= ${values.map(n).join(" / ")}`;
-	}
-	if (c.op === "at-most") return `\u2264 ${n(c.value)}`;
-	if (c.op === "at-least") return `\u2265 ${n(c.value)}`;
-	const lo = Math.min(c.value, c.value2 ?? c.value);
-	const hi = Math.max(c.value, c.value2 ?? c.value);
-	return `${n(lo)}\u2013${n(hi)}`;
-}
 
 const RULE_MATCH_BADGE: Record<CategoryRuleMatch, string> = {
 	contains: "CONTAINS",
@@ -168,7 +155,7 @@ export class ManageRulesModal extends Modal {
 				}
 				// An amount condition changes which rows a rule reaches every bit as much as the pattern
 				// does, so a list that showed only the pattern would misrepresent the rule.
-				if (rule.amount) patternCol.createSpan({ cls: "fp-badge fp-tone-neutral", text: describeAmountBadge(rule.amount) });
+				if (rule.amount) patternCol.createSpan({ cls: "fp-badge fp-tone-neutral", text: describeAmountCondition(rule.amount, (v) => v.toFixed(2)) });
 
 				icon(row, "arrow-right", "fp-rule-row-arrow");
 

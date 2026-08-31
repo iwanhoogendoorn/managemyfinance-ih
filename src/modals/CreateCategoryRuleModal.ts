@@ -18,7 +18,9 @@ const AMOUNT_OPS: { value: RuleAmountOp | "any"; label: string }[] = [
 	{ value: "at-least", label: "Is at least" },
 ];
 
-function describeAmountCondition(c: RuleAmountCondition): string {
+/** The full sentence for the active-condition bar. `rules.ts` has the compact form used by
+ *  badges and tooltips; this one is prose because it is the only thing describing the filter. */
+function describeActiveCondition(c: RuleAmountCondition): string {
 	const money = (v: number): string => formatMoney(v, { currency: "EUR" });
 	switch (c.op) {
 		case "exactly":
@@ -276,7 +278,7 @@ export class CreateCategoryRuleModal extends Modal {
 	private renderAmountStrip(c: HTMLElement, p: RulePreview): void {
 		if (this.amount) {
 			const active = c.createDiv({ cls: "fp-rule-amount-active" });
-			active.createSpan({ text: describeAmountCondition(this.amount) });
+			active.createSpan({ text: describeActiveCondition(this.amount) });
 			const clear = active.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-tiny" });
 			clear.createSpan({ text: "Clear" });
 			clear.addEventListener("click", () => this.setAmountCondition(undefined));

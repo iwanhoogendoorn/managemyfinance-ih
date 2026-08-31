@@ -6,6 +6,7 @@ import { transferSiblings } from "../transfers";
 import type { ReviewStatus, Transaction } from "../types";
 import { renderAttachmentControl } from "../ui/attachment";
 import { badge, categoryChainChip, icon, renderCategoryPicker } from "../ui/dom";
+import { CreateCategoryRuleModal } from "./CreateCategoryRuleModal";
 import { LinkSubscriptionModal } from "./SubscriptionLinkModal";
 import { TransactionEditModal } from "./TransactionEditModal";
 
@@ -67,7 +68,20 @@ export class TransactionDetailModal extends Modal {
 			const rule = this.tx.categoryRuleId ? store.rules.find((r) => r.id === this.tx.categoryRuleId) : undefined;
 			if (!rule) return;
 			icon(ruleNote, "wand-2");
-			ruleNote.createSpan({ text: `Set by rule: "${rule.pattern}"${rule.isRegex ? " (regex)" : ""}` });
+			ruleNote.createSpan({ text: `Set by the rule "${rule.pattern}"` });
+			// The obvious next question after "why is it filed here" is "then change it", so the answer
+			// carries the way to act on it rather than making you go and find the rules list.
+			const edit = ruleNote.createEl("button", { cls: "fp-btn fp-btn-ghost fp-btn-tiny" });
+			edit.createSpan({ text: "Edit rule" });
+			edit.addEventListener("click", () => {
+				new CreateCategoryRuleModal(this.app, this.plugin, {
+					rule,
+					onDone: () => {
+						renderRuleNote();
+						this.plugin.refreshViews();
+					},
+				}).open();
+			});
 		};
 		renderRuleNote();
 		renderCategoryPicker(catValue, {

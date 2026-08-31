@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountGroups, changedByPreview, movingCount, previewRule, rulePatches, seedPatternFor, seedRuleFor, staleStampPatches } from "./rules";
+import { amountGroups, changedByPreview, describeRuleScope, movingCount, previewRule, rulePatches, seedPatternFor, seedRuleFor, staleStampPatches } from "./rules";
 import type { Category, CategoryRule, Transaction } from "./types";
 
 
@@ -542,5 +542,37 @@ describe("staleStampPatches — editing a rule narrower", () => {
 		const tightened: CategoryRule = { ...RULE, match: "exact" };
 		expect(staleStampPatches([row], tightened).size).toBe(1);
 		expect(staleStampPatches([row], { ...RULE, match: "contains" }).size).toBe(0);
+	});
+});
+
+describe("describeRuleScope", () => {
+	const money = (v: number): string => `\u20ac${v.toFixed(2)}`;
+
+	it("names a single amount rather than counting it", () => {
+		// "exact match, 1 amount" told you how many there were and not which.
+		expect(describeRuleScope({ match: "exact", amount: { op: "any-of", value: 0.99, values: [0.99] } }, money)).toBe(
+			"exact match, \u20ac0.99"
+		);
+		expect(describeRuleScope({ match: "exact", amount: { op: "exactly", value: 9.99 } }, money)).toBe("exact match, \u20ac9.99");
+	});
+
+	it("lists a small set", () => {
+		expect(describeRuleScope({ match: "exact", amount: { op: "any-of", value: 2.99, values: [2.99, 5.99] } }, money)).toBe(
+			"exact match, \u20ac2.99 / \u20ac5.99"
+		);
+	});
+
+	it("describes ranges and bounds", () => {
+		expect(describeRuleScope({ match: "contains", amount: { op: "at-most", value: 5 } }, money)).toBe("contains, \u2264 \u20ac5.00");
+		expect(describeRuleScope({ match: "contains", amount: { op: "at-least", value: 5 } }, money)).toBe("contains, \u2265 \u20ac5.00");
+		expect(describeRuleScope({ match: "contains", amount: { op: "between", value: 10, value2: 1 } }, money)).toBe(
+			"contains, \u20ac1.00\u2013\u20ac10.00"
+		);
+	});
+
+	it("says only the mode when there is no amount filter", () => {
+		expect(describeRuleScope({ match: "starts-with" }, money)).toBe("starts with");
+		expect(describeRuleScope({}, money)).toBe("contains");
+		expect(describeRuleScope({ isRegex: true }, money)).toBe("regex");
 	});
 });

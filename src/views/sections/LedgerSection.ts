@@ -7,6 +7,7 @@ import { formatMoney } from "../../money";
 import type { PeriodSelection } from "../../period";
 import type FinancePlugin from "../../main";
 import type { ReviewStatus, Transaction } from "../../types";
+import { describeRuleScope } from "../../rules";
 import { renderAttachmentControl } from "../../ui/attachment";
 import { categoryChainChip, emptyState, icon, renderCategoryPicker, type CategoryPickerValue } from "../../ui/dom";
 import { openImportWizard } from "../../wizards/ImportWizard";
@@ -373,13 +374,27 @@ export function renderLedger(container: HTMLElement, plugin: FinancePlugin, opts
 	 * trusted: delete a rule and its rows keep their category but stop claiming to be governed, which
 	 * is the truth — nothing is enforcing them any more.
 	 */
+	/** Rule conditions are stored per-amount without a currency; the ledger's own base is the only
+	 *  sensible way to read them back. */
+	const ruleMoney = (v: number): string => formatMoney(v, { currency: "EUR" });
+
 	function renderRuleBadge(parent: HTMLElement, t: Transaction): void {
 		if (!t.categoryRuleId) return;
 		const rule = store.rules.find((r) => r.id === t.categoryRuleId);
 		if (!rule) return;
-		const mark = parent.createSpan({ cls: "fp-rule-mark" });
+		// A word rather than a lone icon: a wand at 13px is unreadable, and the one thing worse than a
+		// marker nobody understands is one that gets misread as a question mark.
+		const mark = parent.createEl("button", { cls: "fp-rule-mark" });
 		icon(mark, "wand-2");
-		mark.setAttribute("title", `Set by rule: "${rule.pattern}"${rule.isRegex ? " (regex)" : ""}`);
+		mark.createSpan({ text: "RULE" });
+		mark.setAttribute("title", `Filed by the rule "${rule.pattern}" (${describeRuleScope(rule, ruleMoney)}). Click to edit it.`);
+		mark.setAttribute("aria-label", `Edit the rule that filed this transaction`);
+		mark.addEventListener("click", (ev) => {
+			// Without this the click reaches the row underneath and opens the transaction instead — which
+			// is exactly what a marker with no handler of its own used to do.
+			ev.stopPropagation();
+			new CreateCategoryRuleModal(plugin.app, plugin, { rule, onDone: () => draw() }).open();
+		});
 	}
 
 	function openRowMenu(ev: MouseEvent, t: Transaction): void {
