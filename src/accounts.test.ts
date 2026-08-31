@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeAccounts } from "./accounts";
+import { activeAccounts, tracksBalance } from "./accounts";
 import type { Account } from "./types";
 
 function acc(id: string, overrides: Partial<Account> = {}): Account {
@@ -26,5 +26,17 @@ describe("activeAccounts", () => {
 
 	it("treats archived:false as open", () => {
 		expect(activeAccounts([acc("a", { archived: false })]).map((a) => a.id)).toEqual(["a"]);
+	});
+});
+
+describe("tracksBalance", () => {
+	it("treats an account written before the option existed as tracked", () => {
+		expect(tracksBalance(acc("a"))).toBe(true);
+		expect(tracksBalance({ trackBalance: undefined })).toBe(true);
+	});
+
+	it("is false only when explicitly turned off", () => {
+		expect(tracksBalance({ trackBalance: false })).toBe(false);
+		expect(tracksBalance({ trackBalance: true })).toBe(true);
 	});
 });

@@ -1,5 +1,6 @@
 import { App, Modal } from "obsidian";
 import { accountStats, allAccountStats, orphanedTransactions, type AccountStats } from "../accountStats";
+import { tracksBalance } from "../accounts";
 import { ACCOUNT_TYPE_META } from "../constants";
 import type FinancePlugin from "../main";
 import { formatMoney } from "../money";
@@ -89,6 +90,7 @@ export class AccountStatsModal extends Modal {
 		const meta = c.createDiv({ cls: "fp-stats-meta" });
 		meta.createSpan({ text: ACCOUNT_TYPE_META[account.type].label });
 		if (account.archived) badge(meta, "Closed", "neutral");
+		if (!tracksBalance(account)) badge(meta, "Register only \u2014 no balance tracked", "neutral");
 		if (account.iban) meta.createSpan({ cls: "fp-sensitive", text: account.iban });
 		if (s.sources.length > 0) meta.createSpan({ text: `imported from ${s.sources.join(", ")}` });
 		if (s.currencies.length > 1) {

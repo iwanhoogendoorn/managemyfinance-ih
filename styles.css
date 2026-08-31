@@ -7605,3 +7605,8 @@
 .fp-table tr.is-selected td {
 	background: var(--background-modifier-hover);
 }
+
+/* A yes/no that belongs to the section heading above it rather than to a labelled form row. */
+.fp-form-inline-check {
+	margin: 2px 0 4px;
+}

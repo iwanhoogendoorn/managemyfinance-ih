@@ -20,3 +20,14 @@ import type { Account } from "./types";
 export function activeAccounts(accounts: Account[], keepId?: string): Account[] {
 	return accounts.filter((a) => !a.archived || a.id === keepId);
 }
+
+/**
+ * Does this account keep a running balance?
+ *
+ * Absent means yes, so every account written before the option existed keeps behaving exactly as it
+ * did. Read through this helper rather than testing the field, so "not set" can never be mistaken for
+ * "not tracked" at one call site out of eight.
+ */
+export function tracksBalance(account: Pick<Account, "trackBalance">): boolean {
+	return account.trackBalance !== false;
+}

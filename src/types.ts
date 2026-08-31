@@ -104,6 +104,22 @@ export interface Account {
 	 * still real. Mirrors `Category.archived` and `Subscription.archived`.
 	 */
 	archived?: boolean;
+	/**
+	 * `false` means this account keeps no running balance: a register of what happened, not a
+	 * reconciled book.
+	 *
+	 * Plenty of real use is like that — years of a closed account imported for the history, a cash
+	 * wallet nobody counts, a shared account you only record your own side of. For those a balance is
+	 * not merely unknown, it is meaningless, and a tool that insists on one turns every import into an
+	 * exercise in making a number come out right.
+	 *
+	 * Untracked accounts are left out of every net-worth total rather than counted as zero: an unknown
+	 * balance and a zero balance are different claims and only one of them is true here. Their
+	 * transactions still count everywhere else — spending, budgets, categories and reports are about
+	 * what happened, which is exactly what a register knows. Absent means tracked, so nothing that
+	 * exists today changes.
+	 */
+	trackBalance?: boolean;
 }
 
 /**

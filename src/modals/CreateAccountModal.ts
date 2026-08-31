@@ -11,6 +11,7 @@ export class CreateAccountModal extends Modal {
 	private type: AccountType = "debit";
 	private iban = "";
 	private openingBalance: number | undefined = 0;
+	private trackBalance = true;
 
 	constructor(app: App, private plugin: FinancePlugin, private onCreated?: (account: Account) => void) {
 		super(app);
@@ -53,11 +54,27 @@ export class CreateAccountModal extends Modal {
 		const ibanInput = ibanRow.createEl("input", { type: "text", attr: { placeholder: "Auto-matches combined CSV/Excel exports" } });
 		ibanInput.addEventListener("input", () => (this.iban = ibanInput.value));
 
-		const balRow = form.createDiv({ cls: "fp-form-row" });
+		// Offered at creation, not only in the editor: the accounts most likely to want this are the
+		// ones you are adding right now to hold imported history, and being asked for an opening balance
+		// you do not have is the moment the tool starts feeling like bookkeeping.
+		const trackLabel = form.createEl("label", { cls: "fp-checkbox-row fp-form-inline-check" });
+		const trackInput = trackLabel.createEl("input", { type: "checkbox" });
+		trackLabel.createSpan({ text: "Don\u2019t track a balance \u2014 register only" });
+		form.createDiv({
+			cls: "fp-field-hint",
+			text: "For an account you keep for its history rather than its balance. It stays out of net worth \u2014 left out, not counted as zero \u2014 while its transactions still feed spending, budgets and reports.",
+		});
+
+		const balanceFields = form.createDiv();
+		const balRow = balanceFields.createDiv({ cls: "fp-form-row" });
 		balRow.createEl("label", { text: "Opening balance" });
 		moneyInput(balRow, {
 			value: this.openingBalance,
 			onChange: (v) => (this.openingBalance = v),
+		});
+		trackInput.addEventListener("change", () => {
+			this.trackBalance = !trackInput.checked;
+			balanceFields.toggle(this.trackBalance);
 		});
 
 		const footer = c.createDiv({ cls: "fp-wizard-footer" });
@@ -84,9 +101,10 @@ export class CreateAccountModal extends Modal {
 			name: this.name.trim(),
 			type: this.type,
 			currency: "EUR",
-			openingBalance: this.openingBalance ?? 0,
+			openingBalance: this.trackBalance ? this.openingBalance ?? 0 : 0,
 			iban: this.iban.trim() || undefined,
 		};
+		if (!this.trackBalance) account.trackBalance = false;
 		this.plugin.store.accounts.push(account);
 		await this.plugin.store.saveAccounts();
 		new Notice(`Created account "${account.name}"`);

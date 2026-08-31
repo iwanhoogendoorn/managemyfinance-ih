@@ -1,6 +1,7 @@
 import { ItemView, Menu, Notice, Platform, WorkspaceLeaf } from "obsidian";
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER, VIEW_TYPE_FINANCE } from "../constants";
 import type FinancePlugin from "../main";
+import { tracksBalance } from "../accounts";
 import { AccountStatsModal } from "../modals/AccountStatsModal";
 import { BalanceSnapshotModal } from "../modals/BalanceSnapshotModal";
 import { CreateAccountModal } from "../modals/CreateAccountModal";
@@ -428,7 +429,10 @@ export class FinanceView extends ItemView {
 			icon(item, ACCOUNT_TYPE_META[acc.type].icon, "fp-nav-icon");
 			const textCol = item.createDiv({ cls: "fp-nav-item-text" });
 			textCol.createDiv({ cls: "fp-nav-label", text: acc.name });
-			const typeLabel = ACCOUNT_TYPE_META[acc.type].label + (acc.archived ? " · Closed" : "");
+			// Both facts belong on this line: "closed" is about whether you still use it, "no balance" is
+			// about whether its number means anything, and an account can easily be one without the other.
+			const marks = [acc.archived ? "Closed" : "", tracksBalance(acc) ? "" : "No balance"].filter(Boolean);
+			const typeLabel = [ACCOUNT_TYPE_META[acc.type].label, ...marks].join(" · ");
 			textCol.createDiv({ cls: "fp-nav-item-type", text: typeLabel });
 			// The account number is what actually tells two same-type accounts apart, so it gets its own
 			// line rather than being squeezed onto the type row. `fp-sensitive` puts it behind the same
