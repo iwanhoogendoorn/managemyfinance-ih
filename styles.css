@@ -7444,3 +7444,50 @@
 .fp-rule-amount-chip.is-more:hover {
 	color: var(--text-normal);
 }
+
+/* The Accounts header carries its own actions. Two full-width nav rows for "add" and "manage" cost as
+   much vertical space as two real accounts, in the one list where the accounts are the point. */
+.fp-nav-section-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	padding-right: 6px;
+}
+.fp-nav-section-header .fp-nav-section-label {
+	margin-right: 0;
+}
+.fp-nav-section-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	/* Present but recessive until the section is approached — the accounts should read first. */
+	opacity: 0.55;
+	transition: opacity 120ms ease;
+}
+.fp-nav-section-header:hover .fp-nav-section-actions,
+.fp-nav-section-actions:focus-within {
+	opacity: 1;
+}
+.fp-nav-section-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+.fp-nav-section-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+.fp-nav-section-btn .svg-icon {
+	width: 15px;
+	height: 15px;
+}

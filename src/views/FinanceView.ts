@@ -1,7 +1,9 @@
-import { ItemView, Menu, Platform, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Notice, Platform, WorkspaceLeaf } from "obsidian";
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER, VIEW_TYPE_FINANCE } from "../constants";
 import type FinancePlugin from "../main";
+import { BalanceSnapshotModal } from "../modals/BalanceSnapshotModal";
 import { CreateAccountModal } from "../modals/CreateAccountModal";
+import { EditAccountModal } from "../modals/EditAccountModal";
 import { ManageAccountsModal } from "../modals/ManageAccountsModal";
 import { ManagePortfoliosModal } from "../modals/ManagePortfoliosModal";
 import type { FinanceViewId } from "../store";
@@ -430,36 +432,103 @@ export class FinanceView extends ItemView {
 			}
 			icon(item, "grip-vertical", "fp-nav-drag-handle");
 			item.addEventListener("click", () => void this.selectAccount(acc.id));
+			item.addEventListener("contextmenu", (ev) => {
+				ev.preventDefault();
+				this.openAccountMenu(ev, acc);
+			});
 			this.wireDrag(item, acc.id, (draggedId, targetId) => void this.reorderAccounts(draggedId, targetId));
 		};
 
-		if (open.length > 0) {
-			this.navItemsEl.createDiv({ cls: "fp-nav-section-label", text: "Accounts" });
-			open.forEach(renderAccount);
-		}
+		// The header carries the two actions that used to be full-width rows of their own. Adding and
+		// managing accounts are things you do once and then rarely, and they were costing as much
+		// vertical space as a real account each — in the one list where the accounts are the point.
+		const header = this.navItemsEl.createDiv({ cls: "fp-nav-section-header" });
+		header.createSpan({ cls: "fp-nav-section-label", text: "Accounts" });
+		const headerActions = header.createDiv({ cls: "fp-nav-section-actions" });
+
+		const addBtn = headerActions.createEl("button", { cls: "fp-nav-section-btn" });
+		icon(addBtn, "plus");
+		addBtn.setAttribute("aria-label", "Add account");
+		addBtn.setAttribute("title", "Add an account");
+		addBtn.addEventListener("click", () => {
+			new CreateAccountModal(this.app, this.plugin, (account) => void this.selectAccount(account.id)).open();
+		});
+
+		const manageBtn = headerActions.createEl("button", { cls: "fp-nav-section-btn" });
+		icon(manageBtn, "settings-2");
+		manageBtn.setAttribute("aria-label", "Manage accounts");
+		manageBtn.setAttribute("title", "Manage accounts\u2026");
+		manageBtn.addEventListener("click", () => this.openManageAccounts());
+
+		open.forEach(renderAccount);
 		if (closed.length > 0) {
 			this.navItemsEl.createDiv({ cls: "fp-nav-section-label", text: "Closed" });
 			closed.forEach(renderAccount);
 		}
+	}
 
-		this.navItemsEl.createDiv({ cls: "fp-nav-divider" });
+	private openManageAccounts(): void {
+		new ManageAccountsModal(this.app, this.plugin, () => {
+			this.renderNav();
+			this.renderBody();
+		}).open();
+	}
 
-		const addItem = this.navItemsEl.createDiv({ cls: "fp-nav-item fp-nav-item-ghost" });
-		icon(addItem, "plus", "fp-nav-icon");
-		addItem.createSpan({ cls: "fp-nav-label", text: "Add account" });
-		addItem.addEventListener("click", () => {
-			new CreateAccountModal(this.app, this.plugin, (account) => void this.selectAccount(account.id)).open();
-		});
+	/**
+	 * Per-account actions, on the account itself.
+	 *
+	 * Everything here is reversible. Deleting an account stays in "Manage accounts…", where it takes a
+	 * deliberate trip to reach: it removes the account without touching the transactions filed against
+	 * it, so putting it one right-click from the sidebar would make an orphaning edit far too easy to
+	 * hit by accident.
+	 */
+	private openAccountMenu(ev: MouseEvent, account: Account): void {
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("Edit account\u2026")
+				.setIcon("pencil")
+				.onClick(() => {
+					new EditAccountModal(this.app, this.plugin, account, () => {
+						this.renderNav();
+						this.renderBody();
+					}).open();
+				})
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Record balance\u2026")
+				.setIcon("scale")
+				.onClick(() => {
+					new BalanceSnapshotModal(this.app, this.plugin, {
+						accountId: account.id,
+						onSaved: () => {
+							this.renderNav();
+							this.renderBody();
+						},
+					}).open();
+				})
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(account.archived ? "Reopen account" : "Mark as closed")
+				.setIcon(account.archived ? "rotate-ccw" : "archive")
+				.onClick(() => void this.toggleAccountArchived(account.id))
+		);
+		menu.addSeparator();
+		menu.addItem((item) => item.setTitle("Manage accounts\u2026").setIcon("settings-2").onClick(() => this.openManageAccounts()));
+		menu.showAtMouseEvent(ev);
+	}
 
-		const manageItem = this.navItemsEl.createDiv({ cls: "fp-nav-item fp-nav-item-ghost" });
-		icon(manageItem, "settings", "fp-nav-icon");
-		manageItem.createSpan({ cls: "fp-nav-label", text: "Manage accounts…" });
-		manageItem.addEventListener("click", () => {
-			new ManageAccountsModal(this.app, this.plugin, () => {
-				this.renderNav();
-				this.renderBody();
-			}).open();
-		});
+	/** Presentation only — see `Account.archived`. No figure moves either way. */
+	private async toggleAccountArchived(accountId: string): Promise<void> {
+		const account = this.plugin.store.accounts.find((a) => a.id === accountId);
+		if (!account) return;
+		account.archived = account.archived ? undefined : true;
+		await this.plugin.store.saveAccounts();
+		new Notice(account.archived ? `"${account.name}" marked as closed.` : `"${account.name}" reopened.`);
+		this.renderNav();
+		this.renderBody();
 	}
 
 	/** Pinned below the scrollable nav list: a "set a budget" nudge (shown until at least one category
