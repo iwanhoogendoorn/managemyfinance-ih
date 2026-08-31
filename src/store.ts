@@ -47,6 +47,9 @@ export interface FinanceSettings {
 	activeAccountId?: string;
 	/** Selects a workspace page that isn't account-scoped, e.g. the subscriptions tracker. */
 	activeView?: FinanceViewId;
+	/** Whether the sidebar's "Closed" group is open. Collapsed by default: a closed account is history
+	 *  you occasionally consult, not something that should compete with the accounts you use. */
+	closedAccountsExpanded?: boolean;
 	/** Blurs every displayed amount (hover to reveal) — for demoing the plugin without exposing real numbers. */
 	privacyMode?: boolean;
 	/** Every portfolio the vault knows about — each is a fully separate set of accounts/transactions/subscriptions. */

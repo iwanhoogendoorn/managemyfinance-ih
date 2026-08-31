@@ -1,6 +1,7 @@
 import { ItemView, Menu, Notice, Platform, WorkspaceLeaf } from "obsidian";
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER, VIEW_TYPE_FINANCE } from "../constants";
 import type FinancePlugin from "../main";
+import { AccountStatsModal } from "../modals/AccountStatsModal";
 import { BalanceSnapshotModal } from "../modals/BalanceSnapshotModal";
 import { CreateAccountModal } from "../modals/CreateAccountModal";
 import { EditAccountModal } from "../modals/EditAccountModal";
@@ -403,11 +404,18 @@ export class FinanceView extends ItemView {
 		const accounts = this.accountOrder()
 			.map((id) => accountById.get(id))
 			.filter((a): a is Account => !!a);
-		// A closed account keeps its place in the list and all of its history — it just stops competing
-		// for attention with the accounts you actually use. The currently-selected one stays in the open
-		// group even when archived, so closing an account you're looking at doesn't make it vanish.
-		const open = accounts.filter((a) => !a.archived || a.id === activeAccountId);
-		const closed = accounts.filter((a) => a.archived && a.id !== activeAccountId);
+		// A closed account keeps all of its history and its place in the order — it just stops competing
+		// for attention with the accounts you actually use.
+		//
+		// Including the one you happen to be looking at. Keeping the active account in the open group
+		// was meant to stop it vanishing under you; what it actually did was make "Mark as closed" look
+		// broken, because the account you had just closed stayed exactly where it was. The group
+		// auto-opens when the active account is inside it, which keeps it in view without pretending it
+		// is still open.
+		const open = accounts.filter((a) => !a.archived);
+		const closed = accounts.filter((a) => a.archived);
+		const activeIsClosed = closed.some((a) => a.id === activeAccountId);
+		const closedExpanded = this.plugin.settings.closedAccountsExpanded === true || activeIsClosed;
 
 		const renderAccount = (acc: Account): void => {
 			const item = this.navItemsEl.createDiv({
@@ -454,6 +462,12 @@ export class FinanceView extends ItemView {
 			new CreateAccountModal(this.app, this.plugin, (account) => void this.selectAccount(account.id)).open();
 		});
 
+		const statsBtn = headerActions.createEl("button", { cls: "fp-nav-section-btn" });
+		icon(statsBtn, "bar-chart-3");
+		statsBtn.setAttribute("aria-label", "Data coverage");
+		statsBtn.setAttribute("title", "What each account holds\u2026");
+		statsBtn.addEventListener("click", () => new AccountStatsModal(this.app, this.plugin).open());
+
 		const manageBtn = headerActions.createEl("button", { cls: "fp-nav-section-btn" });
 		icon(manageBtn, "settings-2");
 		manageBtn.setAttribute("aria-label", "Manage accounts");
@@ -461,9 +475,27 @@ export class FinanceView extends ItemView {
 		manageBtn.addEventListener("click", () => this.openManageAccounts());
 
 		open.forEach(renderAccount);
+
 		if (closed.length > 0) {
-			this.navItemsEl.createDiv({ cls: "fp-nav-section-label", text: "Closed" });
-			closed.forEach(renderAccount);
+			const closedHeader = this.navItemsEl.createDiv({
+				cls: "fp-nav-section-header fp-nav-closed-header" + (closedExpanded ? " is-expanded" : ""),
+			});
+			const toggle = closedHeader.createEl("button", { cls: "fp-nav-closed-toggle" });
+			icon(toggle, "chevron-right", "fp-nav-closed-chevron");
+			toggle.createSpan({ cls: "fp-nav-section-label", text: `Closed (${closed.length})` });
+			toggle.setAttribute("aria-expanded", String(closedExpanded));
+			// Disabled rather than hidden while you are looking at one of them: collapsing the group
+			// would take the page you are on off the list.
+			if (activeIsClosed) {
+				toggle.setAttribute("title", "Showing because you're viewing a closed account");
+			} else {
+				toggle.addEventListener("click", () => {
+					this.plugin.settings.closedAccountsExpanded = !closedExpanded;
+					void this.plugin.saveSettings();
+					this.renderNav();
+				});
+			}
+			if (closedExpanded) closed.forEach(renderAccount);
 		}
 	}
 
@@ -514,6 +546,12 @@ export class FinanceView extends ItemView {
 				.setTitle(account.archived ? "Reopen account" : "Mark as closed")
 				.setIcon(account.archived ? "rotate-ccw" : "archive")
 				.onClick(() => void this.toggleAccountArchived(account.id))
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Account stats\u2026")
+				.setIcon("bar-chart-3")
+				.onClick(() => new AccountStatsModal(this.app, this.plugin, account.id).open())
 		);
 		menu.addSeparator();
 		menu.addItem((item) => item.setTitle("Manage accounts\u2026").setIcon("settings-2").onClick(() => this.openManageAccounts()));

@@ -7520,3 +7520,88 @@
 .modal-container.fp-modal-stays-open.fp-modal-away {
 	display: none !important;
 }
+
+/* The "Closed" group: a disclosure rather than a second list. Closed accounts are history you
+   occasionally consult, and a sidebar that gives them the same weight as the accounts you use is a
+   sidebar that gets longer every year without getting more useful. */
+.fp-nav-closed-header {
+	padding-right: 6px;
+}
+.fp-nav-closed-toggle {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	padding: 0;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	cursor: pointer;
+	text-align: left;
+	color: inherit;
+	height: auto;
+}
+.fp-nav-closed-toggle:hover .fp-nav-section-label {
+	color: var(--text-muted);
+}
+.fp-nav-closed-chevron {
+	display: inline-flex;
+	color: var(--text-faint);
+	transition: transform 120ms ease;
+}
+.fp-nav-closed-chevron .svg-icon {
+	width: 13px;
+	height: 13px;
+}
+.fp-nav-closed-header.is-expanded .fp-nav-closed-chevron {
+	transform: rotate(90deg);
+}
+
+/* Account coverage: the figures that answer "have I imported all of this yet". */
+.fp-stats-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 10px;
+	margin: 14px 0;
+}
+.fp-stats-cell {
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+}
+.fp-stats-value {
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+.fp-stats-label {
+	margin-top: 2px;
+	font-size: var(--font-ui-smaller);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-faint);
+}
+.fp-stats-hint {
+	margin-top: 3px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.fp-stats-meta {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-bottom: 12px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.fp-stats-orphans {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.fp-table tr.is-selected td {
+	background: var(--background-modifier-hover);
+}
