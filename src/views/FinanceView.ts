@@ -424,7 +424,11 @@ export class FinanceView extends ItemView {
 		const open = accounts.filter((a) => !a.archived);
 		const closed = accounts.filter((a) => a.archived);
 		const activeIsClosed = closed.some((a) => a.id === activeAccountId);
-		const closedExpanded = this.plugin.settings.closedAccountsExpanded === true || activeIsClosed;
+		// `??`, not `||`: viewing a closed account only decides the *default*. Forcing it open whenever
+		// one was selected meant the group could never be collapsed while you were looking at it, and
+		// the chevron sat there doing nothing — a control that ignores clicks reads as broken, which is
+		// worse than the disorientation it was guarding against.
+		const closedExpanded = this.plugin.settings.closedAccountsExpanded ?? activeIsClosed;
 
 		const renderAccount = (acc: Account): void => {
 			const item = this.navItemsEl.createDiv({
@@ -505,24 +509,23 @@ export class FinanceView extends ItemView {
 			toggle.createSpan({ cls: "fp-nav-section-label", text: `Closed (${closed.length})` });
 			icon(toggle, "chevron-right", "fp-nav-closed-chevron");
 			toggle.setAttribute("aria-expanded", String(closedExpanded));
-			// Disabled rather than hidden while you are looking at one of them: collapsing the group
-			// would take the page you are on off the list.
-			if (activeIsClosed) {
-				toggle.setAttribute("title", "Showing because you're viewing a closed account");
-			} else {
-				const flip = (): void => {
-					this.plugin.settings.closedAccountsExpanded = !closedExpanded;
-					void this.plugin.saveSettings();
-					this.renderNav();
-				};
-				toggle.addEventListener("click", flip);
-				toggle.addEventListener("keydown", (ev) => {
-					if (ev.key === "Enter" || ev.key === " ") {
-						ev.preventDefault();
-						flip();
-					}
-				});
+			// Collapsing while viewing a closed account is allowed: the page you are on does not change,
+			// the row just stops being listed, and expanding brings it straight back.
+			if (activeIsClosed && closedExpanded) {
+				toggle.setAttribute("title", "Open because you're viewing a closed account — collapse to hide it");
 			}
+			const flip = (): void => {
+				this.plugin.settings.closedAccountsExpanded = !closedExpanded;
+				void this.plugin.saveSettings();
+				this.renderNav();
+			};
+			toggle.addEventListener("click", flip);
+			toggle.addEventListener("keydown", (ev) => {
+				if (ev.key === "Enter" || ev.key === " ") {
+					ev.preventDefault();
+					flip();
+				}
+			});
 			if (closedExpanded) closed.forEach(renderAccount);
 		}
 	}
