@@ -1963,6 +1963,15 @@
 	--fp-cat-3: #1baf7a;
 	--fp-cat-4: #eda100;
 	--fp-cat-5: #e87ba4;
+	/* Slots 6–10 extend the ramp for legends that outgrow five, which the subscription categories do:
+	   twelve of them over five slots put "Streaming" and "Other" on the same orange. Chosen for
+	   separation in hue and lightness from 1–5 and from each other; they are NOT part of the
+	   CVD-validated set above, so keep the first five for anything where five is enough. */
+	--fp-cat-6: #7d5ba6;
+	--fp-cat-7: #00939c;
+	--fp-cat-8: #a63d40;
+	--fp-cat-9: #7a9a01;
+	--fp-cat-10: #5c6b7a;
 }
 .theme-dark .fp-workspace {
 	--fp-chart-expenses: #e66767;
@@ -1974,6 +1983,11 @@
 	--fp-cat-3: #199e70;
 	--fp-cat-4: #c98500;
 	--fp-cat-5: #d55181;
+	--fp-cat-6: #9b78c4;
+	--fp-cat-7: #1aa8b0;
+	--fp-cat-8: #c25659;
+	--fp-cat-9: #93b520;
+	--fp-cat-10: #7c8b9a;
 }
 
 .fp-chart {
@@ -2939,11 +2953,39 @@
 .fp-sub-breakdown-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
+	/* Two named rows — heading, then chart — for the share cards to line up against. */
+	grid-template-rows: auto auto;
 	gap: 16px;
 	margin-bottom: 20px;
 }
 .fp-sub-share-card {
 	margin-bottom: 0;
+	/* The three cards size their rows together rather than each on its own. "Private vs business" is
+	   187px of title against 113px of "MONTHLY SPEND" label in a 312px content box, so it wraps to two
+	   lines at a third of a wide pane — which pushed its bar 31px below the two beside it. Spanning
+	   both of the parent grid's rows gives every card the same head height and the same bar top,
+	   whatever the titles happen to be. */
+	display: grid;
+	grid-template-rows: subgrid;
+	grid-row: span 2;
+	/* Subgrid inherits the parent's 16px row gap; the head row's own margin sets this spacing. */
+	row-gap: 0;
+}
+/* Aligned on the first line's baseline, not the box's centre: against a two-line title the label was
+   floating halfway down the heading while its neighbours' sat beside the text. */
+.fp-sub-share-card .fp-card-head-row {
+	align-items: baseline;
+}
+/* Obsidian builds on Chromium below 117 have no subgrid. Reserving two lines of heading for every
+   card costs a little space when nothing wraps, but it never misaligns. */
+@supports not (grid-template-rows: subgrid) {
+	.fp-sub-share-card {
+		display: block;
+	}
+	.fp-sub-share-card .fp-card-head-row {
+		min-height: 2.6em;
+		align-items: baseline;
+	}
 }
 
 .fp-sub-group-label {
