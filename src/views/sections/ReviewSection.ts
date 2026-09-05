@@ -69,14 +69,61 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	/** Selection is intentionally *not* module-scope: a stale selection surviving a data change could
 	 *  apply a bulk action to rows the user can no longer see. It resets on every mount. */
 	const selected = new Set<string>();
+	/**
+	 * Rows edited in place that no longer match the filters, kept where they sat.
+	 *
+	 * Filing a row while filtered to "no category" made it stop matching, so the re-render dropped it
+	 * out of the list and everything below shifted up — the row you had just decided vanished, and the
+	 * next thing you clicked was not the row you had aimed at. Working down a filtered queue is the
+	 * whole job of this page, so a filter must not eat the rows you act on while you are still in it.
+	 */
+	const stickyIds = new Set<string>();
+	/** Which of them are on screen only because of that — the bulk bar has to keep its count honest. */
+	let keptIds = new Set<string>();
+	/** The filters those sticky rows were kept under. Move any filter and they stop being kept: at that
+	 *  point you have asked a new question, and the answer should not carry the old one's leftovers. */
+	let stickyUnder = "";
+	/** The page of rows currently rendered, so an inline edit can tell which of them it changed. */
+	let visibleRows: Transaction[] = [];
 
 	function statusOf(tx: Transaction): ReviewStatus {
 		return tx.review ?? "new";
 	}
 
-	/** Rows matching every active filter, newest first — the "shown" cap is applied after this. */
+	function filterSignature(): string {
+		return [
+			reviewState.search,
+			reviewState.status,
+			reviewState.accountId,
+			reviewState.merchantKey,
+			reviewState.categoryPrimaryId,
+			reviewState.categorySecondaryId,
+			reviewState.dateFrom,
+			reviewState.dateTo,
+		].join("\u0000");
+	}
+
+	/** Rows matching every active filter, newest first — the "shown" cap is applied after this.
+	 *  Plus any row edited in place since the filters last moved, held in its old position. */
 	function filtered(): Transaction[] {
-		return applyFilters();
+		// One check rather than a stickyIds.clear() in every filter handler: there are a dozen of them
+		// across the controls, the two panels and the empty state, and the next one added would forget.
+		const signature = filterSignature();
+		if (signature !== stickyUnder) {
+			stickyIds.clear();
+			stickyUnder = signature;
+		}
+
+		const matched = applyFilters();
+		keptIds = new Set();
+		if (stickyIds.size === 0) return matched;
+
+		const present = new Set(matched.map((t) => t.id));
+		const kept = store.transactions.filter((t) => stickyIds.has(t.id) && !present.has(t.id));
+		if (kept.length === 0) return matched;
+
+		keptIds = new Set(kept.map((t) => t.id));
+		return [...matched, ...kept].sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 	}
 
 	/**
@@ -1139,13 +1186,22 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			else visible.forEach((t) => selected.delete(t.id));
 			redrawList();
 		});
+		// Counted without the kept rows: they are on screen because you just edited them, not because
+		// they match, and a count that included them would be wrong about the thing it names.
+		const matching = rows.length - keptIds.size;
 		left.createSpan({
 			cls: "fp-review-bulk-count",
 			text:
 				selected.size > 0
 					? `${selected.size} selected`
-					: `${rows.length} transaction${rows.length === 1 ? "" : "s"} match${rows.length === 1 ? "es" : ""} these filters`,
+					: `${matching} transaction${matching === 1 ? "" : "s"} match${matching === 1 ? "es" : ""} these filters`,
 		});
+		if (selected.size === 0 && keptIds.size > 0) {
+			left.createSpan({
+				cls: "fp-review-kept-note",
+				text: `· ${keptIds.size} just edited, held in place`,
+			});
+		}
 
 		if (selected.size === 0) {
 			bar.createSpan({ cls: "fp-review-bulk-hint", text: "Tick rows to categorize or approve them in bulk." });
@@ -1337,6 +1393,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		const tbody = table.createEl("tbody");
 
 		const visible = rows.slice(0, reviewState.shown);
+		visibleRows = visible;
 		visible.forEach((tx) => renderRow(tbody, tx));
 
 		if (rows.length > visible.length) {
@@ -1502,6 +1559,13 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		const amtCell = tr.createEl("td", { cls: "fp-cell-amount col-amount " + (tx.amount < 0 ? "is-negative" : "is-positive") });
 		renderAmount(amtCell, tx);
 
+		// Marked, not silently different: a row that no longer matches the filter it is sitting in has
+		// to say so, or the list quietly stops meaning what its heading claims.
+		if (keptIds.has(tx.id)) {
+			tr.addClass("is-kept");
+			tr.setAttribute("title", "Kept in place after you edited it — it no longer matches these filters, and will go when you next change them.");
+		}
+
 		const catCell = tr.createEl("td", { cls: "fp-review-cat-cell col-category" });
 		const chain = categoryChain(store.categories, tx.categoryId);
 		const chipHolder = catCell.createDiv({ cls: "fp-review-cat-chip" });
@@ -1513,9 +1577,16 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			onChange: async ({ primaryId, secondaryId }) => {
 				if (!primaryId) return;
 				const categoryId = secondaryId ?? primaryId;
+				// Snapshotted against the live objects the store mutates in place, so this reads which
+				// rows on screen the edit actually touched rather than re-deriving the fan-out rules.
+				const before = visibleRows.map((row) => [row, row.categoryId] as const);
 				// Teaches merchant memory and fans the decision out to every other row from this shop,
 				// which is the whole point: categorize once, not once per occurrence.
 				const alsoTagged = await plugin.assignCategory(tx, categoryId);
+				// The edited row and every sibling the fan-out reached stay put. Without the siblings a
+				// single click could still empty half the visible list, which is the same surprise.
+				stickyIds.add(tx.id);
+				for (const [row, previous] of before) if (row.categoryId !== previous) stickyIds.add(row.id);
 				const newChain = categoryChain(store.categories, categoryId);
 				chipHolder.empty();
 				categoryChainChip(chipHolder, newChain.primary, newChain.secondary);

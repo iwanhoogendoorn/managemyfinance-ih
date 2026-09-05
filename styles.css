@@ -7916,6 +7916,20 @@
 	min-width: 8.75rem;
 	justify-content: center;
 }
+/* A row held in the list after an edit took it out of the filter. Marked with the same faint accent
+   the queue uses for "this is here for a reason you should know about", never dimmed — it is still a
+   row you can act on. */
+.fp-review-table tr.is-kept td {
+	background: color-mix(in srgb, var(--text-faint) 6%, transparent);
+}
+.fp-review-table tr.is-kept td:first-child {
+	box-shadow: inset 2px 0 0 var(--text-faint);
+}
+.fp-review-kept-note {
+	margin-left: 6px;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
 /* The rows behind a count, spanning the full width beneath their merchant. */
 .fp-merchant-detail {
 	grid-column: 1 / -1;
