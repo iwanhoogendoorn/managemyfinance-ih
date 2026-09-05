@@ -1,5 +1,5 @@
 import { Notice } from "obsidian";
-import { accountReviewProgress, reviewCounts } from "../../review";
+import { accountReviewProgress, reviewCounts, type ReviewCounts } from "../../review";
 import { categoryChain, primaryCategories, resolvePrimaryId, secondaryCategoriesOf } from "../../categories";
 import { merchantKey, merchantLabel } from "../../import/merchantKey";
 import { dismissSuggestion, unknownMerchants } from "../../import/merchantMemory";
@@ -192,7 +192,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	 */
 	async function setStatus(ids: string[], status: ReviewStatus, opts: { subject?: Transaction } = {}): Promise<void> {
 		if (ids.length === 0) return;
-		const outstandingBefore = outstandingNow();
+		const before = outstandingNow();
 		const patches = new Map<string, Partial<Transaction>>();
 		// "new" is stored as an absent value, so un-approving genuinely clears the field rather than
 		// leaving the literal string "new" behind in the CSV.
@@ -209,7 +209,10 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		selected.clear();
 		plugin.refreshViews();
 		render();
-		maybeCelebrate(outstandingBefore);
+		// Not after a reset. Marking flagged rows "new" empties the flagged pile without finishing
+		// anything — the work moved back to the queue — and a celebration there would be applauding you
+		// for undoing your own decisions.
+		if (status !== "new") maybeCelebrate(before);
 
 		// Never after clearing a decision: "this needs reviewing again" is a statement about one row,
 		// not something to offer to fan out across a merchant.
@@ -250,7 +253,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	/** Category + approval in one action — the common case when working down the queue. */
 	async function categorizeAndApprove(ids: string[], categoryId: string): Promise<void> {
 		if (ids.length === 0) return;
-		const outstandingBefore = outstandingNow();
+		const before = outstandingNow();
 		const patches = new Map<string, Partial<Transaction>>();
 		for (const id of ids) patches.set(id, { categoryId, review: "approved" });
 		const changed = await store.updateTransactions(patches);
@@ -261,41 +264,55 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		selected.clear();
 		plugin.refreshViews();
 		render();
-		maybeCelebrate(outstandingBefore);
+		maybeCelebrate(before);
 	}
 
-	/** Rows still waiting on you, in whatever scope the counters are showing — the whole ledger, or one
-	 *  account when the page is filtered to it. Finishing an account is a real finish. */
-	function outstandingNow(): number {
+	/** The two piles this page counts down, in whatever scope the counters are showing — the whole
+	 *  ledger, or one account when the page is filtered to it. Finishing an account is a real finish. */
+	function outstandingNow(): ReviewCounts {
 		const scoped = reviewState.accountId ? store.transactions.filter((t) => t.accountId === reviewState.accountId) : store.transactions;
-		return reviewCounts(scoped).toReview;
+		return reviewCounts(scoped);
 	}
 
 	/**
-	 * The moment the queue empties, and only that moment.
+	 * The moment a pile empties, and only that moment.
 	 *
 	 * Measured either side of an action rather than read off the current state, so it fires when *you*
 	 * clear the last row and never when you simply arrive at a page that was already clear — a
 	 * celebration you get for opening a tab stops being one by the second time.
+	 *
+	 * Two piles, because the page counts down two and finishing either is an achievement: the review
+	 * queue, and the flagged rows you parked to come back to. Emptying the second is arguably the
+	 * harder one — those are the rows you could not decide the first time.
 	 */
-	function maybeCelebrate(outstandingBefore: number): void {
-		if (outstandingBefore === 0 || outstandingNow() > 0) return;
+	function maybeCelebrate(before: ReviewCounts): void {
+		const after = outstandingNow();
+		const clearedQueue = before.toReview > 0 && after.toReview === 0;
+		const clearedFlags = before.flagged > 0 && after.flagged === 0;
+		if (!clearedQueue && !clearedFlags) return;
 
-		const scoped = reviewState.accountId ? store.transactions.filter((t) => t.accountId === reviewState.accountId) : store.transactions;
-		const counts = reviewCounts(scoped);
 		const account = store.accounts.find((a) => a.id === reviewState.accountId);
+		const where = account ? `${account.name} ` : "";
+		// Both piles empty is a different event from either one, and gets said — and thrown — as such.
+		const everything = after.toReview === 0 && after.flagged === 0;
 
-		const detail: string[] = [`${counts.approved.toLocaleString()} approved`];
-		// Said plainly rather than left out. The queue is genuinely clear, but a pile you deliberately
-		// parked is still a pile, and a card that implied otherwise would be the one thing here that
-		// lies to you.
-		if (counts.flagged > 0) detail.push(`${counts.flagged.toLocaleString()} still flagged for a decision`);
-		if (counts.uncategorized > 0) detail.push(`${counts.uncategorized.toLocaleString()} still without a category`);
+		const what = everything ? "is completely reviewed" : clearedQueue ? "review complete" : "flagged pile cleared";
+		const title = account
+			? `${where}${what}`
+			: everything
+				? "Everything is reviewed"
+				: clearedQueue
+					? "Review complete"
+					: "Flagged pile cleared";
 
-		celebrate({
-			title: account ? `${account.name} is fully reviewed` : "Review complete",
-			detail: detail.join(" · "),
-		});
+		const detail: string[] = [`${after.approved.toLocaleString()} approved`];
+		// Said plainly rather than left out. A pile you deliberately parked is still a pile, and a card
+		// that implied otherwise would be the one thing here that lies to you.
+		if (after.toReview > 0) detail.push(`${after.toReview.toLocaleString()} still waiting for review`);
+		if (after.flagged > 0) detail.push(`${after.flagged.toLocaleString()} still flagged for a decision`);
+		if (after.uncategorized > 0) detail.push(`${after.uncategorized.toLocaleString()} still without a category`);
+
+		celebrate({ title, detail: detail.join(" · "), big: everything });
 	}
 
 	function render(): void {

@@ -34,15 +34,19 @@ function rand(min: number, max: number): number {
  * easing on each leg, and the innermost the tumble. Composed, they read as a thrown object rather
  * than something sliding down the screen.
  */
-export function celebrate(message: { title: string; detail?: string }): void {
+export function celebrate(message: { title: string; detail?: string; big?: boolean }): void {
 	// Honoured for the paper, not for the message: someone who has asked the OS to stop things moving
 	// still gets told they finished, they just get told quietly.
 	const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
 
 	const layer = document.body.createDiv({ cls: "fp-celebrate" });
 	if (!reduced) {
+		// Clearing both piles is a bigger event than clearing one, and gets a bigger bang. Same effect
+		// at a different size rather than a second effect: two celebrations that looked unrelated would
+		// read as two different features.
+		const pieces = Math.round(PIECES_PER_CANNON * (message.big ? 1.7 : 1));
 		for (const side of ["left", "right"] as const) {
-			for (let i = 0; i < PIECES_PER_CANNON; i++) fireOne(layer, side);
+			for (let i = 0; i < pieces; i++) fireOne(layer, side);
 		}
 	}
 
