@@ -59,3 +59,50 @@ export function accountReviewProgress(transactions: Transaction[], accounts: Acc
 			return b.counts.total - a.counts.total;
 		});
 }
+
+export interface ReviewMilestone {
+	title: string;
+	detail: string;
+	/** Both piles empty — a bigger event than either one, and thrown as such. */
+	big: boolean;
+}
+
+/**
+ * Whether a change to the ledger just finished something worth marking.
+ *
+ * Pure, and decided from the tallies alone rather than from which button was pressed. The first
+ * version of this hung off the review page's own approve/categorize functions, which meant it only
+ * fired for two of the fifteen places in the app that write a transaction: clearing your last two
+ * flagged rows through the "approve the rest of these too?" sheet finished the whole review and
+ * threw nothing. Reading the counts either side of any write catches every path and cannot be
+ * forgotten by the next one added.
+ *
+ * The progress guard is what keeps it honest without knowing the action. Flagging your last
+ * unreviewed row empties the review queue, and marking your last flagged row "new" empties the
+ * flagged pile — both leave the outstanding total exactly where it was, because nothing was
+ * finished, only moved. Requiring the total to fall means a celebration always follows real
+ * progress, whatever route the change came in by.
+ */
+export function reviewMilestone(before: ReviewCounts, after: ReviewCounts): ReviewMilestone | undefined {
+	const outstandingBefore = before.toReview + before.flagged;
+	const outstandingAfter = after.toReview + after.flagged;
+	if (outstandingAfter >= outstandingBefore) return undefined;
+
+	const clearedQueue = before.toReview > 0 && after.toReview === 0;
+	const clearedFlags = before.flagged > 0 && after.flagged === 0;
+	if (!clearedQueue && !clearedFlags) return undefined;
+
+	const everything = after.toReview === 0 && after.flagged === 0;
+	const detail: string[] = [`${after.approved.toLocaleString()} approved`];
+	// Said plainly rather than left out. A pile you deliberately parked is still a pile, and a card
+	// that implied otherwise would be the one thing here that lies to you.
+	if (after.toReview > 0) detail.push(`${after.toReview.toLocaleString()} still waiting for review`);
+	if (after.flagged > 0) detail.push(`${after.flagged.toLocaleString()} still flagged for a decision`);
+	if (after.uncategorized > 0) detail.push(`${after.uncategorized.toLocaleString()} still without a category`);
+
+	return {
+		title: everything ? "Everything is reviewed" : clearedQueue ? "Review complete" : "Flagged pile cleared",
+		detail: detail.join(" \u00b7 "),
+		big: everything,
+	};
+}

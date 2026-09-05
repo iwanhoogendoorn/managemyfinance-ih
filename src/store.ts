@@ -7,6 +7,7 @@ import type { NumberFormatPreference } from "./money";
 import type { AiSettings } from "./ai/provider";
 import type { EmailSettings, TelegramSettings, TestDeliverySettings } from "./delivery/channels";
 import type { ReportSchedule } from "./reports/schedule";
+import { reviewCounts, type ReviewCounts } from "./review";
 import { defaultStrategy } from "./strategy";
 import type {
 	Account,
@@ -236,6 +237,18 @@ const REQUIRED_TX_STRINGS = new Set<string>(["id", "date", "accountId", "descrip
  * Everything here is plain text so it stays diffable and readable outside the plugin too.
  */
 export class FinanceStore {
+	/**
+	 * Told the review tallies either side of any write that could move them.
+	 *
+	 * Lives here because this is the one place every path goes through: fifteen files write a
+	 * transaction, and anything that watched only some of them would miss the rest.
+	 */
+	onReviewChange?: (before: ReviewCounts, after: ReviewCounts) => void;
+
+	private reviewTally(): ReviewCounts {
+		return reviewCounts(this.transactions);
+	}
+
 	accounts: Account[] = [];
 	categories: Category[] = [];
 	rules: CategoryRule[] = [];
@@ -644,7 +657,9 @@ export class FinanceStore {
 		const tx = this.transactions.find((t) => t.id === id);
 		if (!tx) return;
 		const previousKey = this.ledgerKey(tx);
+		const before = this.onReviewChange ? this.reviewTally() : undefined;
 		Object.assign(tx, clearStaleRuleProvenance(patch));
+		if (before) this.onReviewChange?.(before, this.reviewTally());
 		const nextKey = this.ledgerKey(tx);
 		await this.rewriteLedgerFile(nextKey);
 		if (previousKey !== nextKey) await this.rewriteLedgerFile(previousKey);
@@ -711,7 +726,9 @@ export class FinanceStore {
 	async updateTransaction(id: string, patch: Partial<Transaction>): Promise<void> {
 		const tx = this.transactions.find((t) => t.id === id);
 		if (!tx) return;
+		const before = this.onReviewChange ? this.reviewTally() : undefined;
 		Object.assign(tx, clearStaleRuleProvenance(patch));
+		if (before) this.onReviewChange?.(before, this.reviewTally());
 
 		// Was a hand-inlined copy of rewriteLedgerFile that derived the year twice, and differently:
 		// the filename used `tx.date.slice(0,4) || "unknown"` while the row filter compared against
@@ -741,6 +758,7 @@ export class FinanceStore {
 	 */
 	async updateTransactions(patches: Map<string, Partial<Transaction>>): Promise<number> {
 		const touchedFiles = new Set<string>();
+		const before = this.onReviewChange ? this.reviewTally() : undefined;
 		let count = 0;
 		for (const tx of this.transactions) {
 			const raw = patches.get(tx.id);
@@ -753,6 +771,7 @@ export class FinanceStore {
 			count++;
 		}
 		for (const key of touchedFiles) await this.rewriteLedgerFile(key);
+		if (before) this.onReviewChange?.(before, this.reviewTally());
 		return count;
 	}
 
