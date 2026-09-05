@@ -7906,9 +7906,15 @@
 .fp-merchant-picker .fp-category-picker {
 	margin: 0;
 }
+/* One width for every action button, whatever the count reads.
+   Each row is its own grid, so the width of its buttons decides where its whole action block starts:
+   "Approve 4" is 8px narrower than "Approve 52", and down a panel of twelve groups that walked the
+   pickers 16px to the right. A fixed width wide enough for four digits holds the column still. */
 .fp-merchant-apply {
 	flex: 0 0 auto;
 	white-space: nowrap;
+	min-width: 8.75rem;
+	justify-content: center;
 }
 /* The rows behind a count, spanning the full width beneath their merchant. */
 .fp-merchant-detail {

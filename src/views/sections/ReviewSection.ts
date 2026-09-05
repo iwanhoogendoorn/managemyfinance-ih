@@ -653,13 +653,19 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			void categorizeAndApprove(categoryRows(id).map((t) => t.id), pending);
 		});
 
-		// The point of the panel. Absent for the uncategorized group: signing off a row while it still
-		// has no category files nothing, and would quietly empty the queue of the rows that most need
-		// a decision.
-		if (id !== NO_CATEGORY) {
-			const okBtn = actions.createEl("button", { cls: "fp-btn fp-btn-primary fp-merchant-apply" });
-			icon(okBtn, "check-check");
-			okBtn.createSpan({ text: `Approve ${count}` });
+		// The point of the panel. Disabled rather than absent for the uncategorized group: signing off a
+		// row while it still has no category files nothing, and would quietly empty the queue of the
+		// rows that most need a decision — but dropping the button also shortened that row's action
+		// block, which made every row's actions start 128px right of the one above it. Saying why it
+		// can't be clicked is better than a gap that says nothing.
+		const okBtn = actions.createEl("button", { cls: "fp-btn fp-btn-primary fp-merchant-apply" });
+		icon(okBtn, "check-check");
+		okBtn.createSpan({ text: `Approve ${count}` });
+		if (id === NO_CATEGORY) {
+			okBtn.disabled = true;
+			okBtn.addClass("is-muted");
+			okBtn.setAttribute("title", "These rows have no category yet — filing them is the decision, not approving them.");
+		} else {
 			okBtn.setAttribute("title", `Approve all ${count} rows as they are filed now`);
 			okBtn.addEventListener("click", () => void setStatus(categoryRows(id).map((t) => t.id), "approved"));
 		}
