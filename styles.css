@@ -2,9 +2,12 @@
    Built on Obsidian's own CSS variables so it adapts to light/dark and any theme's accent,
    with a small set of semantic tone colors (good/warn/bad) layered on top for financial status. */
 
+/* .fp-celebrate is on the list because it hangs off document.body, outside the workspace: without
+   it every confetti colour resolved to nothing and the paper came out fully transparent. */
 .fp-workspace,
 .fp-settings,
-.fp-wizard-modal {
+.fp-wizard-modal,
+.fp-celebrate {
 	--fp-good: #22c55e;
 	--fp-good-bg: rgba(34, 197, 94, 0.12);
 	--fp-warn: #f59e0b;
@@ -1950,7 +1953,8 @@
    (see the dataviz skill). Light/dark steps swap via Obsidian's .theme-dark.
    ========================================================================== */
 
-.fp-workspace {
+.fp-workspace,
+.fp-celebrate {
 	--fp-chart-income: #008300;
 	--fp-chart-expenses: #e34948;
 	--fp-chart-net: #2a78d6;
@@ -1973,7 +1977,8 @@
 	--fp-cat-9: #7a9a01;
 	--fp-cat-10: #5c6b7a;
 }
-.theme-dark .fp-workspace {
+.theme-dark .fp-workspace,
+.theme-dark .fp-celebrate {
 	--fp-chart-expenses: #e66767;
 	--fp-chart-net: #3987e5;
 	--fp-chart-grid: #2c2c2a;
@@ -7982,4 +7987,155 @@
 }
 .fp-merchant-panel.is-collapsed {
 	padding-bottom: 12px;
+}
+
+/* ==========================================================================
+   Finishing the review queue — see src/ui/celebrate.ts. Two party poppers in
+   the bottom corners and a card saying what was finished.
+   ========================================================================== */
+
+.fp-celebrate {
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+/* Three nested elements because one cannot run two transforms at once: this one carries the
+   horizontal travel at a constant rate. */
+.fp-confetti {
+	position: absolute;
+	bottom: -14px;
+	will-change: transform;
+	animation: fp-confetti-x var(--dur) linear var(--delay) both;
+}
+.fp-confetti.is-left {
+	left: 2vw;
+}
+.fp-confetti.is-right {
+	right: 2vw;
+}
+@keyframes fp-confetti-x {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(var(--dx));
+	}
+}
+
+/* Gravity: out of the barrel fast, hanging at the top, then away. The easing changes at the peak,
+   which is what separates a thrown object from something sliding down the screen. */
+.fp-confetti-arc {
+	will-change: transform;
+	animation: fp-confetti-y var(--dur) var(--delay) both;
+}
+@keyframes fp-confetti-y {
+	0% {
+		transform: translateY(0);
+		animation-timing-function: cubic-bezier(0.12, 0.75, 0.4, 1);
+	}
+	42% {
+		transform: translateY(var(--peak));
+		animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.45);
+	}
+	100% {
+		transform: translateY(var(--end));
+	}
+}
+
+.fp-confetti-bit {
+	width: var(--w);
+	height: var(--h);
+	background: var(--color);
+	border-radius: var(--radius);
+	will-change: transform, opacity;
+	animation:
+		fp-confetti-spin var(--dur) linear var(--delay) both,
+		fp-confetti-fade var(--dur) ease-in var(--delay) both;
+}
+@keyframes fp-confetti-spin {
+	from {
+		transform: rotate(0) scaleX(1);
+	}
+	to {
+		transform: rotate(var(--spin)) scaleX(-1);
+	}
+}
+@keyframes fp-confetti-fade {
+	0%,
+	70% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+
+.fp-celebrate-card {
+	position: absolute;
+	top: 20%;
+	left: 50%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 22px 30px;
+	border-radius: 14px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+	text-align: center;
+	pointer-events: auto;
+	cursor: pointer;
+	animation: fp-celebrate-pop 520ms cubic-bezier(0.2, 1.35, 0.4, 1) both;
+}
+/* Reduced motion still gets told, just without the bounce or the paper. */
+.fp-celebrate-card.is-still {
+	animation: fp-celebrate-fade 200ms ease-out both;
+}
+@keyframes fp-celebrate-pop {
+	from {
+		transform: translate(-50%, 12px) scale(0.82);
+		opacity: 0;
+	}
+	to {
+		transform: translate(-50%, 0) scale(1);
+		opacity: 1;
+	}
+}
+@keyframes fp-celebrate-fade {
+	from {
+		transform: translate(-50%, 0);
+		opacity: 0;
+	}
+	to {
+		transform: translate(-50%, 0);
+		opacity: 1;
+	}
+}
+.fp-celebrate-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 46px;
+	height: 46px;
+	margin-bottom: 2px;
+	border-radius: 50%;
+	color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+.fp-celebrate-icon .svg-icon {
+	width: 24px;
+	height: 24px;
+}
+.fp-celebrate-title {
+	font-size: 1.15em;
+	font-weight: 700;
+	color: var(--text-normal);
+}
+.fp-celebrate-detail {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
 }

@@ -11,6 +11,7 @@ import { RecheckModal } from "../../modals/RecheckModal";
 import { TransactionDetailModal } from "../../modals/TransactionDetailModal";
 import type { ReviewStatus, Transaction } from "../../types";
 import { badge, categoryChainChip, emptyState, icon, moneyInput, renderCategoryPicker, searchInput, statTile } from "../../ui/dom";
+import { celebrate } from "../../ui/celebrate";
 
 type StatusFilter = "all" | ReviewStatus | "uncategorized";
 
@@ -191,6 +192,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	 */
 	async function setStatus(ids: string[], status: ReviewStatus, opts: { subject?: Transaction } = {}): Promise<void> {
 		if (ids.length === 0) return;
+		const outstandingBefore = outstandingNow();
 		const patches = new Map<string, Partial<Transaction>>();
 		// "new" is stored as an absent value, so un-approving genuinely clears the field rather than
 		// leaving the literal string "new" behind in the CSV.
@@ -207,6 +209,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		selected.clear();
 		plugin.refreshViews();
 		render();
+		maybeCelebrate(outstandingBefore);
 
 		// Never after clearing a decision: "this needs reviewing again" is a statement about one row,
 		// not something to offer to fan out across a merchant.
@@ -247,6 +250,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	/** Category + approval in one action — the common case when working down the queue. */
 	async function categorizeAndApprove(ids: string[], categoryId: string): Promise<void> {
 		if (ids.length === 0) return;
+		const outstandingBefore = outstandingNow();
 		const patches = new Map<string, Partial<Transaction>>();
 		for (const id of ids) patches.set(id, { categoryId, review: "approved" });
 		const changed = await store.updateTransactions(patches);
@@ -257,6 +261,41 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		selected.clear();
 		plugin.refreshViews();
 		render();
+		maybeCelebrate(outstandingBefore);
+	}
+
+	/** Rows still waiting on you, in whatever scope the counters are showing — the whole ledger, or one
+	 *  account when the page is filtered to it. Finishing an account is a real finish. */
+	function outstandingNow(): number {
+		const scoped = reviewState.accountId ? store.transactions.filter((t) => t.accountId === reviewState.accountId) : store.transactions;
+		return reviewCounts(scoped).toReview;
+	}
+
+	/**
+	 * The moment the queue empties, and only that moment.
+	 *
+	 * Measured either side of an action rather than read off the current state, so it fires when *you*
+	 * clear the last row and never when you simply arrive at a page that was already clear — a
+	 * celebration you get for opening a tab stops being one by the second time.
+	 */
+	function maybeCelebrate(outstandingBefore: number): void {
+		if (outstandingBefore === 0 || outstandingNow() > 0) return;
+
+		const scoped = reviewState.accountId ? store.transactions.filter((t) => t.accountId === reviewState.accountId) : store.transactions;
+		const counts = reviewCounts(scoped);
+		const account = store.accounts.find((a) => a.id === reviewState.accountId);
+
+		const detail: string[] = [`${counts.approved.toLocaleString()} approved`];
+		// Said plainly rather than left out. The queue is genuinely clear, but a pile you deliberately
+		// parked is still a pile, and a card that implied otherwise would be the one thing here that
+		// lies to you.
+		if (counts.flagged > 0) detail.push(`${counts.flagged.toLocaleString()} still flagged for a decision`);
+		if (counts.uncategorized > 0) detail.push(`${counts.uncategorized.toLocaleString()} still without a category`);
+
+		celebrate({
+			title: account ? `${account.name} is fully reviewed` : "Review complete",
+			detail: detail.join(" · "),
+		});
 	}
 
 	function render(): void {
