@@ -90,12 +90,20 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		return applyFilters({ merchant: false });
 	}
 
+	/** The same, for the "By category" panel — see filteredIgnoringMerchant for why. */
+	function filteredIgnoringCategory(): Transaction[] {
+		return applyFilters({ category: false });
+	}
+
 	/**
 	 * `ignoreStatus` and `ignoreSearch` exist for the empty state, which has to answer "where did they
 	 * go" — a question you can only answer by running the same filters with one of them lifted.
 	 */
-	function applyFilters(opts: { merchant?: boolean; ignoreStatus?: boolean; ignoreSearch?: boolean } = {}): Transaction[] {
+	function applyFilters(
+		opts: { merchant?: boolean; category?: boolean; ignoreStatus?: boolean; ignoreSearch?: boolean } = {}
+	): Transaction[] {
 		const withMerchant = opts.merchant !== false;
+		const withCategory = opts.category !== false;
 		const needle = opts.ignoreSearch ? "" : reviewState.search.trim().toLowerCase();
 		// The "hide approved" preference only applies to the broad filters. Asking explicitly for
 		// approved rows always shows them — a setting that could make a filter return nothing it names
@@ -117,7 +125,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			.filter((t) => !reviewState.accountId || t.accountId === reviewState.accountId)
 			.filter((t) => !withMerchant || !reviewState.merchantKey || merchantKey(t) === reviewState.merchantKey)
 			.filter((t) => {
-				const primary = reviewState.categoryPrimaryId;
+				const primary = withCategory ? reviewState.categoryPrimaryId : "";
 				if (!primary) return true;
 				if (primary === "__uncategorized") return !t.categoryId;
 				if (resolvePrimaryId(store.categories, t.categoryId) !== primary) return false;
@@ -340,6 +348,7 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 		renderCounters();
 		renderControls();
 		const rows = filtered();
+		renderCategoryPanel();
 		renderMerchantPanel();
 		renderBulkBar(rows);
 		renderTable(rows);
@@ -440,6 +449,255 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			tr.createEl("td", { cls: "fp-table-num", text: counts.flagged > 0 ? String(counts.flagged) : "—" });
 			tr.createEl("td", { cls: "fp-table-num", text: String(counts.approved) });
 			tr.createEl("td", { cls: "fp-table-num", text: counts.uncategorized > 0 ? String(counts.uncategorized) : "—" });
+		}
+	}
+
+	/** No category at all — its own group, because "what has nothing on it" is the other half of the
+	 *  question this panel answers. */
+	const NO_CATEGORY = "__none";
+
+	/**
+	 * The queue grouped by what it has already been filed as, with sign-off per group.
+	 *
+	 * Nothing in the review queue has been agreed to by a person — a category on an unapproved row was
+	 * put there by the import rules, by merchant memory, or by Claude. So the queue is mostly not a
+	 * list of decisions to make, it is a list of guesses to confirm, and confirming them one row at a
+	 * time is the slowest possible way to do it. Grouped, "everything the importer called Groceries"
+	 * is one look and one click.
+	 *
+	 * By leaf category, not by primary: "Entertainment" spanning concerts, subscriptions and cinema is
+	 * three different judgements wearing one name, and approving them together is exactly the mistake
+	 * this is meant to save you from.
+	 */
+	function renderCategoryPanel(): void {
+		// Grouped from the rows matching every filter *except* the category one, so picking a category
+		// narrows the list below without reducing the panel to the single row you picked from.
+		const scope = reviewState.categoryPrimaryId ? filteredIgnoringCategory() : filtered();
+		const groups = new Map<string, { count: number; merchants: Set<string>; ruled: number }>();
+		for (const tx of scope) {
+			const key = tx.categoryId || NO_CATEGORY;
+			let entry = groups.get(key);
+			if (!entry) {
+				entry = { count: 0, merchants: new Set<string>(), ruled: 0 };
+				groups.set(key, entry);
+			}
+			entry.count++;
+			const mk = merchantKey(tx);
+			if (mk) entry.merchants.add(mk);
+			if (tx.categoryRuleId) entry.ruled++;
+		}
+
+		const ranked = [...groups.entries()].sort((a, b) => b[1].count - a[1].count);
+		categoryPanelEl = undefined;
+		// One group is the whole queue restated; there is nothing to compare and nothing to choose.
+		if (ranked.length < 2) return;
+
+		const filed = ranked.filter(([id]) => id !== NO_CATEGORY);
+		const filedRows = filed.reduce((n, [, g]) => n + g.count, 0);
+		const collapsed = plugin.settings.reviewCategoryPanelCollapsed === true;
+		const card = container.createDiv({ cls: "fp-card fp-merchant-panel" + (collapsed ? " is-collapsed" : "") });
+		categoryPanelEl = card;
+		const head = card.createDiv({ cls: "fp-section-header" });
+
+		// A div with a role, not a button — see renderMerchantPanel.
+		const headText = head.createDiv({
+			cls: "fp-merchant-panel-toggle",
+			attr: { role: "button", tabindex: "0", "aria-expanded": String(!collapsed) },
+		});
+		const titleRow = headText.createDiv({ cls: "fp-merchant-panel-title" });
+		icon(titleRow, "chevron-right", "fp-merchant-panel-chevron");
+		titleRow.createEl("h3", { text: "By category" });
+		titleRow.createSpan({
+			cls: "fp-merchant-panel-summary",
+			text: `${filed.length} categor${filed.length === 1 ? "y" : "ies"} · ${filedRows} row${filedRows === 1 ? "" : "s"}`,
+		});
+		const toggle = (): void => {
+			plugin.settings.reviewCategoryPanelCollapsed = !collapsed;
+			void plugin.saveSettings();
+			render();
+		};
+		headText.addEventListener("click", toggle);
+		headText.addEventListener("keydown", (ev) => {
+			if (ev.key === "Enter" || ev.key === " ") {
+				ev.preventDefault();
+				toggle();
+			}
+		});
+
+		if (collapsed) return;
+
+		const uncategorized = groups.get(NO_CATEGORY)?.count ?? 0;
+		headText.createDiv({
+			cls: "fp-section-subtitle",
+			text:
+				`Where the ${filedRows} already-filed row${filedRows === 1 ? "" : "s"} here ended up — none of it agreed to by you yet, so this is the guesswork waiting to be confirmed.` +
+				(uncategorized > 0 ? ` ${uncategorized} more still ${uncategorized === 1 ? "has" : "have"} no category at all.` : ""),
+		});
+
+		if (reviewState.categoryPrimaryId) {
+			const clear = head.createEl("button", { cls: "fp-btn fp-btn-ghost" });
+			icon(clear, "x");
+			clear.createSpan({ text: "Show all categories" });
+			clear.addEventListener("click", () => {
+				reviewState.categoryPrimaryId = "";
+				reviewState.categorySecondaryId = "";
+				reviewState.shown = PAGE_SIZE;
+				render();
+			});
+		}
+
+		const shown = categoryPanelExpanded ? ranked : ranked.slice(0, MERCHANT_PANEL_LIMIT);
+		const list = card.createDiv({ cls: "fp-merchant-list" });
+		for (const [id, group] of shown) {
+			renderCategoryRow(list, id, group);
+		}
+
+		if (ranked.length > shown.length || categoryPanelExpanded) {
+			const more = card.createEl("button", { cls: "fp-btn fp-btn-ghost fp-merchant-more" });
+			more.createSpan({ text: categoryPanelExpanded ? "Show fewer" : `Show all ${ranked.length} groups` });
+			more.addEventListener("click", () => {
+				categoryPanelExpanded = !categoryPanelExpanded;
+				render();
+			});
+		}
+	}
+
+	function renderCategoryRow(list: HTMLElement, id: string, group: { count: number; merchants: Set<string>; ruled: number }): void {
+		const { count } = group;
+		const chain = id === NO_CATEGORY ? undefined : categoryChain(store.categories, id);
+		const isActive = reviewState.categorySecondaryId === id || (reviewState.categoryPrimaryId === "__uncategorized" && id === NO_CATEGORY);
+		const isOpen = expandedCategories.has(id);
+		const row = list.createDiv({ cls: "fp-merchant-row" + (isActive ? " is-active" : "") });
+
+		const expand = row.createDiv({
+			cls: "fp-merchant-expand" + (isOpen ? " is-open" : ""),
+			attr: { role: "button", tabindex: "0", "aria-expanded": String(isOpen), title: isOpen ? "Hide these rows" : `Show the ${count} rows` },
+		});
+		icon(expand, "chevron-right");
+		const toggleOpen = (): void => {
+			if (isOpen) expandedCategories.delete(id);
+			else expandedCategories.add(id);
+			render();
+		};
+		expand.addEventListener("click", toggleOpen);
+		expand.addEventListener("keydown", (ev) => {
+			if (ev.key === "Enter" || ev.key === " ") {
+				ev.preventDefault();
+				toggleOpen();
+			}
+		});
+
+		row.createDiv({ cls: "fp-merchant-count", text: String(count) });
+
+		const nameEl = row.createDiv({
+			cls: "fp-merchant-name",
+			attr: { role: "button", tabindex: "0", title: isActive ? "Showing only this category — click to show all" : "Show only this category" },
+		});
+		if (chain?.primary) categoryChainChip(nameEl, chain.primary, chain.secondary);
+		else nameEl.createSpan({ cls: "fp-budget-hint-text", text: "No category" });
+		// How many different shops are inside the number. One merchant filed 47 times is a safe
+		// approval; 40 merchants sharing a category is the case where the group is worth opening first.
+		const merchants = group.merchants.size;
+		if (merchants > 0) {
+			nameEl.createSpan({
+				cls: "fp-merchant-cat-meta",
+				text: `${merchants} merchant${merchants === 1 ? "" : "s"}` + (group.ruled > 0 ? ` · ${group.ruled} by a rule you wrote` : ""),
+			});
+		}
+		const toggleFilter = (): void => {
+			if (isActive) {
+				reviewState.categoryPrimaryId = "";
+				reviewState.categorySecondaryId = "";
+			} else if (id === NO_CATEGORY) {
+				reviewState.categoryPrimaryId = "__uncategorized";
+				reviewState.categorySecondaryId = "";
+			} else {
+				// The exact leaf, always — including when the leaf *is* the primary. Filtering to the
+				// primary alone would pull in its subcategories, and the queue would then disagree with
+				// the count on the row you just clicked.
+				reviewState.categoryPrimaryId = resolvePrimaryId(store.categories, id) ?? "";
+				reviewState.categorySecondaryId = id;
+			}
+			reviewState.shown = PAGE_SIZE;
+			render();
+		};
+		nameEl.addEventListener("click", toggleFilter);
+		nameEl.addEventListener("keydown", (ev) => {
+			if (ev.key === "Enter" || ev.key === " ") {
+				ev.preventDefault();
+				toggleFilter();
+			}
+		});
+
+		const actions = row.createDiv({ cls: "fp-merchant-actions" });
+
+		// Re-filing the whole group is the other half of reading it: a category that turns out to be
+		// wrong is wrong for every row under it, and fixing that one row at a time is the same trap
+		// approving one row at a time is.
+		let pending: string | undefined;
+		renderCategoryPicker(actions.createDiv({ cls: "fp-merchant-picker" }), {
+			categories: store.categories,
+			primaryPlaceholder: "Move to…",
+			onChange: ({ primaryId, secondaryId }) => {
+				pending = secondaryId ?? primaryId;
+				moveBtn.disabled = !pending;
+			},
+		});
+
+		const moveBtn = actions.createEl("button", { cls: "fp-btn fp-btn-secondary fp-merchant-apply" });
+		icon(moveBtn, "tag");
+		moveBtn.createSpan({ text: `Move ${count}` });
+		moveBtn.disabled = true;
+		moveBtn.addEventListener("click", () => {
+			if (!pending) return;
+			void categorizeAndApprove(categoryRows(id).map((t) => t.id), pending);
+		});
+
+		// The point of the panel. Absent for the uncategorized group: signing off a row while it still
+		// has no category files nothing, and would quietly empty the queue of the rows that most need
+		// a decision.
+		if (id !== NO_CATEGORY) {
+			const okBtn = actions.createEl("button", { cls: "fp-btn fp-btn-primary fp-merchant-apply" });
+			icon(okBtn, "check-check");
+			okBtn.createSpan({ text: `Approve ${count}` });
+			okBtn.setAttribute("title", `Approve all ${count} rows as they are filed now`);
+			okBtn.addEventListener("click", () => void setStatus(categoryRows(id).map((t) => t.id), "approved"));
+		}
+
+		if (isOpen) renderCategoryRows(list, id);
+	}
+
+	/** Every row in this group in the current scope — not only the page on screen. */
+	function categoryRows(id: string): Transaction[] {
+		return filteredIgnoringCategory().filter((t) => (t.categoryId || NO_CATEGORY) === id);
+	}
+
+	/** The transactions behind a group's count — same reasoning as the merchant panel's. */
+	function renderCategoryRows(list: HTMLElement, id: string): void {
+		const rows = categoryRows(id);
+		const panel = list.createDiv({ cls: "fp-merchant-detail" });
+		const wrap = panel.createDiv({ cls: "fp-table-scroll" });
+		const table = wrap.createEl("table", { cls: "fp-table" });
+		const headRow = table.createEl("thead").createEl("tr");
+		["Date", "Description", "Account", "Amount"].forEach((h, i) => headRow.createEl("th", { text: h, cls: i === 3 ? "fp-table-num" : "" }));
+		const tbody = table.createEl("tbody");
+		for (const tx of rows.slice(0, MERCHANT_DETAIL_LIMIT)) {
+			const tr = tbody.createEl("tr", { cls: "fp-table-row-clickable" });
+			tr.addEventListener("click", () => new TransactionDetailModal(plugin.app, plugin, tx).open());
+			tr.createEl("td", { text: tx.date || "No date", cls: "fp-cell-date" });
+			const desc = tr.createEl("td", { cls: "fp-sensitive" });
+			desc.createDiv({ text: tx.description || "(no description)" });
+			if (tx.counterparty && tx.counterparty !== tx.description) {
+				desc.createDiv({ cls: "fp-merchant-detail-sub fp-sensitive", text: tx.counterparty });
+			}
+			tr.createEl("td", { text: store.accounts.find((a) => a.id === tx.accountId)?.name ?? "—" });
+			tr.createEl("td", {
+				cls: "fp-table-num fp-money " + (tx.amount < 0 ? "is-negative" : "is-positive"),
+				text: formatMoney(tx.amount, { currency: tx.currency || "EUR" }),
+			});
+		}
+		if (rows.length > MERCHANT_DETAIL_LIMIT) {
+			panel.createDiv({ cls: "fp-field-hint", text: `Showing ${MERCHANT_DETAIL_LIMIT} of ${rows.length}. Click the category to filter the queue to it and see them all.` });
 		}
 	}
 
@@ -746,6 +1004,15 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 			const secondaries = primary ? secondaryCategoriesOf(store.categories, primary.id) : [];
 			secondarySelect.disabled = secondaries.length === 0;
 			secondarySelect.createEl("option", { text: primary ? `All ${primary.name}` : "All subcategories", value: "" });
+			// A row can be filed at the primary itself rather than in any of its subcategories, and until
+			// now there was no way to ask for exactly those: "All Travel & Vacation" swept in every
+			// subcategory too, so the "By category" panel could say 22 and the queue answer 28. Offered
+			// only when such rows actually exist, and judged against the whole ledger so the option
+			// doesn't flicker in and out as the other filters move.
+			if (primary && secondaries.length > 0 && store.transactions.some((t) => t.categoryId === primary.id)) {
+				const opt = secondarySelect.createEl("option", { text: `Directly in ${primary.name}`, value: primary.id });
+				if (primary.id === selectedId) opt.selected = true;
+			}
 			secondaries.forEach((c) => {
 				const opt = secondarySelect.createEl("option", { text: c.name, value: c.id });
 				if (c.id === selectedId) opt.selected = true;
@@ -829,9 +1096,11 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	 *  has no control of its own in the filter row. */
 	function redrawList(): void {
 		const rows = filtered();
+		categoryPanelEl?.remove();
 		merchantPanelEl?.remove();
 		bulkBarEl?.remove();
 		tableEl?.remove();
+		renderCategoryPanel();
 		renderMerchantPanel();
 		renderBulkBar(rows);
 		renderTable(rows);
@@ -841,7 +1110,10 @@ export function renderReviewSection(container: HTMLElement, plugin: FinancePlugi
 	let siblingCounts = new Map<string, number>();
 	let merchantPanelExpanded = false;
 	const expandedMerchants = new Set<string>();
+	let categoryPanelExpanded = false;
+	const expandedCategories = new Set<string>();
 	let countersEl: HTMLElement | undefined;
+	let categoryPanelEl: HTMLElement | undefined;
 	let merchantPanelEl: HTMLElement | undefined;
 	let bulkBarEl: HTMLElement | undefined;
 	let tableEl: HTMLElement | undefined;

@@ -52,6 +52,7 @@ export interface FinanceSettings {
 	/** Whether Review's "By merchant" panel is folded away. It sits above the queue and is worth
 	 *  hiding once its merchants are filed, without losing it. */
 	reviewMerchantPanelCollapsed?: boolean;
+	reviewCategoryPanelCollapsed?: boolean;
 	/** Whether the sidebar's "Closed" group is open. Collapsed by default: a closed account is history
 	 *  you occasionally consult, not something that should compete with the accounts you use. */
 	closedAccountsExpanded?: boolean;
