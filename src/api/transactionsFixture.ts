@@ -33,6 +33,10 @@ function tx(id: string, date: string, accountId: string, description: string, am
 	return { id, date, accountId, description, amount, currency: "EUR", source: "generic", ...extra };
 }
 
+/** Where makeTestPlugin's store keeps the files these tests expect a write to report in `written`. */
+export const LEDGER_2024 = "TestFinance/data/ledger/generic/2024.csv";
+export const MERCHANTS = "TestFinance/data/merchants.json";
+
 /** Newest first is 2024-03-20, oldest 2024-01-05; t-undated has no date at all. */
 export function ledger(): Transaction[] {
 	return [

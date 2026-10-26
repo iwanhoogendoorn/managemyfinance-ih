@@ -4,7 +4,7 @@ import FinancePlugin from "../main";
 import { merchantKey } from "../import/merchantKey";
 import type { Transaction } from "../types";
 import { send } from "./testPlugin";
-import { ledger, makeLedgerPlugin, snapshot } from "./transactionsFixture";
+import { LEDGER_2024, MERCHANTS, ledger, makeLedgerPlugin, snapshot } from "./transactionsFixture";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "./transactionsRoutes";
 
 interface Page {
@@ -166,7 +166,7 @@ describe("PATCH /mmf/v1/transactions/:id", () => {
 		const api = await makeLedgerPlugin();
 		const res = await send(api, crypto, patch("t-01", { categoryId: "cat-food-super" }));
 		expect(res.status).toBe(200);
-		const body = res.json as { transaction: Transaction; alsoCategorised: number; written: number };
+		const body = res.json as { transaction: Transaction; alsoCategorised: number; written: string[] };
 
 		expect(snapshot(api.store.transactions)).toEqual(snapshot(ui.store.transactions));
 		expect(api.store.merchants).toEqual(ui.store.merchants);
@@ -182,7 +182,8 @@ describe("PATCH /mmf/v1/transactions/:id", () => {
 		expect(byId("t-08")).toMatchObject({ categoryId: "cat-food", categoryRuleId: "rule-grocer" });
 		expect(api.store.merchants[key!]).toMatchObject({ categoryId: "cat-food-super", source: "user" });
 		expect(api.reviewChanges.length).toBeGreaterThan(0);
-		expect(body.written).toBeGreaterThan(0);
+		// One ledger file holds all three rows; merchants.json because the lesson was learned.
+		expect(body.written).toEqual([LEDGER_2024, MERCHANTS]);
 		expect(api.refreshes()).toBe(1);
 	});
 
@@ -211,17 +212,18 @@ describe("PATCH /mmf/v1/transactions/:id", () => {
 		const before = t.store.revision;
 		const res = await send(t, crypto, patch("t-03", { categoryId: "cat-rent" }));
 		expect(res.status).toBe(200);
-		expect(res.json).toMatchObject({ alsoCategorised: 0, written: 0 });
+		expect(res.json).toMatchObject({ alsoCategorised: 0, written: [] });
 		expect(t.store.merchants).toEqual({});
-		// The pipeline's own post-write refresh still counts it, so a poller never sees a stale revision.
-		expect(t.store.revision).toBe(before + 1);
+		// Nothing was written, so nothing moved: the revision stays put and no view repaints.
+		expect(t.store.revision).toBe(before);
+		expect(t.refreshes()).toBe(0);
 	});
 
 	it("sets, trims and clears notes", async () => {
 		const t = await makeLedgerPlugin();
 		const set = await send(t, crypto, patch("t-01", { notes: "  weekly shop  " }));
 		expect((set.json as { transaction: Transaction }).transaction.notes).toBe("weekly shop");
-		expect(set.json).toMatchObject({ written: 1 });
+		expect(set.json).toMatchObject({ written: [LEDGER_2024] });
 		await send(t, crypto, patch("t-04", { notes: null }));
 		expect(t.store.transactions.find((x) => x.id === "t-04")!.notes).toBeUndefined();
 		await send(t, crypto, patch("t-01", { notes: "   " }));

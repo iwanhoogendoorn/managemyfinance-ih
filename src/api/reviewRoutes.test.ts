@@ -4,7 +4,7 @@ import { merchantKey } from "../import/merchantKey";
 import { reviewCounts } from "../review";
 import type { Transaction } from "../types";
 import { send } from "./testPlugin";
-import { ledger, makeLedgerPlugin, snapshot } from "./transactionsFixture";
+import { LEDGER_2024, MERCHANTS, ledger, makeLedgerPlugin, snapshot } from "./transactionsFixture";
 
 interface Queue {
 	items: Transaction[];
@@ -17,7 +17,7 @@ interface Bulk {
 	applied: number;
 	changed: number;
 	failed: { ref: string; error: string }[];
-	written: number;
+	written: string[];
 }
 
 const ids = (q: { items: Transaction[] }): string[] => q.items.map((t) => t.id);
@@ -71,7 +71,7 @@ describe("POST /mmf/v1/review/approve", () => {
 		expect(body).toMatchObject({ applied: 3, changed: 2, failed: [] });
 		// One generic/2024 ledger file holds all three rows, so one rewrite — plus merchants.json, because
 		// t-03 was the Landlord merchant's only row and approving it confirms that merchant.
-		expect(body.written).toBe(2);
+		expect(body.written).toEqual([LEDGER_2024, MERCHANTS]);
 		expect(t.store.merchants[merchantKey(row(t, "t-03"))!]?.reviewedAt).toEqual(expect.any(String));
 		expect(["t-01", "t-04", "t-03"].map((id) => row(t, id).review)).toEqual(["approved", "approved", "approved"]);
 		expect(row(t, "t-02").review).toBeUndefined();
@@ -95,9 +95,9 @@ describe("POST /mmf/v1/review/approve", () => {
 		const t = await makeLedgerPlugin();
 		const before = t.store.revision;
 		const body = (await send(t, crypto, approve({ ids: ["gone"] }))).json as Bulk;
-		expect(body).toEqual({ applied: 0, changed: 0, failed: [{ ref: "gone", error: "Transaction not found" }], written: 0 });
-		// Only the pipeline's own post-write bump; no file was touched.
-		expect(t.store.revision).toBe(before + 1);
+		expect(body).toEqual({ applied: 0, changed: 0, failed: [{ ref: "gone", error: "Transaction not found" }], written: [] });
+		expect(t.store.revision).toBe(before);
+		expect(t.refreshes()).toBe(0);
 	});
 
 	it("confirms a merchant once its last row is approved, as the Review page does", async () => {
@@ -142,7 +142,7 @@ describe("POST /mmf/v1/review/recategorise", () => {
 		const key = merchantKey(row(t, "t-01"))!;
 		const res = await send(t, crypto, recategorise({ ids: ["t-01", "t-02", "t-08"], categoryId: "cat-food-super" }));
 		expect(res.status).toBe(200);
-		expect(res.json).toMatchObject({ applied: 3, changed: 3, failed: [], written: expect.any(Number) });
+		expect(res.json).toEqual({ applied: 3, changed: 3, failed: [], written: [LEDGER_2024, MERCHANTS] });
 		for (const id of ["t-01", "t-02", "t-08"]) expect(row(t, id)).toMatchObject({ categoryId: "cat-food-super", review: "approved" });
 		// A hand decision replaces the rule's: provenance comes off with it.
 		expect(row(t, "t-08").categoryRuleId).toBeUndefined();

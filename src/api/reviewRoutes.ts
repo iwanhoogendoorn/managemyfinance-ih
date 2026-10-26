@@ -2,7 +2,7 @@ import { reviewCounts } from "../review";
 import type { FinanceStore } from "../store";
 import type { ReviewStatus, Transaction } from "../types";
 import { HttpError, type RequestContext, type Router } from "./router";
-import { filterTransactions, paginate, parseTransactionFilter, requireCategory, requireStore, writtenSince } from "./transactionsRoutes";
+import { filterTransactions, paginate, parseTransactionFilter, requireCategory, requireStore } from "./transactionsRoutes";
 
 /**
  * GET /review, POST /review/approve and POST /review/recategorise — working the review queue from
@@ -48,7 +48,8 @@ function resolveIds(store: FinanceStore, body: unknown): { found: Transaction[];
 /**
  * Runs one bulk patch the way ReviewSection does and reports it in the bulk shape. `applied` counts
  * every row now in the requested state, including rows that already were — approving an approved row
- * succeeded, it just had nothing to do. `changed` is how many actually moved.
+ * succeeded, it just had nothing to do. `changed` is how many actually moved, and `written` the files
+ * that did — [] when nothing did, and then the pipeline repaints nothing either.
  */
 async function applyBulk(
 	ctx: RequestContext,
@@ -57,17 +58,14 @@ async function applyBulk(
 	failed: BulkFailure[],
 	patch: Partial<Transaction>,
 	after: (ids: string[]) => Promise<unknown>
-): Promise<{ applied: number; changed: number; failed: BulkFailure[]; written: number }> {
-	const revisionBefore = store.revision;
+): Promise<{ applied: number; changed: number; failed: BulkFailure[]; written: string[] }> {
 	const ids = found.map((t) => t.id);
 	let changed = 0;
 	if (ids.length > 0) {
 		changed = await store.updateTransactions(new Map(ids.map((id) => [id, { ...patch }] as const)));
 		await after(ids);
 	}
-	const written = writtenSince(store, revisionBefore);
-	if (written > 0) ctx.refresh();
-	return { applied: ids.length, changed, failed, written };
+	return { applied: ids.length, changed, failed, written: ctx.written() };
 }
 
 export function register(router: Router): void {

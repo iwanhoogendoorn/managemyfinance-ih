@@ -53,15 +53,6 @@ export function requireStore(ctx: RequestContext): FinanceStore {
 	return store;
 }
 
-/**
- * How many files a write touched, read off the store's revision counter. The counter goes up once per
- * file written and nowhere else during a request, so the difference is an honest "written" without the
- * API having to know which ledger files a row maps to.
- */
-export function writtenSince(store: FinanceStore, revisionBefore: number): number {
-	return store.revision - revisionBefore;
-}
-
 /** Absent means "new" — see ReviewStatus. */
 export function reviewStatusOf(tx: Transaction): ReviewStatus {
 	return tx.review ?? "new";
@@ -285,15 +276,12 @@ export function register(router: Router): void {
 		const { fields, categoryId } = parsePatch(store, tx, ctx.body);
 		if (categoryId === null) fields.categoryId = undefined;
 
-		const revisionBefore = store.revision;
 		if (changes(tx, fields)) await store.updateTransaction(tx.id, fields);
 		let alsoCategorised = 0;
 		if (typeof categoryId === "string" && categoryId !== tx.categoryId) {
 			alsoCategorised = await ctx.plugin.assignCategory(tx, categoryId);
 		}
 
-		const written = writtenSince(store, revisionBefore);
-		if (written > 0) ctx.refresh();
-		return { transaction: findTransaction(store, tx.id), alsoCategorised, written };
+		return { transaction: findTransaction(store, tx.id), alsoCategorised, written: ctx.written() };
 	});
 }
