@@ -10,6 +10,7 @@ import {
 	testProvider,
 } from "../ai/provider";
 import { buildMatchPrompt } from "../ai/matchPrompt";
+import { generateToken } from "../api/auth";
 import { ManageRulesModal } from "../modals/ManageRulesModal";
 import { checkConsistency, type Issue } from "../consistency";
 import { merchantKey } from "../import/merchantKey";
@@ -37,6 +38,7 @@ import { unknownMerchants } from "../import/merchantMemory";
 import { fetchHistoricalRates, fetchLatestRates } from "../fx";
 import { decimalSeparator, formatMoneyForInput, parseMoney } from "../money";
 import type FinancePlugin from "../main";
+import { DEFAULT_API_BIND, DEFAULT_API_PORT, type ApiBindMode } from "../store";
 import { DeleteAllDataModal } from "../modals/DeleteAllDataModal";
 import { DeleteCategoryModal } from "../modals/DeleteCategoryModal";
 import { EditAccountModal } from "../modals/EditAccountModal";
@@ -197,6 +199,7 @@ export class FinanceSettingTab extends PluginSettingTab {
 			{ id: "currency", label: "Currency", icon: "coins", render: (c) => this.renderCurrency(c) },
 			{ id: "import", label: "Import", icon: "download", render: (c) => this.renderImport(c) },
 			{ id: "ai", label: "AI", icon: "sparkles", render: (c) => this.renderAi(c) },
+			{ id: "api", label: "Local API", icon: "plug", render: (c) => this.renderApi(c) },
 			{ id: "schedules", label: "Scheduled reports", icon: "send", render: (c) => this.renderSchedules(c) },
 			{ id: "health", label: "Health check", icon: "stethoscope", render: (c) => this.renderHealth(c) },
 			{ id: "data", label: "Data", icon: "database", render: (c) => this.renderData(c) },
@@ -692,6 +695,174 @@ export class FinanceSettingTab extends PluginSettingTab {
 						merchantNames[0],
 						merchantNames.slice(1, 21).map((name) => ({ key: name, name, count: 1 }))
 				  )
+		);
+	}
+
+	/**
+	 * The optional local HTTP API (src/api/). Off by default and laid out like the AI panel, because it
+	 * is the same kind of decision: switching it on lets something other than you read and change this
+	 * ledger, and the panel should say exactly who and how before anyone flips it.
+	 *
+	 * Every change here restarts the server, so what the panel shows is always what is listening.
+	 */
+	private renderApi(content: HTMLElement): void {
+		const settings = this.plugin.settings;
+		const running = this.plugin.api?.running ?? false;
+		const port = settings.apiPort ?? DEFAULT_API_PORT;
+
+		const apply = async (): Promise<void> => {
+			await this.plugin.saveSettings();
+			await this.plugin.restartApi();
+			this.renderBody();
+		};
+
+		const group = this.group(content, {
+			icon: "plug",
+			title: "Local API",
+			subtitle: "Let scripts and agents read and update your finances over HTTP, at /mmf/v1.",
+			chip: !settings.apiEnabled
+				? { text: "off", tone: "pending" }
+				: running
+				? { text: `on · port ${port}`, tone: "ok" }
+				: { text: "not running", tone: "warn" },
+		});
+
+		if (!Platform.isDesktopApp) {
+			this.note(
+				group.content,
+				"The local API needs the desktop app — the mobile app can't run a server. A phone can still use it, over Tailscale, while this vault is open on a computer."
+			);
+			return;
+		}
+
+		new Setting(group.content)
+			.setName("Enable local API")
+			.setDesc("Serves this vault's finances on this computer. Every request needs the token below.")
+			.addToggle((t) =>
+				t.setValue(!!settings.apiEnabled).onChange(async (v) => {
+					settings.apiEnabled = v;
+					if (v && !settings.apiToken) settings.apiToken = generateToken();
+					await apply();
+				})
+			);
+
+		this.note(
+			group.content,
+			"Nothing is served until this is on, and nothing is reachable from another device unless you choose Tailscale below. It reads and writes through the same code as the workspace, so a change made over the API shows up here at once."
+		);
+
+		if (!settings.apiEnabled) return;
+
+		const portSetting = new Setting(group.content)
+			.setName("Port")
+			.setDesc(`1024–65535. Default ${DEFAULT_API_PORT}.`)
+			.addText((t) => {
+				t.setValue(String(port));
+				// On commit (Enter or leaving the field) rather than per keystroke: typing "27128" would
+				// otherwise restart the server on port 2, then 27, then 271…
+				t.inputEl.addEventListener("change", () => {
+					const next = Number(t.getValue().trim());
+					if (!Number.isInteger(next) || next < 1024 || next > 65535) {
+						new Notice("The port must be a whole number between 1024 and 65535.");
+						t.setValue(String(port));
+						return;
+					}
+					if (next === port) return;
+					settings.apiPort = next;
+					void apply();
+				});
+			});
+		this.help(portSetting, "Change it if another app already uses this port — the plugin says so with a notice when it can't listen.");
+
+		const bindSetting = new Setting(group.content).setName("Listen on").addDropdown((d) => {
+			d.addOption("loopback", "This computer only (127.0.0.1)");
+			d.addOption("tailscale", "Tailscale (this computer's 100.x address)");
+			d.setValue(settings.apiBind ?? DEFAULT_API_BIND);
+			d.onChange(async (v) => {
+				settings.apiBind = v as ApiBindMode;
+				await apply();
+			});
+		});
+		this.help(
+			bindSetting,
+			"“This computer only” can't be reached from anywhere else. “Tailscale” listens on your tailnet address and nothing else — never on your Wi-Fi or LAN address — so only devices signed in to your tailnet can connect. Without a Tailscale address it falls back to this computer only, and says so."
+		);
+
+		const writesSetting = new Setting(group.content)
+			.setName("Allow writes from other devices")
+			.setDesc("Off: other devices can read, but only this computer can change anything.")
+			.addToggle((t) =>
+				t.setValue(!!settings.apiAllowRemoteWrites).onChange(async (v) => {
+					settings.apiAllowRemoteWrites = v;
+					await apply();
+				})
+			);
+		this.help(
+			writesSetting,
+			"With this off, any request that could change data and didn't come from this computer is refused before it does anything. A request relayed by `tailscale serve` counts as coming from another device, even though the proxy itself runs here."
+		);
+
+		// ---- token ------------------------------------------------------------
+		new Setting(group.content).setName("Token").setDesc("Send it as “Authorization: Bearer <token>” with every request.");
+		const keyRow = group.content.createDiv({ cls: "fp-keyrow" });
+		const input = keyRow.createEl("input", {
+			cls: "fp-key-input",
+			type: "password",
+			attr: { readonly: "true", spellcheck: "false", autocomplete: "off" },
+		});
+		input.value = settings.apiToken ?? "";
+
+		const eye = keyRow.createEl("button", { cls: "fp-key-btn", attr: { "aria-label": "Show or hide the token" } });
+		icon(eye, "eye");
+		eye.addEventListener("click", () => {
+			const hidden = input.type === "password";
+			input.type = hidden ? "text" : "password";
+			eye.empty();
+			icon(eye, hidden ? "eye-off" : "eye");
+		});
+
+		const copy = keyRow.createEl("button", { cls: "fp-key-btn", attr: { "aria-label": "Copy the token" } });
+		icon(copy, "copy");
+		copy.addEventListener("click", () => {
+			void navigator.clipboard.writeText(settings.apiToken ?? "").then(() => new Notice("Token copied."));
+		});
+
+		// Two clicks rather than a confirm dialog: a new token breaks every client still using the old one.
+		const regen = keyRow.createEl("button", { cls: "fp-key-btn", attr: { "aria-label": "Regenerate the token" } });
+		icon(regen, "refresh-cw");
+		let armed = false;
+		regen.addEventListener("click", () => {
+			if (!armed) {
+				armed = true;
+				regen.setAttr("aria-label", "Click again to regenerate — the old token stops working");
+				new Notice("Click regenerate again to replace the token. Every client using the old one will be refused.");
+				return;
+			}
+			settings.apiToken = generateToken();
+			new Notice("New token generated. The old one no longer works.");
+			void apply();
+		});
+
+		const warn = group.content.createDiv({ cls: "fp-key-warning" });
+		icon(warn, "alert-triangle", "fp-key-warning-icon");
+		warn.createSpan({
+			text: "The token is stored in plain text in this vault's plugin data.json, exactly like the AI key — and it syncs wherever that file syncs. Anyone who can read your vault files can use it.",
+		});
+
+		// ---- where to reach it ------------------------------------------------
+		const urls = this.plugin.api?.urls() ?? [];
+		if (urls.length === 0) {
+			this.note(group.content, "Not running right now — the notice shown when it tried to start says why (most often: the port is taken).");
+		} else {
+			const list = group.content.createDiv({ cls: "fp-setting-note" });
+			list.createDiv({ text: "Listening at:" });
+			for (const url of urls) list.createDiv().createEl("code", { text: url });
+			this.note(group.content, `Try it: curl -H "Authorization: Bearer <token>" ${urls[0]}/health`);
+		}
+
+		this.note(
+			group.content,
+			`For HTTPS from your phone or another computer, keep “This computer only” and run \`tailscale serve --bg ${port}\`: Tailscale then serves it over HTTPS to the devices on your tailnet and nobody else. Never use \`tailscale funnel\` for this — funnel publishes it to the whole internet.`
 		);
 	}
 
