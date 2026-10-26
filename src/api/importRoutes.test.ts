@@ -98,6 +98,9 @@ async function setup(accounts: Partial<Account>[] = [{ id: "acc-1", name: "Check
 	return t;
 }
 
+const LEDGER_2024 = "TestFinance/data/ledger/qif/2024.csv";
+const BATCHES = "TestFinance/data/import-batches.json";
+
 function importBody(fileName: string, text: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
 	return { fileName, contentBase64: b64(text), accountId: "acc-1", ...extra };
 }
@@ -107,7 +110,7 @@ interface ImportResponse {
 	imported: number;
 	duplicates: number;
 	uncategorised: number;
-	written: number;
+	written: string[];
 	parsed: number;
 	dryRun: boolean;
 	format: string | null;
@@ -121,7 +124,8 @@ describe("POST /mmf/v1/import — end to end", () => {
 		const first = await send(t, crypto, { method: "POST", path: "/import", body: importBody("export.qif", QIF) });
 		expect(first.status).toBe(201);
 		const created = first.json as ImportResponse;
-		expect(created).toMatchObject({ imported: 2, duplicates: 0, written: 2, parsed: 2, dryRun: false, format: "QIF" });
+		expect(created).toMatchObject({ imported: 2, duplicates: 0, parsed: 2, dryRun: false, format: "QIF" });
+		expect(created.written).toEqual([LEDGER_2024, BATCHES]);
 		expect(created.batchId).toMatch(/^batch-/);
 		// ACME BV matches nothing; Albert Heijn is a shipped rule.
 		expect(created.uncategorised).toBe(1);
@@ -130,7 +134,7 @@ describe("POST /mmf/v1/import — end to end", () => {
 
 		const again = await send(t, crypto, { method: "POST", path: "/import", body: importBody("export.qif", QIF) });
 		expect(again.status).toBe(200);
-		expect(again.json).toMatchObject({ batchId: null, imported: 0, duplicates: 2, written: 0 });
+		expect(again.json).toMatchObject({ batchId: null, imported: 0, duplicates: 2, written: [] });
 		expect(t.store.transactions).toHaveLength(2);
 		expect(t.store.batches).toHaveLength(1);
 
@@ -148,7 +152,7 @@ describe("POST /mmf/v1/import — end to end", () => {
 		const refreshesBefore = t.refreshes();
 		const undo = await send(t, crypto, { method: "POST", path: `/imports/${created.batchId}/undo` });
 		expect(undo.status).toBe(200);
-		expect(undo.json).toEqual({ batchId: created.batchId, removed: 2, written: 2 });
+		expect(undo.json).toEqual({ batchId: created.batchId, removed: 2, written: [LEDGER_2024, BATCHES] });
 		expect(t.store.transactions).toHaveLength(0);
 		expect(t.store.batches).toHaveLength(0);
 		expect(t.refreshes()).toBe(refreshesBefore + 1);
@@ -182,16 +186,19 @@ describe("POST /mmf/v1/import — end to end", () => {
 		const t = await setup();
 		const files = (t.store as unknown as { app: { vault: { adapter: { files: Map<string, string> } } } }).app.vault.adapter.files;
 		const before = new Map(files);
+		const revision = t.store.revision;
 		const res = await send(t, crypto, { method: "POST", path: "/import", body: importBody("export.qif", QIF, { dryRun: true }) });
 		expect(res.status).toBe(200);
 		const body = res.json as ImportResponse;
-		expect(body).toMatchObject({ dryRun: true, batchId: null, imported: 2, duplicates: 0, written: 0, uncategorised: 1 });
+		expect(body).toMatchObject({ dryRun: true, batchId: null, imported: 2, duplicates: 0, written: [], uncategorised: 1 });
 		expect(body.preview?.map((tx) => tx.amount).sort((a, b) => a - b)).toEqual([-42.5, 2500]);
 		expect(t.store.transactions).toHaveLength(0);
 		expect(t.store.batches).toHaveLength(0);
-		// Not one file touched — the pipeline still counts a successful POST as a change, which only
-		// costs a polling client one needless re-read.
+		// Not one file touched, so a polling client is told nothing changed and the views stay as they are.
 		expect(new Map(files)).toEqual(before);
+		expect(t.store.revision).toBe(revision);
+		expect(res.headers["x-mmf-revision"]).toBe(String(revision));
+		expect(t.refreshes()).toBe(0);
 	});
 
 	it("takes an explicit mapping for a file no bank profile knows", async () => {
@@ -278,6 +285,7 @@ describe("POST /mmf/v1/import — end to end", () => {
 
 		const res = await send(t, crypto, { method: "POST", path: "/import", body: importBody("export.qif", QIF) });
 		expect(res.status).toBe(201);
+		expect((res.json as ImportResponse).written).toEqual(["OtherFinance/data/ledger/qif/2024.csv", "OtherFinance/data/import-batches.json"]);
 		expect(other.store.transactions).toHaveLength(2);
 		expect(t.store.transactions).toHaveLength(0);
 	});

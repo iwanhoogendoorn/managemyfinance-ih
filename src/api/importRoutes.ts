@@ -21,7 +21,7 @@ import { HttpError, reply, type RequestContext, type Router } from "./router";
  *     }
  *   → 201 { batchId, imported, duplicates, uncategorised, written, ... } when rows were written;
  *     200 with `batchId: null` when every row was already in the ledger, and for a dry run (where
- *     `imported` is what would be imported and `preview` lists those rows).
+ *     `imported` is what would be imported, `preview` lists those rows and `written` is []).
  *   400 for anything about the file or the request (unreadable, unsupported format, a mapping that
  *   doesn't fit, an IBAN on a different account), 404 for an unknown account.
  *
@@ -36,7 +36,9 @@ import { HttpError, reply, type RequestContext, type Router } from "./router";
  * POST /imports/:batchId/undo      deletes every row the run created and forgets it — Settings →
  *                                  Import history's "Undo import", including rows edited since
  *
- * `written` is the number of ledger rows a call added or removed.
+ * `written` is the vault-relative paths a call wrote or removed — the ledger files and the import
+ * history — so a client can re-read exactly those. Row counts are their own fields: `imported` and
+ * `duplicates` on an import, `removed` on an undo.
  */
 export function register(router: Router): void {
 	router.post("/import", importFile);
@@ -55,7 +57,7 @@ export function register(router: Router): void {
 		const batch = findBatch(store, ctx.params.batchId);
 		const removed = await store.undoImportBatch(batch.id);
 		ctx.refresh();
-		return { batchId: batch.id, removed, written: removed };
+		return { batchId: batch.id, removed, written: ctx.written() };
 	});
 }
 
@@ -148,12 +150,12 @@ async function importFile(ctx: RequestContext): Promise<unknown> {
 			batchId: null,
 			imported: outcome.incoming.length,
 			duplicates: outcome.duplicates,
-			written: 0,
+			written: ctx.written(),
 			preview: outcome.incoming,
 		};
 	}
 
-	const body = { ...summary, batchId: outcome.batchId ?? null, imported: outcome.added, duplicates: outcome.skipped, written: outcome.added };
+	const body = { ...summary, batchId: outcome.batchId ?? null, imported: outcome.added, duplicates: outcome.skipped, written: ctx.written() };
 	if (!outcome.batchId) return body;
 	ctx.refresh();
 	return reply(201, body);
