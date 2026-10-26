@@ -132,6 +132,23 @@ frontmatter so a folder of them is a dataset Dataview can query:
 TABLE income, expenses, savings_rate FROM "Manage My Finance/reports" WHERE period = "month"
 ```
 
+## Local API (opt-in)
+
+**Off by default.** Turned on in **Vault settings → Local API**, the plugin serves this vault's
+finances as JSON at `http://127.0.0.1:27128/mmf/v1`. Scripts, shortcuts and AI agents can then read the
+ledger, work the review queue, manage accounts, categories, rules and merchant memory, import a bank
+export, and generate reports. They do it through the same code the buttons run, never by editing the
+data files behind the plugin's back.
+
+- Every request needs a **bearer token**, generated when you switch the API on. It is stored in this
+  vault's plugin `data.json` in plain text, like the AI key, and never logged.
+- It listens on **`127.0.0.1` only** unless you choose *Tailscale*, which binds your tailnet address and
+  nothing else. Another device can only read until you turn on **Allow writes from other devices**.
+- It runs in the **desktop app only**; the mobile app never starts a server. With the switch off nothing
+  listens and the plugin behaves exactly as it did before the API existed.
+
+Every route, with request and response examples, is in [docs/api.md](docs/api.md).
+
 ## Getting started
 
 1. Install the plugin (see below) and enable it in Obsidian's Community Plugins settings.
