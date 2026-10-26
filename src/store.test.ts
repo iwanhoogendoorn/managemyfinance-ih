@@ -315,16 +315,14 @@ describe("FinanceStore — editing and deleting", () => {
 		expect(rows.map((r) => r[0])).not.toContain("a");
 	});
 
-	it("leaves a header-only file behind when the last transaction in it is deleted", async () => {
+	it("removes the file when the last transaction in it is deleted, rather than leaving a bare header", async () => {
 		const { store, app } = newStore();
 		await store.load();
 		await store.importTransactions([tx({ id: "a" })]);
 
 		await store.deleteTransactions(["a"]);
 
-		const rows = parseCSV(await app.vault.adapter.read(ledgerPath("manual", "2024")));
-		expect(rows).toHaveLength(1);
-		expect(rows[0][0]).toBe("id");
+		expect(await app.vault.adapter.exists(ledgerPath("manual", "2024"))).toBe(false);
 	});
 
 	it("moves a transaction between ledger files when an edit changes its year", async () => {
@@ -334,10 +332,10 @@ describe("FinanceStore — editing and deleting", () => {
 
 		await store.editTransaction("a", { date: "2024-01-01" });
 
-		const oldRows = parseCSV(await app.vault.adapter.read(ledgerPath("manual", "2023")));
+		// The row must not exist in both places — that's a duplicated transaction in every total. It was
+		// the old year's only row, so the old year's file goes with it.
+		expect(await app.vault.adapter.exists(ledgerPath("manual", "2023"))).toBe(false);
 		const newRows = parseCSV(await app.vault.adapter.read(ledgerPath("manual", "2024")));
-		// The row must not exist in both places — that's a duplicated transaction in every total.
-		expect(oldRows.map((r) => r[0])).not.toContain("a");
 		expect(newRows.map((r) => r[0])).toContain("a");
 	});
 
@@ -384,6 +382,76 @@ describe("FinanceStore — import batches", () => {
 		expect(removed).toBe(2);
 		expect(store.transactions.map((t) => t.id)).toEqual(["c"]);
 		expect(store.batches).toHaveLength(1);
+	});
+
+	it("undoing an import into a year that had no file removes that file again, and reports the removal", async () => {
+		const { store, app } = newStore();
+		await store.load();
+		const batch = await store.importTransactions([tx({ id: "a", date: "2001-02-03" }), tx({ id: "b", date: "2001-04-05" })]);
+		expect(await app.vault.adapter.exists(ledgerPath("manual", "2001"))).toBe(true);
+
+		const before = store.revision;
+		const tracker = store.trackWrites();
+		await store.undoImportBatch(batch.batchId!);
+		const written = tracker.written();
+		tracker.stop();
+
+		expect(await app.vault.adapter.exists(ledgerPath("manual", "2001"))).toBe(false);
+		expect(written).toContain(ledgerPath("manual", "2001"));
+		expect(store.revision).toBeGreaterThan(before);
+	});
+
+	it("undoing an import rewrites a year file that still has other rows exactly as a fresh write would", async () => {
+		const { store, app } = newStore();
+		await store.load();
+		const first = await store.importTransactions([tx({ id: "a" }), tx({ id: "b" })]);
+		await store.importTransactions([tx({ id: "c", description: "Bakery, \"fresh\"" })]);
+		const original = await app.vault.adapter.read(ledgerPath("manual", "2024"));
+
+		await store.undoImportBatch(first.batchId!);
+
+		// Byte for byte the file it was, minus the undone rows: same header, same columns, same quoting.
+		const content = await app.vault.adapter.read(ledgerPath("manual", "2024"));
+		const expected = original
+			.split("\n")
+			.filter((line) => !line.startsWith("a,") && !line.startsWith("b,"))
+			.join("\n");
+		expect(content).toBe(expected);
+		const rows = parseCSV(content);
+		expect(rows).toHaveLength(2);
+		expect(rows[0][0]).toBe("id");
+		expect(rows[1][0]).toBe("c");
+	});
+
+	it("writes nothing for a source/year with no rows and no file", async () => {
+		const { store, app } = newStore();
+		await store.load();
+		const before = store.revision;
+		const tracker = store.trackWrites();
+
+		await (store as unknown as { rewriteLedgerFile(key: string): Promise<void> }).rewriteLedgerFile("manual::1999");
+
+		expect(tracker.written()).toEqual([]);
+		tracker.stop();
+		expect(store.revision).toBe(before);
+		expect(await app.vault.adapter.exists(ledgerPath("manual", "1999"))).toBe(false);
+	});
+
+	it("loads cleanly when an undo has left a source folder with no year files in it", async () => {
+		const { store, app } = newStore();
+		await store.load();
+		const doomed = await store.importTransactions([tx({ id: "q1", source: "qif", date: "2001-01-01" })]);
+		await store.importTransactions([tx({ id: "m1" }), tx({ id: "m2", date: "2023-06-01" })]);
+		await store.undoImportBatch(doomed.batchId!);
+
+		// The year file is gone but its source folder stays, empty.
+		expect(await app.vault.adapter.exists(ledgerPath("qif", "2001"))).toBe(false);
+		expect(await app.vault.adapter.exists(`${FOLDER}/data/ledger/qif`)).toBe(true);
+		expect((await app.vault.adapter.list(`${FOLDER}/data/ledger/qif`)).files).toEqual([]);
+
+		const reloaded = new FinanceStore(app as never, { ...DEFAULT_SETTINGS, dataFolder: FOLDER });
+		await reloaded.load();
+		expect(reloaded.transactions.map((t) => t.id).sort()).toEqual(["m1", "m2"]);
 	});
 
 	it("records no batch when every row was a duplicate", async () => {
@@ -513,5 +581,49 @@ describe("FinanceStore — category-rule provenance", () => {
 		await reloaded.load();
 
 		expect(reloaded.transactions.find((t) => t.id === "a")?.categoryRuleId).toBe("rule-1");
+	});
+});
+
+describe("FinanceStore — write tracking", () => {
+	it("records nothing while no tracker is open, so an API that is off costs nothing", async () => {
+		const { store } = newStore();
+		await store.saveRules();
+		await store.saveAccounts();
+		expect((store as unknown as { writeLog: unknown[] }).writeLog).toEqual([]);
+	});
+
+	it("reports writes and removals made after the tracker opened, unique and in first-write order", async () => {
+		const { store } = newStore();
+		await store.importTransactions([tx({ id: "a", date: "2023-05-01" })]);
+		const tracker = store.trackWrites();
+		await store.saveRules();
+		// A replace-style rewrite removes the old ledger files and writes them back.
+		await store.rewriteAllLedgers();
+		await store.saveRules();
+		expect(tracker.written()).toEqual([`${FOLDER}/data/rules.json`, ledgerPath("manual", "2023")]);
+		tracker.stop();
+	});
+
+	it("lets trackers overlap, each seeing only what came after it, and drops the log when the last stops", async () => {
+		const { store } = newStore();
+		const outer = store.trackWrites();
+		await store.saveRules();
+		const inner = store.trackWrites();
+		await store.saveAccounts();
+		expect(inner.written()).toEqual([`${FOLDER}/data/accounts.json`]);
+		inner.stop();
+		inner.stop();
+		await store.saveCards();
+		expect(outer.written()).toEqual([`${FOLDER}/data/rules.json`, `${FOLDER}/data/accounts.json`, `${FOLDER}/data/cards.json`]);
+		outer.stop();
+		expect((store as unknown as { writeLog: unknown[] }).writeLog).toEqual([]);
+	});
+
+	it("leaves the revision alone when nothing is written", async () => {
+		const { store } = newStore();
+		const before = store.revision;
+		const tracker = store.trackWrites();
+		tracker.stop();
+		expect(store.revision).toBe(before);
 	});
 });

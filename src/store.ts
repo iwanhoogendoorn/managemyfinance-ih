@@ -137,7 +137,33 @@ export interface FinanceSettings {
 	subscriptionReminders?: boolean;
 	/** How many days ahead a subscription renewal reminder fires. */
 	subscriptionReminderDays?: number;
+	/** Serves the optional local HTTP API (src/api/) under /mmf/v1. Off unless explicitly turned on,
+	 *  and never started on mobile, where there is no Node to serve it with. */
+	apiEnabled?: boolean;
+	/** TCP port the local API listens on. */
+	apiPort?: number;
+	/** Bearer token every API request must carry. Generated the first time the API is switched on and
+	 *  stored in this vault's plugin data.json in plain text, exactly like the AI key — the settings
+	 *  panel says so. Never logged. */
+	apiToken?: string;
+	/** Which address the API binds: "loopback" is 127.0.0.1 only; "tailscale" is this machine's
+	 *  100.64.0.0/10 tailnet address only, falling back to loopback when there isn't one. */
+	apiBind?: ApiBindMode;
+	/** Whether a client on another device may change anything. Off: every request other than GET/HEAD
+	 *  that didn't come from this machine is refused with 403 before any handler runs. */
+	apiAllowRemoteWrites?: boolean;
+	/** The narrow alternative to apiAllowRemoteWrites: with that off and this on, another device may
+	 *  make only the writes in src/api/scopes.ts — import a file, set a row's category or review status,
+	 *  undo an import — and every one of them is logged to the audit note (src/api/audit.ts). */
+	apiRemoteWriteScopes?: boolean;
 }
+
+export type ApiBindMode = "loopback" | "tailscale";
+
+/** The local API's defaults, read with `??` wherever a setting is used — like every optional field
+ *  above, so a data.json written before the API existed needs no migration. */
+export const DEFAULT_API_PORT = 27130;
+export const DEFAULT_API_BIND: ApiBindMode = "loopback";
 
 export const DEFAULT_SETTINGS: FinanceSettings = {
 	dataFolder: DEFAULT_DATA_FOLDER,
@@ -155,6 +181,11 @@ export const DEFAULT_SETTINGS: FinanceSettings = {
 	subscriptionReminders: true,
 	subscriptionReminderDays: 3,
 	tipsEnabled: true,
+	apiEnabled: false,
+	apiPort: DEFAULT_API_PORT,
+	apiBind: DEFAULT_API_BIND,
+	apiAllowRemoteWrites: false,
+	apiRemoteWriteScopes: false,
 };
 
 const TX_COLUMNS: (keyof Transaction)[] = [
@@ -236,6 +267,14 @@ const NUMERIC_COLUMNS: (keyof Transaction)[] = [
  */
 const REQUIRED_TX_STRINGS = new Set<string>(["id", "date", "accountId", "description", "currency", "source"]);
 
+/** What FinanceStore.trackWrites() hands back. */
+export interface WriteTracker {
+	/** Vault-relative paths written or removed since the tracker opened: unique, in first-write order. */
+	written(): string[];
+	/** Stops recording for this tracker. Safe to call twice; `written()` is meaningless afterwards. */
+	stop(): void;
+}
+
 /**
  * Loads/persists all Finance data inside the vault: accounts/categories/rules as JSON,
  * transactions as one CSV per source per year under data/ledger/<source>/<year>.csv.
@@ -275,7 +314,70 @@ export class FinanceStore {
 	/** How this portfolio budgets — calendar month or pay cycle. See payCycle.ts. */
 	budgeting: PortfolioBudgetingSettings = { periodMode: "calendar" };
 
+	/**
+	 * Goes up by one on every file this store writes or removes, and on every (re)load.
+	 *
+	 * It exists for the local API (src/api/), which hands it out as `x-mmf-revision` so a client can
+	 * tell "nothing changed since I last looked" from a single header instead of re-reading the
+	 * ledger. Counted here, at the one place every write already funnels through, because a counter
+	 * bumped only by the API's own writes would miss the fifteen UI paths that also write — and a
+	 * client would then trust a stale copy. Nothing reads it while the API is off; a number going up
+	 * is the whole cost. It starts at 0 each time the plugin loads, so compare it for equality only.
+	 */
+	revision = 0;
+
+	/**
+	 * Every path written or removed while at least one WriteTracker is open, keyed by the revision the
+	 * write produced. Recorded only while someone is tracking — and emptied once nobody is — so with the
+	 * API off nothing is ever appended, and a long session of UI edits can't grow it.
+	 */
+	private writeLog: { revision: number; path: string }[] = [];
+	private openTrackers = 0;
+
 	constructor(private app: App, public settings: FinanceSettings) {}
+
+	/** The only way this store writes a file — see `revision` for why it is counted. */
+	private async writeFile(path: string, data: string): Promise<void> {
+		this.recordWrite(path);
+		await this.app.vault.adapter.write(path, data);
+	}
+
+	private async removeFile(path: string): Promise<void> {
+		this.recordWrite(path);
+		await this.app.vault.adapter.remove(path);
+	}
+
+	private recordWrite(path: string): void {
+		this.revision++;
+		if (this.openTrackers > 0) this.writeLog.push({ revision: this.revision, path });
+	}
+
+	/**
+	 * Starts noting which files get written, so a caller can say exactly what an operation touched —
+	 * the local API returns this as `written` on every write response.
+	 *
+	 * Keyed by revision rather than by caller: the store can't know which await chain a write belongs
+	 * to, so a tracker reports everything written after it opened, a UI edit landing mid-request
+	 * included. Trackers may overlap; each must be stopped, and the log is dropped when the last one is.
+	 */
+	trackWrites(): WriteTracker {
+		const since = this.revision;
+		let open = true;
+		this.openTrackers++;
+		return {
+			written: () => {
+				const seen = new Set<string>();
+				for (const entry of this.writeLog) if (entry.revision > since) seen.add(entry.path);
+				return Array.from(seen);
+			},
+			stop: () => {
+				if (!open) return;
+				open = false;
+				this.openTrackers--;
+				if (this.openTrackers === 0) this.writeLog = [];
+			},
+		};
+	}
 
 	/**
 	 * Base currency + rate table, in the shape every calculation module takes. Read fresh each time
@@ -327,6 +429,9 @@ export class FinanceStore {
 		await this.migrateLegacyCardExpiry();
 
 		this.transactions = await this.readLedger();
+		// A reload can swap every collection without writing a byte (switching portfolio does exactly
+		// that), so it counts as a change on its own.
+		this.revision++;
 	}
 
 	/** One-time migration: pre-history installs stored a single flat `budget` per category. Fold that
@@ -442,7 +547,7 @@ export class FinanceStore {
 				return fallback;
 			}
 		}
-		await adapter.write(path, JSON.stringify(fallback, null, "\t"));
+		await this.writeFile(path, JSON.stringify(fallback, null, "\t"));
 		return fallback;
 	}
 
@@ -493,31 +598,31 @@ export class FinanceStore {
 	}
 
 	async saveAccounts(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "accounts.json"), JSON.stringify(this.accounts, null, "\t"));
+		await this.writeFile(this.path("data", "accounts.json"), JSON.stringify(this.accounts, null, "\t"));
 	}
 
 	async saveCategories(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "categories.json"), JSON.stringify(this.categories, null, "\t"));
+		await this.writeFile(this.path("data", "categories.json"), JSON.stringify(this.categories, null, "\t"));
 	}
 
 	async saveRules(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "rules.json"), JSON.stringify(this.rules, null, "\t"));
+		await this.writeFile(this.path("data", "rules.json"), JSON.stringify(this.rules, null, "\t"));
 	}
 
 	async saveSubscriptions(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "subscriptions.json"), JSON.stringify(this.subscriptions, null, "\t"));
+		await this.writeFile(this.path("data", "subscriptions.json"), JSON.stringify(this.subscriptions, null, "\t"));
 	}
 
 	async saveDebts(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "debts.json"), JSON.stringify(this.debts, null, "\t"));
+		await this.writeFile(this.path("data", "debts.json"), JSON.stringify(this.debts, null, "\t"));
 	}
 
 	async saveCards(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "cards.json"), JSON.stringify(this.cards, null, "\t"));
+		await this.writeFile(this.path("data", "cards.json"), JSON.stringify(this.cards, null, "\t"));
 	}
 
 	async saveMerchants(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "merchants.json"), JSON.stringify(this.merchants, null, "\t"));
+		await this.writeFile(this.path("data", "merchants.json"), JSON.stringify(this.merchants, null, "\t"));
 	}
 
 	/**
@@ -533,29 +638,29 @@ export class FinanceStore {
 		const folder = this.path("data", "backups");
 		await this.ensureFolder(folder);
 		const file = normalizePath(`${folder}/merchants-${stamp}-${reason}.json`);
-		await this.app.vault.adapter.write(file, JSON.stringify(this.merchants, null, "\t"));
+		await this.writeFile(file, JSON.stringify(this.merchants, null, "\t"));
 		return file;
 	}
 
 	async saveSnapshots(): Promise<void> {
 		this.snapshots.sort((a, b) => a.date.localeCompare(b.date));
-		await this.app.vault.adapter.write(this.path("data", "snapshots.json"), JSON.stringify(this.snapshots, null, "\t"));
+		await this.writeFile(this.path("data", "snapshots.json"), JSON.stringify(this.snapshots, null, "\t"));
 	}
 
 	async saveBatches(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "import-batches.json"), JSON.stringify(this.batches, null, "\t"));
+		await this.writeFile(this.path("data", "import-batches.json"), JSON.stringify(this.batches, null, "\t"));
 	}
 
 	async saveOneOffBudgets(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "oneoff-budgets.json"), JSON.stringify(this.oneOffBudgets, null, "\t"));
+		await this.writeFile(this.path("data", "oneoff-budgets.json"), JSON.stringify(this.oneOffBudgets, null, "\t"));
 	}
 
 	async saveStrategy(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "strategy.json"), JSON.stringify(this.strategy, null, "\t"));
+		await this.writeFile(this.path("data", "strategy.json"), JSON.stringify(this.strategy, null, "\t"));
 	}
 
 	async saveBudgeting(): Promise<void> {
-		await this.app.vault.adapter.write(this.path("data", "budgeting.json"), JSON.stringify(this.budgeting, null, "\t"));
+		await this.writeFile(this.path("data", "budgeting.json"), JSON.stringify(this.budgeting, null, "\t"));
 	}
 
 	existingIds(): Set<string> {
@@ -631,7 +736,7 @@ export class FinanceStore {
 	 *
 	 * A deletion has to rewrite rather than append, so this is the one place that has to be careful:
 	 * files are recomputed from what's left in memory, and a file whose last transaction just went
-	 * away is written back as a header-only file rather than left holding stale rows.
+	 * away is removed rather than left holding stale rows (see rewriteLedgerFile).
 	 */
 	async deleteTransactions(ids: Iterable<string>): Promise<number> {
 		const doomed = new Set(ids);
@@ -706,7 +811,7 @@ export class FinanceStore {
 		rows = this.migrateLedgerRows(rows);
 
 		for (const tx of txs) rows.push(this.serializeTx(tx) as string[]);
-		await adapter.write(file, toCSV(rows));
+		await this.writeFile(file, toCSV(rows));
 	}
 
 	/** Rewrites a ledger file's header + every row onto the current TX_COLUMNS shape, so a schema
@@ -784,17 +889,31 @@ export class FinanceStore {
 		return `${tx.source}::${(tx.date || "").slice(0, 4) || "unknown"}`;
 	}
 
-	/** Rewrites one "<source>::<year>" ledger file from whatever is currently in memory for it. */
+	/**
+	 * Rewrites one "<source>::<year>" ledger file from whatever is currently in memory for it.
+	 *
+	 * A key with nothing left in memory removes the file rather than writing it back as a bare header.
+	 * That is how rewriteAllLedgers already treats a source/year without transactions — it simply has
+	 * no file — and a header-only year file is clutter in the user's vault: undoing an import into a
+	 * year that had no ledger yet would otherwise leave an empty 2001.csv behind for good. The removal
+	 * goes through removeFile, so it is counted and reported like any write; when there's no file to
+	 * remove either, nothing happens at all and the revision stays put. The source folder is left alone
+	 * even once its last year file goes — readLedger reads an empty folder as no rows.
+	 */
 	private async rewriteLedgerFile(key: string): Promise<void> {
 		const [source, year] = key.split("::");
 		const folder = this.path("data", "ledger", source);
-		await this.ensureFolder(folder);
 		const file = normalizePath(`${folder}/${year}.csv`);
 		const rows: (string | number | undefined)[][] = [TX_COLUMNS];
 		for (const t of this.transactions) {
 			if (this.ledgerKey(t) === key) rows.push(this.serializeTx(t));
 		}
-		await this.app.vault.adapter.write(file, toCSV(rows));
+		if (rows.length === 1) {
+			if (await this.app.vault.adapter.exists(file)) await this.removeFile(file);
+			return;
+		}
+		await this.ensureFolder(folder);
+		await this.writeFile(file, toCSV(rows));
 	}
 
 	/**
@@ -810,7 +929,7 @@ export class FinanceStore {
 			for (const sourceFolder of folders) {
 				const { files } = await adapter.list(sourceFolder);
 				for (const file of files) {
-					if (file.toLowerCase().endsWith(".csv")) await adapter.remove(file);
+					if (file.toLowerCase().endsWith(".csv")) await this.removeFile(file);
 				}
 			}
 		}

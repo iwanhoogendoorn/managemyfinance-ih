@@ -1,6 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { defaultCategories, VIEW_TYPE_FINANCE } from "./constants";
 import { aiCategorize, describeAiResult } from "./ai/categorizer";
+import { ApiServer } from "./api/server";
 import { budgetAlerts, currentMonth } from "./budgets";
 import { autoCategorize, buildDefaultRules, effectiveRules } from "./import/autoCategorize";
 import { merchantKey } from "./import/merchantKey";
@@ -33,6 +34,8 @@ export default class FinancePlugin extends Plugin {
 	settings: FinanceSettings = DEFAULT_SETTINGS;
 	store!: FinanceStore;
 	private settingTab?: FinanceSettingTab;
+	/** The optional local HTTP API. Constructing it does nothing; it only touches Node once switched on. */
+	api?: ApiServer;
 
 	/**
 	 * Wall-clock time this build was loaded. Shown next to the version wherever the version is,
@@ -57,6 +60,10 @@ export default class FinancePlugin extends Plugin {
 		this.store = new FinanceStore(this.app, this.settings);
 		await this.store.load();
 		this.watchReviewMilestones();
+		// After the store has loaded, so the first request can't see an empty ledger. A no-op unless the
+		// API is switched on and this is the desktop app; problems surface as a Notice, never a throw.
+		this.api = new ApiServer(this);
+		void this.api.start();
 
 		this.registerView(VIEW_TYPE_FINANCE, (leaf: WorkspaceLeaf) => new FinanceView(leaf, this));
 		this.settingTab = new FinanceSettingTab(this.app, this);
@@ -236,7 +243,14 @@ export default class FinancePlugin extends Plugin {
 	}
 
 	onunload(): void {
-		// Views are torn down by Obsidian; nothing to clean up manually.
+		// Views are torn down by Obsidian. The API server is not: its listener and every kept-alive
+		// connection are closed here, so a disabled plugin stops answering at once.
+		void this.api?.stop();
+	}
+
+	/** Applies a change to any API setting: close the server, then start it again if it is still on. */
+	async restartApi(): Promise<void> {
+		await this.api?.restart();
 	}
 
 	async loadSettings(): Promise<void> {
