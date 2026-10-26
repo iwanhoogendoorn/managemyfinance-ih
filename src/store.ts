@@ -257,6 +257,14 @@ const NUMERIC_COLUMNS: (keyof Transaction)[] = [
  */
 const REQUIRED_TX_STRINGS = new Set<string>(["id", "date", "accountId", "description", "currency", "source"]);
 
+/** What FinanceStore.trackWrites() hands back. */
+export interface WriteTracker {
+	/** Vault-relative paths written or removed since the tracker opened: unique, in first-write order. */
+	written(): string[];
+	/** Stops recording for this tracker. Safe to call twice; `written()` is meaningless afterwards. */
+	stop(): void;
+}
+
 /**
  * Loads/persists all Finance data inside the vault: accounts/categories/rules as JSON,
  * transactions as one CSV per source per year under data/ledger/<source>/<year>.csv.
@@ -308,17 +316,57 @@ export class FinanceStore {
 	 */
 	revision = 0;
 
+	/**
+	 * Every path written or removed while at least one WriteTracker is open, keyed by the revision the
+	 * write produced. Recorded only while someone is tracking — and emptied once nobody is — so with the
+	 * API off nothing is ever appended, and a long session of UI edits can't grow it.
+	 */
+	private writeLog: { revision: number; path: string }[] = [];
+	private openTrackers = 0;
+
 	constructor(private app: App, public settings: FinanceSettings) {}
 
 	/** The only way this store writes a file — see `revision` for why it is counted. */
 	private async writeFile(path: string, data: string): Promise<void> {
-		this.revision++;
+		this.recordWrite(path);
 		await this.app.vault.adapter.write(path, data);
 	}
 
 	private async removeFile(path: string): Promise<void> {
-		this.revision++;
+		this.recordWrite(path);
 		await this.app.vault.adapter.remove(path);
+	}
+
+	private recordWrite(path: string): void {
+		this.revision++;
+		if (this.openTrackers > 0) this.writeLog.push({ revision: this.revision, path });
+	}
+
+	/**
+	 * Starts noting which files get written, so a caller can say exactly what an operation touched —
+	 * the local API returns this as `written` on every write response.
+	 *
+	 * Keyed by revision rather than by caller: the store can't know which await chain a write belongs
+	 * to, so a tracker reports everything written after it opened, a UI edit landing mid-request
+	 * included. Trackers may overlap; each must be stopped, and the log is dropped when the last one is.
+	 */
+	trackWrites(): WriteTracker {
+		const since = this.revision;
+		let open = true;
+		this.openTrackers++;
+		return {
+			written: () => {
+				const seen = new Set<string>();
+				for (const entry of this.writeLog) if (entry.revision > since) seen.add(entry.path);
+				return Array.from(seen);
+			},
+			stop: () => {
+				if (!open) return;
+				open = false;
+				this.openTrackers--;
+				if (this.openTrackers === 0) this.writeLog = [];
+			},
+		};
 	}
 
 	/**

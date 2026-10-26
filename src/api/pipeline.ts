@@ -108,6 +108,19 @@ async function authenticated(deps: PipelineDeps, req: ApiRequest, method: string
 	if (match.kind === "method") return error(405, `Cannot ${method} ${path}`, { Allow: match.allowed.join(", ") });
 
 	const requestId = (deps.newRequestId ?? defaultRequestId)();
+	// Opened before the body is read and closed after the response is decided, so `written` covers
+	// everything this request could have caused. Taken from the store once: switching portfolio reloads
+	// that same instance in place, so it can't go stale mid-request.
+	const tracker = plugin.store.trackWrites();
+	let repaintedAt: number | undefined;
+	// Repaints only once something was written, and again only if more was written since — so a dry
+	// run that calls refresh() costs nothing, and the revision is left to the store alone: it moves when
+	// a file is really written, never because a request merely asked to write.
+	const refresh = (): void => {
+		if (tracker.written().length === 0 || plugin.store.revision === repaintedAt) return;
+		repaintedAt = plugin.store.revision;
+		plugin.refreshViews();
+	};
 	try {
 		let body: unknown = undefined;
 		if (write) {
@@ -121,7 +134,6 @@ async function authenticated(deps: PipelineDeps, req: ApiRequest, method: string
 			}
 		}
 
-		let refreshed = false;
 		const ctx: RequestContext = {
 			method,
 			path,
@@ -131,26 +143,23 @@ async function authenticated(deps: PipelineDeps, req: ApiRequest, method: string
 			requestId,
 			plugin,
 			store: () => plugin.store,
-			refresh: () => {
-				if (refreshed) return;
-				refreshed = true;
-				// Counted as a change even when the write never reached a store file (a settings field,
-				// say), so a client polling the revision is never told "unchanged" after a write.
-				plugin.store.revision++;
-				plugin.refreshViews();
-			},
+			refresh,
+			written: () => tracker.written(),
 		};
 
 		const result = await match.handler(ctx);
 		const status = result instanceof Reply ? result.status : result === undefined ? 204 : 200;
-		// A successful write repaints the open views even if its handler forgot to ask: a ledger that
-		// changed behind a view still showing the old one is the bug this rules out.
-		if (write && status < 300) ctx.refresh();
 		return json(status, result instanceof Reply ? result.body : result);
 	} catch (err) {
 		if (err instanceof HttpError) return error(err.status, err.message);
 		// Method and path only — never headers, which carry the token, and never the body.
 		(deps.log ?? console.error)(`[mmf/api] ${requestId} ${method} ${path} failed:`, err instanceof Error ? err.stack ?? err.message : err);
 		return json(500, { error: "Internal error", requestId });
+	} finally {
+		// Whatever the handler wrote is on disk now, success or failure, so the views catch up even if it
+		// forgot to ask — or threw half-way through. A ledger changed behind a view still showing the old
+		// one is the bug this rules out.
+		refresh();
+		tracker.stop();
 	}
 }

@@ -54,8 +54,18 @@ export interface RequestContext {
 	 * cached when the server started — would read or write the wrong portfolio's data.
 	 */
 	store(): FinanceStore;
-	/** Repaints every open Finance view. Call it after every successful write. */
+	/**
+	 * Repaints every open Finance view — but only if this request has written something since the last
+	 * repaint, so a dry run or a no-op can call it unconditionally. The pipeline also calls it once the
+	 * handler is done, so a handler that forgets still leaves the views current.
+	 */
 	refresh(): void;
+	/**
+	 * Vault-relative paths the store has written or removed since this request started: unique, in
+	 * first-write order. Return it as `written` on every write response. Empty for a dry run or a write
+	 * that changed nothing — and then the revision hasn't moved either.
+	 */
+	written(): string[];
 }
 
 export type RouteHandler = (ctx: RequestContext) => unknown | Promise<unknown>;

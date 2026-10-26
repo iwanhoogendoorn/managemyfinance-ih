@@ -13,12 +13,28 @@ import { makeTestPlugin, send, TEST_TOKEN, type TestPlugin } from "./testPlugin"
 function testRouter(): Router {
 	const router = new Router();
 	router.get("/things", () => ({ things: [] }));
-	router.post("/things", (ctx) => reply(201, { got: ctx.body, written: 1 }));
+	// Writes nothing — the shape of a dry run, or a write whose input matched what was already there.
+	router.post("/things", (ctx) => {
+		ctx.refresh();
+		return reply(201, { got: ctx.body, written: ctx.written() });
+	});
 	router.post("/accounts", async (ctx) => {
 		const store = ctx.store();
 		store.accounts.push({ id: "acc-new", name: "New", type: "debit", currency: "EUR" } as never);
 		await store.saveAccounts();
-		return { written: 1 };
+		return { written: ctx.written() };
+	});
+	router.post("/two-files", async (ctx) => {
+		const store = ctx.store();
+		await store.saveAccounts();
+		ctx.refresh();
+		await store.saveRules();
+		await store.saveAccounts();
+		return { written: ctx.written() };
+	});
+	router.post("/half", async (ctx) => {
+		await ctx.store().saveRules();
+		throw new Error("failed after writing");
 	});
 	router.get("/explode", () => {
 		throw new Error(`kaboom with ${TEST_TOKEN}`);
@@ -196,12 +212,25 @@ describe("headers and revision", () => {
 		expect(Number((await send(t, crypto, { path: "/things" }, router)).headers["x-mmf-revision"])).toBeGreaterThan(before);
 	});
 
-	it("refreshes the views exactly once after a successful write, and not after a read or a failed write", async () => {
+	it("refreshes the views after a write that wrote something, not after a read, a failed parse or a no-op", async () => {
 		await send(t, crypto, { path: "/things" }, router);
 		expect(t.refreshes()).toBe(0);
-		await send(t, crypto, { method: "POST", path: "/things", body: "{bad" }, router);
+		await send(t, crypto, { method: "POST", path: "/accounts", body: "{bad" }, router);
 		expect(t.refreshes()).toBe(0);
 		await send(t, crypto, { method: "POST", path: "/things", body: {} }, router);
+		expect(t.refreshes()).toBe(0);
+		await send(t, crypto, { method: "POST", path: "/accounts", body: {} }, router);
+		expect(t.refreshes()).toBe(1);
+	});
+
+	it("repaints again at the end only if the handler wrote more after its own refresh()", async () => {
+		await send(t, crypto, { method: "POST", path: "/two-files", body: {} }, router);
+		expect(t.refreshes()).toBe(2);
+	});
+
+	it("still repaints when a handler throws after writing", async () => {
+		const res = await send(t, crypto, { method: "POST", path: "/half", body: {} }, router, () => undefined);
+		expect(res.status).toBe(500);
 		expect(t.refreshes()).toBe(1);
 	});
 
@@ -209,5 +238,34 @@ describe("headers and revision", () => {
 		const res = await send(t, crypto, { method: "DELETE", path: "/things/1" }, router);
 		expect(res.status).toBe(204);
 		expect(res.body).toBe("");
+	});
+});
+
+describe("ctx.written()", () => {
+	it("lists exactly the files the handler wrote, once each, in first-write order", async () => {
+		const res = await send(t, crypto, { method: "POST", path: "/two-files", body: {} }, router);
+		expect((res.json as { written: string[] }).written).toEqual(["TestFinance/data/accounts.json", "TestFinance/data/rules.json"]);
+	});
+
+	it("leaves out writes made before the request started", async () => {
+		await t.store.saveRules();
+		await t.store.saveCategories();
+		const res = await send(t, crypto, { method: "POST", path: "/accounts", body: {} }, router);
+		expect((res.json as { written: string[] }).written).toEqual(["TestFinance/data/accounts.json"]);
+	});
+
+	it("is empty for a no-op POST, which leaves the revision where it was", async () => {
+		await t.store.saveRules();
+		const before = (await send(t, crypto, { path: "/things" }, router)).headers["x-mmf-revision"];
+		const res = await send(t, crypto, { method: "POST", path: "/things", body: { dryRun: true } }, router);
+		expect(res.status).toBe(201);
+		expect((res.json as { written: string[] }).written).toEqual([]);
+		expect(res.headers["x-mmf-revision"]).toBe(before);
+		expect(String(t.store.revision)).toBe(before);
+	});
+
+	it("stops recording once the request is over", async () => {
+		await send(t, crypto, { method: "POST", path: "/accounts", body: {} }, router);
+		expect((t.store as unknown as { writeLog: unknown[] }).writeLog).toEqual([]);
 	});
 });

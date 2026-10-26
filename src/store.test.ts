@@ -515,3 +515,47 @@ describe("FinanceStore — category-rule provenance", () => {
 		expect(reloaded.transactions.find((t) => t.id === "a")?.categoryRuleId).toBe("rule-1");
 	});
 });
+
+describe("FinanceStore — write tracking", () => {
+	it("records nothing while no tracker is open, so an API that is off costs nothing", async () => {
+		const { store } = newStore();
+		await store.saveRules();
+		await store.saveAccounts();
+		expect((store as unknown as { writeLog: unknown[] }).writeLog).toEqual([]);
+	});
+
+	it("reports writes and removals made after the tracker opened, unique and in first-write order", async () => {
+		const { store } = newStore();
+		await store.importTransactions([tx({ id: "a", date: "2023-05-01" })]);
+		const tracker = store.trackWrites();
+		await store.saveRules();
+		// A replace-style rewrite removes the old ledger files and writes them back.
+		await store.rewriteAllLedgers();
+		await store.saveRules();
+		expect(tracker.written()).toEqual([`${FOLDER}/data/rules.json`, ledgerPath("manual", "2023")]);
+		tracker.stop();
+	});
+
+	it("lets trackers overlap, each seeing only what came after it, and drops the log when the last stops", async () => {
+		const { store } = newStore();
+		const outer = store.trackWrites();
+		await store.saveRules();
+		const inner = store.trackWrites();
+		await store.saveAccounts();
+		expect(inner.written()).toEqual([`${FOLDER}/data/accounts.json`]);
+		inner.stop();
+		inner.stop();
+		await store.saveCards();
+		expect(outer.written()).toEqual([`${FOLDER}/data/rules.json`, `${FOLDER}/data/accounts.json`, `${FOLDER}/data/cards.json`]);
+		outer.stop();
+		expect((store as unknown as { writeLog: unknown[] }).writeLog).toEqual([]);
+	});
+
+	it("leaves the revision alone when nothing is written", async () => {
+		const { store } = newStore();
+		const before = store.revision;
+		const tracker = store.trackWrites();
+		tracker.stop();
+		expect(store.revision).toBe(before);
+	});
+});
