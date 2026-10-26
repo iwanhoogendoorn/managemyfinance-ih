@@ -24,6 +24,8 @@ import { requireStore } from "./transactionsRoutes";
  *
  * GET  /reports             what can be generated: every report type, the formats each comes in, and
  *                           the format table (extension, content type)
+ * GET  /reports/generate    ?type=&period=&title=&format= plus the query's own fields (from, to, categoryIds, …)
+ *                           → the same reply as the POST, computed only: `written` is always []
  * POST /reports/generate    { type, period?, query?, title?, format?, write? }
  *                           → { type, format, period, fileName, contentType, content, written, ... }
  *
@@ -40,9 +42,14 @@ import { requireStore } from "./transactionsRoutes";
  * Only markdown is a note; the other formats are files to take out of Obsidian, which is the caller's
  * job once it has the content.
  *
- * Generating is a POST because it takes a body and can write, so with "Allow writes from other devices"
- * off it is refused for another device like every other POST — the safe reading of a request that may
- * write into the vault.
+ * Generating comes in two methods, split by whether anything is written. GET computes the report and
+ * hands it back, nothing more: it can't carry `write`, never touches the vault, and so — being a read —
+ * the pipeline lets another device call it while "Allow writes from other devices" is off, which is what
+ * a phone asking for this month's figures needs. POST does the same and can also save the note, so with
+ * that switch off it is refused for another device like every other POST. Both read their input into
+ * one GenerateRequest and run the one generator, so the same report asked for either way comes back
+ * identical, down to the 400s: a GET's query fields are the POST's `query` object spread flat into the
+ * query string, and its 400s name them bare (`from`) where the POST's say `query.from`.
  *
  * A report note is not finance data: the store doesn't write it, so it doesn't move `x-mmf-revision`
  * and repaints no view. It is still listed in `written`, as every file an API call writes is.
@@ -61,7 +68,7 @@ export type ReportFormat = keyof typeof REPORT_FORMATS;
 const FORMATS = Object.keys(REPORT_FORMATS) as ReportFormat[];
 
 /**
- * Every report type, as GET /reports lists it — and the table POST /reports/generate validates against,
+ * Every report type, as GET /reports lists it — and the table /reports/generate validates against,
  * so what is advertised and what is accepted can't drift apart.
  */
 export const REPORT_TYPES = [
@@ -130,6 +137,20 @@ const GENERATE_FIELDS: Fields = {
 	write: boolean(),
 };
 
+/**
+ * The body fields a GET's query string carries as themselves. `query` isn't one — its fields come bare,
+ * next to these — and neither is `write`, which a GET refuses by name rather than as an unknown.
+ */
+const GET_FIELDS: Fields = {
+	type: GENERATE_FIELDS.type,
+	period: GENERATE_FIELDS.period,
+	title: GENERATE_FIELDS.title,
+	format: GENERATE_FIELDS.format,
+};
+
+/** The query fields that are lists, so may be repeated in a query string — every other parameter is one value. */
+const LIST_PARAMS = ["categoryIds", "excludeCategoryIds", "accountIds"];
+
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const YEAR = /^\d{4}$/;
 
@@ -139,7 +160,25 @@ export function register(router: Router): void {
 		formats: FORMATS.map((format) => ({ format, ...REPORT_FORMATS[format] })),
 		queryFields: Object.keys(QUERY_FIELDS),
 	}));
+	router.get("/reports/generate", generateForGet);
 	router.post("/reports/generate", generateReport);
+}
+
+/** A generate request, read from a POST body or a GET query string, in the one shape the generator takes. */
+interface GenerateRequest {
+	type: ReportType;
+	format: ReportFormat;
+	period?: string;
+	title?: string;
+	query?: ReportQuery;
+	/** What the caller sent the query as, for the 400 a fixed report gives it: `query` in a body, its first field in a query string. */
+	querySentAs?: string;
+	/** Put before a query field's name in a 400: "query." in a body, where the fields sit inside `query`, nothing in a query string. */
+	queryPrefix: string;
+}
+
+function hasOwn(object: object, key: string): boolean {
+	return Object.prototype.hasOwnProperty.call(object, key);
 }
 
 interface Rendered {
@@ -155,38 +194,20 @@ interface Rendered {
 async function generateReport(ctx: RequestContext): Promise<unknown> {
 	const store = requireStore(ctx);
 	const changes = readFields(ctx.body, GENERATE_FIELDS, "create");
-	const type = changes.type as ReportType;
-	const format = (changes.format as ReportFormat | undefined) ?? "markdown";
+	const request: GenerateRequest = {
+		type: changes.type as ReportType,
+		format: (changes.format as ReportFormat | undefined) ?? "markdown",
+		period: changes.period as string | undefined,
+		title: changes.title as string | undefined,
+		query: changes.query as ReportQuery | undefined,
+		querySentAs: changes.query !== undefined ? "query" : undefined,
+		queryPrefix: "query.",
+	};
 	const write = changes.write === true;
-	const period = changes.period as string | undefined;
-	const spec = REPORT_TYPES.find((t) => t.type === type)!;
+	checkRequest(request);
+	if (write && request.format !== "markdown") throw new HttpError(400, "write saves the report as a note, so it needs format markdown");
 
-	if (type !== "custom" && changes.query !== undefined) {
-		throw new HttpError(400, "query applies to custom reports only — monthly and yearly reports take a period");
-	}
-	if (type !== "custom" && changes.title !== undefined) throw new HttpError(400, "title applies to custom reports only");
-	if (type === "custom" && period !== undefined) throw new HttpError(400, "A custom report takes its dates as query.from and query.to, not period");
-	if (type === "net-worth" && period !== undefined) throw new HttpError(400, "A net-worth report is as of today, so it takes no period");
-	if (!(spec.formats as readonly ReportFormat[]).includes(format)) {
-		throw new HttpError(400, `A ${type} report comes as ${spec.formats.join(", ")} only — ${format} is for custom reports`);
-	}
-	if (write && format !== "markdown") throw new HttpError(400, "write saves the report as a note, so it needs format markdown");
-
-	let rendered: Rendered;
-	if (type === "monthly") {
-		const month = period ?? currentMonth();
-		if (!MONTH.test(month)) throw new HttpError(400, "period must be a month as YYYY-MM for a monthly report");
-		rendered = { period: month, name: month, content: buildMonthlyReport(reportContext(ctx, store), month) };
-	} else if (type === "yearly") {
-		const year = period ?? String(new Date().getFullYear());
-		if (!YEAR.test(year)) throw new HttpError(400, "period must be a year as YYYY for a yearly report");
-		rendered = { period: year, name: year, content: buildYearlyReport(reportContext(ctx, store), year) };
-	} else if (type === "net-worth") {
-		rendered = { period: "today", name: "Net worth", content: buildNetWorthReport(reportContext(ctx, store)) };
-	} else {
-		rendered = await customReport(ctx, store, (changes.query ?? {}) as ReportQuery, changes.title as string | undefined, format);
-	}
-
+	const rendered = await renderReport(ctx, store, request);
 	const written = ctx.written();
 	if (write) {
 		const path = await writeReportNote(ctx.plugin.app, ctx.plugin.settings.dataFolder, rendered.name, rendered.content);
@@ -195,11 +216,127 @@ async function generateReport(ctx: RequestContext): Promise<unknown> {
 		// changed — but kept so a write here repaints like every other the moment that stops being true.
 		ctx.refresh();
 	}
+	return reportReply(request, rendered, written);
+}
 
-	const { extension, contentType } = REPORT_FORMATS[format];
+/**
+ * GET /reports/generate: the POST without the write. Nothing here can reach writeReportNote or the
+ * store's writers, so `written` is a literal [] rather than whatever the request tracked, and the
+ * revision can't move.
+ */
+async function generateForGet(ctx: RequestContext): Promise<unknown> {
+	const store = requireStore(ctx);
+	const request = readGenerateParams(ctx.query);
+	checkRequest(request);
+	return reportReply(request, await renderReport(ctx, store, request), []);
+}
+
+/**
+ * A GET's query string read as the POST body it stands for: `type`, `period`, `title` and `format` as
+ * themselves, the custom query's fields bare beside them, each through the same Field as the body's.
+ * A list field takes `categoryIds=a,b` or `categoryIds=a&categoryIds=b`, as /transactions takes
+ * `review`; a value left empty (`period=`) counts as not sent, as it does there.
+ *
+ * Every parameter is checked before any is read. An unknown one is a 400 naming it, for the reason an
+ * unknown body field is — `month=2024-02` for `period` would otherwise give this month's report and
+ * look like it had worked. `write` gets its own 400, so the caller is told where writing lives instead of
+ * being told the parameter doesn't exist. A single-valued parameter sent twice is a 400 too, rather than
+ * quietly taking one of the two.
+ */
+function readGenerateParams(params: URLSearchParams): GenerateRequest {
+	for (const name of new Set(params.keys())) {
+		if (name === "write") {
+			throw new HttpError(400, "write can't be sent with GET, which never writes — POST with write: true saves the note");
+		}
+		if (!hasOwn(GET_FIELDS, name) && !hasOwn(QUERY_FIELDS, name)) throw new HttpError(400, `Unknown parameter "${name}"`);
+		if (!LIST_PARAMS.includes(name) && params.getAll(name).length > 1) throw new HttpError(400, `${name} can be sent only once`);
+	}
+
+	const top: Record<string, unknown> = {};
+	for (const name of Object.keys(GET_FIELDS)) {
+		const value = params.get(name);
+		if (value !== null && value !== "") top[name] = value;
+	}
+	const fields: Record<string, unknown> = {};
+	for (const name of Object.keys(QUERY_FIELDS)) {
+		const value = queryParam(params, name);
+		if (value !== undefined) fields[name] = value;
+	}
+
+	const changes = readFields(top, GET_FIELDS, "create");
+	const sent = Object.keys(fields);
 	return {
-		type,
-		format,
+		type: changes.type as ReportType,
+		format: (changes.format as ReportFormat | undefined) ?? "markdown",
+		period: changes.period as string | undefined,
+		title: changes.title as string | undefined,
+		query: sent.length > 0 ? (readFields(fields, QUERY_FIELDS, "create") as ReportQuery) : undefined,
+		querySentAs: sent[0],
+		queryPrefix: "",
+	};
+}
+
+/**
+ * One query field's value as the JSON a body would have carried, for its Field to parse: a list for the
+ * list fields, true/false for `includeTransfers` — anything else left a string, so boolean() refuses it
+ * in the POST's own words — and a string for the rest. Undefined when it wasn't sent, or was sent empty.
+ */
+function queryParam(params: URLSearchParams, name: string): unknown {
+	if (LIST_PARAMS.includes(name)) {
+		const values = params
+			.getAll(name)
+			.flatMap((v) => v.split(","))
+			.map((v) => v.trim())
+			.filter((v) => v !== "");
+		return values.length > 0 ? values : undefined;
+	}
+	const value = params.get(name);
+	if (value === null || value === "") return undefined;
+	if (name === "includeTransfers" && (value === "true" || value === "false")) return value === "true";
+	return value;
+}
+
+/** What doesn't fit together in a request — the same rules, and the same 400s, whichever method sent it. */
+function checkRequest(request: GenerateRequest): void {
+	const { type, format, period, querySentAs, queryPrefix } = request;
+	const spec = REPORT_TYPES.find((t) => t.type === type)!;
+	if (type !== "custom" && querySentAs !== undefined) {
+		throw new HttpError(400, `${querySentAs} applies to custom reports only — monthly and yearly reports take a period`);
+	}
+	if (type !== "custom" && request.title !== undefined) throw new HttpError(400, "title applies to custom reports only");
+	if (type === "custom" && period !== undefined) {
+		throw new HttpError(400, `A custom report takes its dates as ${queryPrefix}from and ${queryPrefix}to, not period`);
+	}
+	if (type === "net-worth" && period !== undefined) throw new HttpError(400, "A net-worth report is as of today, so it takes no period");
+	if (!(spec.formats as readonly ReportFormat[]).includes(format)) {
+		throw new HttpError(400, `A ${type} report comes as ${spec.formats.join(", ")} only — ${format} is for custom reports`);
+	}
+}
+
+/** The generator both methods share: the report the request asks for, built by the app's own builders. */
+async function renderReport(ctx: RequestContext, store: FinanceStore, request: GenerateRequest): Promise<Rendered> {
+	const { type, period } = request;
+	if (type === "monthly") {
+		const month = period ?? currentMonth();
+		if (!MONTH.test(month)) throw new HttpError(400, "period must be a month as YYYY-MM for a monthly report");
+		return { period: month, name: month, content: buildMonthlyReport(reportContext(ctx, store), month) };
+	}
+	if (type === "yearly") {
+		const year = period ?? String(new Date().getFullYear());
+		if (!YEAR.test(year)) throw new HttpError(400, "period must be a year as YYYY for a yearly report");
+		return { period: year, name: year, content: buildYearlyReport(reportContext(ctx, store), year) };
+	}
+	if (type === "net-worth") {
+		return { period: "today", name: "Net worth", content: buildNetWorthReport(reportContext(ctx, store)) };
+	}
+	return customReport(ctx, store, request.query ?? {}, request.title, request.format, request.queryPrefix);
+}
+
+function reportReply(request: GenerateRequest, rendered: Rendered, written: string[]): unknown {
+	const { extension, contentType } = REPORT_FORMATS[request.format];
+	return {
+		type: request.type,
+		format: request.format,
 		period: rendered.period,
 		...(rendered.title !== undefined ? { title: rendered.title } : {}),
 		fileName: `${rendered.name}.${extension}`,
@@ -227,16 +364,18 @@ function reportContext(ctx: RequestContext, store: FinanceStore): ReportContext 
  * An id the query names that doesn't exist would quietly narrow the report to nothing — "spent €0 on
  * restaurants" for a category id with a typo in it — so it is a 400 instead, naming the id.
  */
-function checkIds(store: FinanceStore, query: ReportQuery): void {
+function checkIds(store: FinanceStore, query: ReportQuery, prefix: string): void {
 	for (const name of ["categoryIds", "excludeCategoryIds"] as const) {
 		for (const id of query[name] ?? []) {
-			if (id !== UNCATEGORIZED && !store.categories.some((c) => c.id === id)) throw new HttpError(400, `query.${name}: no category "${id}"`);
+			if (id !== UNCATEGORIZED && !store.categories.some((c) => c.id === id)) {
+				throw new HttpError(400, `${prefix}${name}: no category "${id}"`);
+			}
 		}
 	}
 	for (const id of query.accountIds ?? []) {
-		if (!store.accounts.some((a) => a.id === id)) throw new HttpError(400, `query.accountIds: no account "${id}"`);
+		if (!store.accounts.some((a) => a.id === id)) throw new HttpError(400, `${prefix}accountIds: no account "${id}"`);
 	}
-	if (query.from && query.to && query.from > query.to) throw new HttpError(400, "query.from must not be after query.to");
+	if (query.from && query.to && query.from > query.to) throw new HttpError(400, `${prefix}from must not be after ${prefix}to`);
 }
 
 async function customReport(
@@ -244,9 +383,10 @@ async function customReport(
 	store: FinanceStore,
 	query: ReportQuery,
 	title: string | undefined,
-	format: ReportFormat
+	format: ReportFormat,
+	queryPrefix: string
 ): Promise<Rendered> {
-	checkIds(store, query);
+	checkIds(store, query, queryPrefix);
 	const source: ReportSource = { transactions: store.transactions, categories: store.categories, accounts: store.accounts, fx: store.fx };
 	const result = runReport(source, query);
 	const exportCtx: ExportContext = {

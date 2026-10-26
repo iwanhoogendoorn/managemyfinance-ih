@@ -21,7 +21,8 @@ Notable changes to Manage My Finance. Versions match `manifest.json`.
   - Import: `POST /import` takes a bank export (base64 in the JSON body), with a dry run, plus import
     history and undo.
   - Reports: monthly, yearly, net worth and custom-query reports as markdown, CSV, Excel (SpreadsheetML)
-    or HTML, returned inline and optionally written as a note.
+    or HTML, returned inline. `GET /reports/generate` generates one read-only, including from another
+    device while remote writes are off; `POST /reports/generate` with `write: true` also saves it as a note.
   - Every write replies with `written`, the vault files it touched.
 - Security: a bearer token on every request (constant-time comparison, never logged); listens on
   `127.0.0.1` only unless Tailscale is chosen, which binds the tailnet address alone; writes from other

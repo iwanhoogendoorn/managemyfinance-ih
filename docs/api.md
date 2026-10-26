@@ -83,8 +83,9 @@ anything else is refused with `403` before any handler runs or any body is read:
 proxy. A request carrying `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `Tailscale-User-Login` counts
 as remote even though `tailscale serve` relays it from `127.0.0.1`.
 
-`POST /reports/generate` is a `POST`, so with this switch off a phone can't generate reports either. It
-takes a body and can write a note into the vault, and the switch takes the safe reading.
+Reports come both ways. With this switch off a phone can still generate any report through
+[`GET /reports/generate`](#get-reportsgenerate), which only computes it, but it can't save one as a note:
+that is `POST /reports/generate` with `"write": true`, and like every `POST` it is refused.
 
 ## Ideas you need
 
@@ -541,6 +542,42 @@ rather than adding a copy:
 A report note isn't finance data, so writing one doesn't move `x-mmf-revision`. Generating always replies
 `200`.
 
+#### `GET /reports/generate`
+
+The same report as the `POST`, computed and returned without writing anything, so it works from another
+device while **Allow writes from other devices** is off. It takes the body's fields as query parameters,
+with the `query` object's fields spread flat beside them:
+
+| parameter | `POST` body field |
+|---|---|
+| `type` (required), `period`, `title`, `format` | the same top-level field, same values |
+| `from`, `to`, `search`, `measure`, `direction` | `query.from`, `query.to`, … |
+| `includeTransfers` | `query.includeTransfers`: `true` or `false` |
+| `categoryIds`, `excludeCategoryIds`, `accountIds` | the same `query` list: comma-separated or repeated, like `review` on `GET /transactions` |
+
+There is no `write`: sending it is a `400` (`write can't be sent with GET, which never writes — POST with
+write: true saves the note`). So is any parameter not in the table (`Unknown parameter "month"`), and a
+single-valued one sent twice. A parameter sent empty (`period=`) counts as not sent. Everything else is
+checked exactly as for the `POST`, with the same `400`s, except that a query field is named bare: `from
+must not be after to`, `categoryIds: no category "cat-nope"`.
+
+```bash
+curl -s "$MMF/reports/generate?type=custom&format=csv&from=2024-01-01&to=2024-12-31&categoryIds=cat-food&direction=out" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The reply is the `POST`'s, field for field, and `written` is always empty. Nothing is saved and
+`x-mmf-revision` doesn't move:
+
+```json
+{ "type": "custom", "format": "csv", "period": "2024", "title": "Food · 2024", "fileName": "Food - 2024.csv",
+  "contentType": "text/csv; charset=utf-8",
+  "content": "﻿Date,Description,Counterparty,Account,Category,Subcategory,Amount,Currency,Notes\n2024-03-20,GROCER BROTHERS 0056,,Checking,Food,,-8.75,EUR,\n…",
+  "summary": { "count": 4, "spent": 64.55, "received": 0, "net": -64.55, "largest": 40.1, "months": 3,
+    "baseCurrency": "EUR", "mixedCurrencies": [] },
+  "written": [] }
+```
+
 ## A worked example
 
 ```bash
@@ -555,6 +592,10 @@ curl -s -X POST $MMF/review/recategorise -H "Authorization: Bearer $TOKEN" \
 curl -s -X POST $MMF/reports/generate -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"type":"custom","format":"xml","query":{"from":"2024-01-01","to":"2024-12-31","categoryIds":["cat-food"]}}' \
   | jq -r .content > food-2024.xls
+
+# the same, read-only, the way a phone can ask for it with remote writes off
+curl -s "$MMF/reports/generate?type=custom&format=xml&from=2024-01-01&to=2024-12-31&categoryIds=cat-food" \
+  -H "Authorization: Bearer $TOKEN" | jq -r .content > food-2024.xls
 
 # and last month's report as a note in the vault
 curl -s -X POST $MMF/reports/generate -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \

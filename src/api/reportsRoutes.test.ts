@@ -269,11 +269,11 @@ describe("POST /mmf/v1/reports/generate — refused", () => {
 		expect(body.summary!.count).toBeGreaterThan(0);
 	});
 
-	it("is a POST, so GET is a 405 that says so", async () => {
+	it("is a GET or a POST, so any other method is a 405 that says so", async () => {
 		const t = await makeLedgerPlugin();
-		const res = await send(t, crypto, { path: "/reports/generate" });
+		const res = await send(t, crypto, { method: "PUT", path: "/reports/generate", body: { type: "net-worth" } });
 		expect(res.status).toBe(405);
-		expect(res.headers.Allow).toBe("POST");
+		expect(res.headers.Allow).toBe("GET, HEAD, POST");
 	});
 
 	it("is refused for another device while remote writes are off, like every POST", async () => {
@@ -287,5 +287,157 @@ describe("POST /mmf/v1/reports/generate — refused", () => {
 
 	it("keeps the advertised types and the accepted ones in one table", () => {
 		expect(REPORT_TYPES.every((t) => t.formats.every((f) => f in REPORT_FORMATS))).toBe(true);
+	});
+});
+
+describe("GET /mmf/v1/reports/generate — read-only", () => {
+	function generateGet(t: LedgerFixture, params: string, extra: Partial<TestRequest> = {}) {
+		return send(t, crypto, { path: `/reports/generate?${params}`, ...extra });
+	}
+
+	async function generatedGet(t: LedgerFixture, params: string): Promise<Generated> {
+		const res = await generateGet(t, params);
+		expect(res.status, JSON.stringify(res.json)).toBe(200);
+		return res.json as Generated;
+	}
+
+	/** Each GET next to the POST body it stands for — the same report, so the same reply, byte for byte. */
+	const pairs: [string, string, Record<string, unknown>][] = [
+		["a monthly report", "type=monthly&period=2024-02", { type: "monthly", period: "2024-02" }],
+		["this month's report", "type=monthly", { type: "monthly" }],
+		["a yearly report", "type=yearly&period=2024&format=markdown", { type: "yearly", period: "2024", format: "markdown" }],
+		["the net-worth report", "type=net-worth", { type: "net-worth" }],
+		[
+			"a custom markdown report",
+			"type=custom&from=2024-01-01&to=2024-12-31&categoryIds=cat-food&direction=out",
+			{ type: "custom", query: { from: "2024-01-01", to: "2024-12-31", categoryIds: ["cat-food"], direction: "out" } },
+		],
+		[
+			"a custom CSV report with a title",
+			"type=custom&format=csv&title=Groceries&from=2024-01-01&to=2024-12-31&categoryIds=cat-food",
+			{ type: "custom", format: "csv", title: "Groceries", query: { from: "2024-01-01", to: "2024-12-31", categoryIds: ["cat-food"] } },
+		],
+		[
+			"a custom report over every query field",
+			"type=custom&format=html&from=2024-01-01&to=2024-03-31&categoryIds=cat-food,cat-rent&excludeCategoryIds=cat-fun" +
+				"&accountIds=acc-chk&search=grocer&measure=cash-flow&direction=all&includeTransfers=true",
+			{
+				type: "custom",
+				format: "html",
+				query: {
+					from: "2024-01-01",
+					to: "2024-03-31",
+					categoryIds: ["cat-food", "cat-rent"],
+					excludeCategoryIds: ["cat-fun"],
+					accountIds: ["acc-chk"],
+					search: "grocer",
+					measure: "cash-flow",
+					direction: "all",
+					includeTransfers: true,
+				},
+			},
+		],
+		["the whole ledger", "type=custom&format=xml", { type: "custom", format: "xml" }],
+	];
+
+	it.each(pairs)("gives %s exactly as the POST does", async (_name, params, body) => {
+		const t = await makeLedgerPlugin();
+		const viaGet = await generatedGet(t, params);
+		const viaPost = await generated(t, body);
+		expect(viaGet).toEqual(viaPost);
+		expect(viaGet.written).toEqual([]);
+	});
+
+	it("quotes a custom report's totals as the POST does", async () => {
+		const t = await makeLedgerPlugin();
+		const body = await generatedGet(t, "type=custom&from=2024-01-01&to=2024-12-31&categoryIds=cat-food&direction=out");
+		expect(body).toMatchObject({ type: "custom", period: "2024", title: "Food · 2024", fileName: "Food - 2024.md" });
+		expect(body.summary).toMatchObject({ count: 2, spent: 11.95, baseCurrency: "EUR" });
+	});
+
+	it("takes a list as repeated parameters or comma-separated, the same either way", async () => {
+		const t = await makeLedgerPlugin();
+		const repeated = await generatedGet(t, "type=custom&format=csv&categoryIds=cat-food&categoryIds=cat-rent");
+		const commas = await generatedGet(t, "type=custom&format=csv&categoryIds=cat-food,%20cat-rent");
+		const viaPost = await generated(t, { type: "custom", format: "csv", query: { categoryIds: ["cat-food", "cat-rent"] } });
+		expect(repeated).toEqual(viaPost);
+		expect(commas).toEqual(viaPost);
+	});
+
+	it("reads an empty parameter as one not sent", async () => {
+		const t = await makeLedgerPlugin();
+		expect(await generatedGet(t, "type=monthly&period=")).toEqual(await generated(t, { type: "monthly" }));
+	});
+
+	it("writes nothing: no note, no file, written [] and the revision unchanged", async () => {
+		const t = await makeLedgerPlugin();
+		const before = new Map(vaultFiles(t));
+		const revision = (await send(t, crypto, { path: "/health" })).headers["x-mmf-revision"];
+		const storeRevision = t.store.revision;
+		for (const params of ["type=monthly&period=2024-02", "type=net-worth", "type=custom&categoryIds=cat-food&title=Food%202024"]) {
+			const res = await generateGet(t, params);
+			expect(res.status).toBe(200);
+			expect((res.json as Generated).written).toEqual([]);
+			expect(res.headers["x-mmf-revision"]).toBe(revision);
+		}
+		expect(vaultFiles(t)).toEqual(before);
+		expect(Array.from(vaultFiles(t).keys()).filter((p) => p.startsWith("TestFinance/reports/"))).toEqual([]);
+		expect(t.store.revision).toBe(storeRevision);
+		expect(t.refreshes()).toBe(0);
+	});
+
+	it("is allowed for another device while remote writes are off, where the POST is still refused", async () => {
+		const t = await makeLedgerPlugin();
+		t.settings.apiBind = "tailscale";
+		expect(t.settings.apiAllowRemoteWrites).toBeFalsy();
+		const phone = { remoteAddress: "100.100.1.2" };
+		const res = await generateGet(t, "type=monthly&period=2024-02", phone);
+		expect(res.status).toBe(200);
+		expect((res.json as Generated).content).toBe(buildMonthlyReport(commandContext(t), "2024-02"));
+		expect((await generate(t, { type: "monthly", period: "2024-02" }, phone)).status).toBe(403);
+		// Relayed by `tailscale serve` from loopback, it still counts as another device — and is still a read.
+		const relayed = { headers: { "x-forwarded-for": "100.100.1.2" } };
+		expect((await generateGet(t, "type=net-worth", relayed)).status).toBe(200);
+		expect((await generate(t, { type: "net-worth" }, relayed)).status).toBe(403);
+	});
+
+	it("needs the token like every other route", async () => {
+		const t = await makeLedgerPlugin();
+		expect((await generateGet(t, "type=net-worth", { token: null })).status).toBe(401);
+	});
+
+	const refused: [string, string, string][] = [
+		["write=true", "type=monthly&write=true", "write can't be sent with GET, which never writes — POST with write: true saves the note"],
+		["write=false", "type=monthly&write=false", "write can't be sent with GET, which never writes — POST with write: true saves the note"],
+		["an unknown parameter", "type=monthly&month=2024-02", 'Unknown parameter "month"'],
+		["query, which a GET sends flat", "type=custom&query=food", 'Unknown parameter "query"'],
+		["no type", "period=2024-02", "type is required"],
+		["an empty type", "type=", "type is required"],
+		["an unknown type", "type=weekly", "type must be one of monthly, yearly, net-worth, custom"],
+		["a type sent twice", "type=monthly&type=yearly", "type can be sent only once"],
+		["an unknown format", "type=custom&format=pdf", "format must be one of markdown, csv, xml, html"],
+		["a month that doesn't exist", "type=monthly&period=2024-13", "period must be a month as YYYY-MM for a monthly report"],
+		["a year that isn't one", "type=yearly&period=24", "period must be a year as YYYY for a yearly report"],
+		["a period on net worth", "type=net-worth&period=2024", "A net-worth report is as of today, so it takes no period"],
+		["a period on a custom report", "type=custom&period=2024", "A custom report takes its dates as from and to, not period"],
+		["a query field on a fixed report", "type=monthly&from=2024-01-01", "from applies to custom reports only — monthly and yearly reports take a period"],
+		["a title on a fixed report", "type=yearly&title=Mine", "title applies to custom reports only"],
+		["CSV of a fixed report", "type=monthly&format=csv", "A monthly report comes as markdown only — csv is for custom reports"],
+		["a date that doesn't exist", "type=custom&from=2024-02-30", "from must be a date as YYYY-MM-DD"],
+		["from after to", "type=custom&from=2024-03-01&to=2024-02-01", "from must not be after to"],
+		["a bad direction", "type=custom&direction=sideways", "direction must be one of all, out, in"],
+		["includeTransfers that isn't true or false", "type=custom&includeTransfers=yes", "includeTransfers must be true or false"],
+		["an unknown category", "type=custom&categoryIds=cat-food,cat-nope", 'categoryIds: no category "cat-nope"'],
+		["an unknown excluded category", "type=custom&excludeCategoryIds=cat-nope", 'excludeCategoryIds: no category "cat-nope"'],
+		["an unknown account", "type=custom&accountIds=acc-nope", 'accountIds: no account "acc-nope"'],
+	];
+
+	it.each(refused)("refuses %s with a 400 that says why", async (_name, params, error) => {
+		const t = await makeLedgerPlugin();
+		const before = new Map(vaultFiles(t));
+		const res = await generateGet(t, params);
+		expect(res.status).toBe(400);
+		expect(res.json).toEqual({ error });
+		expect(vaultFiles(t)).toEqual(before);
 	});
 });
