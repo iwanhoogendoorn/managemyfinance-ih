@@ -14,7 +14,7 @@ module, and behaves exactly as it did before the API existed.
 Vault settings (Obsidian's Settings → *Manage My Finance*) → **Local API**:
 
 1. Turn on **Enable local API**. A token is generated the first time.
-2. Copy the token (the eye shows it, the copy button copies it). Change the port if 27128 is taken.
+2. Copy the token (the eye shows it, the copy button copies it). Change the port if 27130 is taken.
 
 By default it listens on `127.0.0.1` only, so nothing else on the network can reach it, and Obsidian
 has to be running with the vault open. **Listen on** can widen that to your Tailscale address; see
@@ -26,7 +26,7 @@ explains why it isn't available and the plugin never tries to start a server.
 ## Base URL and versioning
 
 ```
-http://127.0.0.1:27128/mmf/v1
+http://127.0.0.1:27130/mmf/v1
 ```
 
 Every route lives under `/mmf/v1`. `GET /health` reports `"api": 1`. That number goes up only when a
@@ -34,7 +34,7 @@ change would break an existing client; new fields in a response and new routes d
 should ignore fields it doesn't know.
 
 ```bash
-export MMF=http://127.0.0.1:27128/mmf/v1
+export MMF=http://127.0.0.1:27130/mmf/v1
 export TOKEN=…            # from Settings → Local API
 curl -s $MMF/health -H "Authorization: Bearer $TOKEN"
 ```
@@ -611,7 +611,7 @@ mesh between your own devices, so nothing is opened to the internet and nothing 
 2. Settings → **Local API** → **Listen on** → *Tailscale (this computer's 100.x address)*. The plugin finds
    the computer's Tailscale IPv4 (in `100.64.0.0/10`, for example `100.101.102.103`) and binds to that
    address only. If there isn't one, it says so and falls back to `127.0.0.1`.
-3. Use `http://100.101.102.103:27128/mmf/v1` and the token on the other device. It can read straight
+3. Use `http://100.101.102.103:27130/mmf/v1` and the token on the other device. It can read straight
    away; turn on **Allow writes from other devices** only if it should also change things.
 
 Traffic between the devices is encrypted by WireGuard, and every request still needs the token.
@@ -620,7 +620,7 @@ Traffic between the devices is encrypted by WireGuard, and every request still n
 the API on `127.0.0.1` and let Tailscale terminate HTTPS with a certificate for the computer's tailnet name:
 
 ```bash
-tailscale serve --bg --https=443 http://127.0.0.1:27128
+tailscale serve --bg --https=443 http://127.0.0.1:27130
 # → https://<machine>.<tailnet>.ts.net/mmf/v1   (Tailscale prints the exact name)
 tailscale serve status
 tailscale serve reset     # stop

@@ -758,7 +758,7 @@ export class FinanceSettingTab extends PluginSettingTab {
 			.setDesc(`1024–65535. Default ${DEFAULT_API_PORT}.`)
 			.addText((t) => {
 				t.setValue(String(port));
-				// On commit (Enter or leaving the field) rather than per keystroke: typing "27128" would
+				// On commit (Enter or leaving the field) rather than per keystroke: typing "27130" would
 				// otherwise restart the server on port 2, then 27, then 271…
 				t.inputEl.addEventListener("change", () => {
 					const next = Number(t.getValue().trim());

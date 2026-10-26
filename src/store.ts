@@ -153,7 +153,7 @@ export type ApiBindMode = "loopback" | "tailscale";
 
 /** The local API's defaults, read with `??` wherever a setting is used — like every optional field
  *  above, so a data.json written before the API existed needs no migration. */
-export const DEFAULT_API_PORT = 27128;
+export const DEFAULT_API_PORT = 27130;
 export const DEFAULT_API_BIND: ApiBindMode = "loopback";
 
 export const DEFAULT_SETTINGS: FinanceSettings = {

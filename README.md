@@ -135,7 +135,7 @@ TABLE income, expenses, savings_rate FROM "Manage My Finance/reports" WHERE peri
 ## Local API (opt-in)
 
 **Off by default.** Turned on in **Vault settings → Local API**, the plugin serves this vault's
-finances as JSON at `http://127.0.0.1:27128/mmf/v1`. Scripts, shortcuts and AI agents can then read the
+finances as JSON at `http://127.0.0.1:27130/mmf/v1`. Scripts, shortcuts and AI agents can then read the
 ledger, work the review queue, manage accounts, categories, rules and merchant memory, import a bank
 export, and generate reports. They do it through the same code the buttons run, never by editing the
 data files behind the plugin's back.

@@ -31,6 +31,8 @@ Notable changes to Manage My Finance. Versions match `manifest.json`.
 
 ### Changed
 
+- The local API's default port is now **27130** (was 27128, which clashed with another local plugin).
+  A port you set yourself in Vault settings → Local API is kept.
 - The import wizard's pipeline (read, map, parse, de-duplicate, categorize, write) now lives in a
   UI-free module, `src/import/importService.ts`, which the wizard and `POST /import` share. The wizard's
   screens and results are unchanged.
