@@ -9,3 +9,5 @@
  * Keep the list alphabetical. Two modules claiming the same METHOD + path throws at startup.
  */
 export { register as health } from "./health";
+export { register as review } from "./reviewRoutes";
+export { register as transactions } from "./transactionsRoutes";
