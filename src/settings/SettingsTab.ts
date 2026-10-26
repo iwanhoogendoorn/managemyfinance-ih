@@ -10,6 +10,7 @@ import {
 	testProvider,
 } from "../ai/provider";
 import { buildMatchPrompt } from "../ai/matchPrompt";
+import { AUDIT_NOTE } from "../api/audit";
 import { generateToken } from "../api/auth";
 import { ManageRulesModal } from "../modals/ManageRulesModal";
 import { checkConsistency, type Issue } from "../consistency";
@@ -800,6 +801,24 @@ export class FinanceSettingTab extends PluginSettingTab {
 		this.help(
 			writesSetting,
 			"With this off, any request that could change data and didn't come from this computer is refused before it does anything. A request relayed by `tailscale serve` counts as coming from another device, even though the proxy itself runs here."
+		);
+
+		const scopesSetting = new Setting(group.content)
+			.setName("Remote write scopes")
+			.setDesc(
+				settings.apiAllowRemoteWrites
+					? "Has no effect while “Allow writes from other devices” is on — that already allows every write."
+					: "Lets other devices import a file, set a transaction's category or review status, and undo an import — nothing else."
+			)
+			.addToggle((t) =>
+				t.setValue(!!settings.apiRemoteWriteScopes).onChange(async (v) => {
+					settings.apiRemoteWriteScopes = v;
+					await apply();
+				})
+			);
+		this.help(
+			scopesSetting,
+			`For a bot or a phone that brings in bank exports and files them, without giving it everything. Allowed from another device: POST /import (dry runs too), PATCH /transactions/:id with only categoryId and review, and POST /imports/:batchId/undo. Every other write is refused with 403, and so is any other field. Every write from another device — allowed or refused — is logged to “${AUDIT_NOTE}” in your finance data folder.`
 		);
 
 		// ---- token ------------------------------------------------------------

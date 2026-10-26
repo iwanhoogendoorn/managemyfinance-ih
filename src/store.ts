@@ -147,6 +147,10 @@ export interface FinanceSettings {
 	/** Whether a client on another device may change anything. Off: every request other than GET/HEAD
 	 *  that didn't come from this machine is refused with 403 before any handler runs. */
 	apiAllowRemoteWrites?: boolean;
+	/** The narrow alternative to apiAllowRemoteWrites: with that off and this on, another device may
+	 *  make only the writes in src/api/scopes.ts — import a file, set a row's category or review status,
+	 *  undo an import — and every one of them is logged to the audit note (src/api/audit.ts). */
+	apiRemoteWriteScopes?: boolean;
 }
 
 export type ApiBindMode = "loopback" | "tailscale";
@@ -176,6 +180,7 @@ export const DEFAULT_SETTINGS: FinanceSettings = {
 	apiPort: DEFAULT_API_PORT,
 	apiBind: DEFAULT_API_BIND,
 	apiAllowRemoteWrites: false,
+	apiRemoteWriteScopes: false,
 };
 
 const TX_COLUMNS: (keyof Transaction)[] = [

@@ -6,7 +6,8 @@ import { IBAN_BEARING_FORMATS } from "../import/detect";
 import {
 	batchFormatLabel,
 	categorizeImport,
-	countDuplicates,
+	PROBABLE_DUPLICATE_DAYS,
+	splitDuplicates,
 	fileIbans,
 	FORMAT_LABEL,
 	mappableHeaders as headersToMap,
@@ -570,10 +571,16 @@ export function openImportWizard(plugin: FinancePlugin): void {
 			render: (c) => {
 				c.createEl("h3", { text: "Ready to import" });
 				const stats = c.createDiv({ cls: "fp-import-stats" });
-				const dupes = countDuplicates(parsed, store.existingIds());
+				const split = splitDuplicates(parsed, store.transactions);
 				stats.createDiv({ cls: "fp-import-stat", text: `${parsed.length} rows parsed` });
-				stats.createDiv({ cls: "fp-import-stat", text: `${parsed.length - dupes} new` });
-				stats.createDiv({ cls: "fp-import-stat", text: `${dupes} duplicate — will be skipped` });
+				stats.createDiv({ cls: "fp-import-stat", text: `${split.incoming.length} new` });
+				stats.createDiv({ cls: "fp-import-stat", text: `${split.exact.length + split.probable.length} duplicate — will be skipped` });
+				if (split.probable.length > 0) {
+					c.createEl("p", {
+						cls: "fp-step-desc",
+						text: `${split.probable.length} of those ${split.probable.length === 1 ? "is a row" : "are rows"} you already have from another export — same account, amount and merchant, dated within ${PROBABLE_DUPLICATE_DAYS} days — so ${split.probable.length === 1 ? "it's" : "they're"} skipped as well.`,
+					});
+				}
 				if (repeatedRows > 0) {
 					c.createEl("p", {
 						cls: "fp-step-desc",
@@ -587,11 +594,13 @@ export function openImportWizard(plugin: FinancePlugin): void {
 			},
 			nextLabel: "Import",
 			onNext: async () => {
-				const result = await store.importTransactions(parsed, {
-					fileName: selectedFile ?? undefined,
-					format: batchFormatLabel(tables),
-				});
-				new Notice(`Imported ${result.added} new transactions (${result.skipped} duplicates skipped)`);
+				// Worked out again rather than reused from the screen: the ledger may have moved since.
+				const held = new Set(splitDuplicates(parsed, store.transactions).probable.map((p) => p.row));
+				const result = await store.importTransactions(
+					parsed.filter((t) => !held.has(t)),
+					{ fileName: selectedFile ?? undefined, format: batchFormatLabel(tables) }
+				);
+				new Notice(`Imported ${result.added} new transactions (${result.skipped + held.size} duplicates skipped)`);
 				plugin.refreshViews();
 			},
 		},

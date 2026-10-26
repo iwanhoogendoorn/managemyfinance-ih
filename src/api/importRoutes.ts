@@ -34,7 +34,8 @@ import { HttpError, reply, type RequestContext, type Router } from "./router";
  * GET /imports                     every import run, newest first, with how many of its rows remain
  * GET /imports/:batchId            one run, with the rows it brought in that are still in the ledger
  * POST /imports/:batchId/undo      deletes every row the run created and forgets it — Settings →
- *                                  Import history's "Undo import", including rows edited since
+ *                                  Import history's "Undo import", including rows edited since.
+ *                                  Also served as POST /import/:batchId/undo.
  *
  * `written` is the vault-relative paths a call wrote or removed — the ledger files and the import
  * history — so a client can re-read exactly those. Row counts are their own fields: `imported` and
@@ -52,13 +53,18 @@ export function register(router: Router): void {
 		const batch = findBatch(store, ctx.params.batchId);
 		return { ...batchView(store, batch), transactions: store.transactionsInBatch(batch.id) };
 	});
-	router.post("/imports/:batchId/undo", async (ctx) => {
-		const store = ctx.store();
-		const batch = findBatch(store, ctx.params.batchId);
-		const removed = await store.undoImportBatch(batch.id);
-		ctx.refresh();
-		return { batchId: batch.id, removed, written: ctx.written() };
-	});
+	router.post("/imports/:batchId/undo", undoImport);
+	// The same undo under the singular /import prefix — the spelling a client that just called POST
+	// /import tends to reach for. Both are in the remote write scopes.
+	router.post("/import/:batchId/undo", undoImport);
+}
+
+async function undoImport(ctx: RequestContext): Promise<unknown> {
+	const store = ctx.store();
+	const batch = findBatch(store, ctx.params.batchId);
+	const removed = await store.undoImportBatch(batch.id);
+	ctx.refresh();
+	return { batchId: batch.id, removed, written: ctx.written() };
 }
 
 function batchView(store: FinanceStore, batch: ImportBatch): ImportBatch & { remaining: number } {
@@ -145,13 +151,22 @@ async function importFile(ctx: RequestContext): Promise<unknown> {
 		uncategorised: outcome.incoming.filter((t) => !t.categoryId).length,
 	};
 	if (req.dryRun) {
+		// Everything a client needs to decide whether to send it for real: the rows that would be added,
+		// each with the category the rules and merchant memory would give it (and that category's name,
+		// so a bot can say it back), and the rows it would skip because the ledger already has them.
+		const nameOf = new Map(store.categories.map((c) => [c.id, c.name]));
+		const incoming = new Set(outcome.incoming);
 		return {
 			...summary,
 			batchId: null,
 			imported: outcome.incoming.length,
 			duplicates: outcome.duplicates,
 			written: ctx.written(),
-			preview: outcome.incoming,
+			preview: outcome.incoming.map((t) => ({ ...t, categoryName: t.categoryId ? nameOf.get(t.categoryId) ?? null : null })),
+			duplicateRows: outcome.parsed.filter((t) => !incoming.has(t)),
+			// The part of duplicateRows caught under another id — a row brought in before through a
+			// different export — with the ledger row each was taken to be.
+			probableDuplicates: outcome.probableDuplicates.map((p) => ({ row: p.row, matches: p.matches })),
 		};
 	}
 

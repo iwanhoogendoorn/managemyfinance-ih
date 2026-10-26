@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { App } from "obsidian";
 import { DEFAULT_SETTINGS, FinanceStore } from "../store";
-import type { Account } from "../types";
+import type { Account, Transaction } from "../types";
 import { canonicalColumnMapping } from "./canonical";
 import {
 	categorizeImport,
 	countDuplicates,
+	splitDuplicates,
 	fileIbans,
 	ImportError,
 	parseImportTables,
@@ -277,5 +278,51 @@ describe("runImport", () => {
 		await expect(runImport(store, request({ fileName: "e.csv", data: bytes("Date,Description,Amount\n") }), { applyLowConfidence: true })).rejects.toThrow(
 			/No transactions/
 		);
+	});
+});
+
+describe("splitDuplicates", () => {
+	const row = (id: string, date: string, amount: number, description: string, extra: Partial<Transaction> = {}): Transaction =>
+		({ id, date, amount, description, accountId: "acc-r", currency: "EUR", source: "revolut", ...extra }) as Transaction;
+
+	it("catches a row brought in before through another export, under another id and a date or so earlier", () => {
+		const ledger = [row("g-1", "2025-12-30", -77.98, "Bambu Lab", { source: "generic" })];
+		const split = splitDuplicates([row("r-1", "2026-01-02", -77.98, "Bambu Lab")], ledger);
+		expect(split.incoming).toEqual([]);
+		expect(split.probable).toEqual([{ row: expect.objectContaining({ id: "r-1" }), matches: ledger[0] }]);
+	});
+
+	it.each([
+		["a different amount", row("r-1", "2026-01-02", -77.99, "Bambu Lab")],
+		["more than five days apart", row("r-1", "2026-01-05", -77.98, "Bambu Lab")],
+		["the same charge a week later", row("r-1", "2026-01-06", -77.98, "Bambu Lab")],
+		["a different merchant", row("r-1", "2026-01-02", -77.98, "Prusa Research")],
+		["a different account", row("r-1", "2026-01-02", -77.98, "Bambu Lab", { accountId: "acc-other" })],
+		["a different currency", row("r-1", "2026-01-02", -77.98, "Bambu Lab", { currency: "USD" })],
+		["no date", row("r-1", "", -77.98, "Bambu Lab")],
+	])("keeps a row with %s", (_why, incoming) => {
+		const split = splitDuplicates([incoming], [row("g-1", "2025-12-30", -77.98, "Bambu Lab", { source: "generic" })]);
+		expect(split.incoming).toHaveLength(1);
+		expect(split.probable).toEqual([]);
+	});
+
+	it("matches one to one: three coffees in the file against two in the ledger import the third", () => {
+		const ledger = [row("g-1", "2026-03-01", -3.2, "Coffee Bar", { source: "generic" }), row("g-2", "2026-03-01", -3.2, "Coffee Bar", { source: "generic" })];
+		const file = [row("r-1", "2026-03-02", -3.2, "Coffee Bar"), row("r-2", "2026-03-02", -3.2, "Coffee Bar"), row("r-3", "2026-03-02", -3.2, "Coffee Bar")];
+		const split = splitDuplicates(file, ledger);
+		expect(split.probable.map((p) => p.matches.id).sort()).toEqual(["g-1", "g-2"]);
+		expect(split.incoming.map((t) => t.id)).toEqual(["r-3"]);
+	});
+
+	it("never re-uses a ledger row the file already matched by id", () => {
+		const ledger = [row("same", "2026-03-01", -3.2, "Coffee Bar")];
+		const split = splitDuplicates([row("same", "2026-03-01", -3.2, "Coffee Bar"), row("same~2", "2026-03-01", -3.2, "Coffee Bar")], ledger);
+		expect(split.exact.map((t) => t.id)).toEqual(["same"]);
+		expect(split.incoming.map((t) => t.id)).toEqual(["same~2"]);
+	});
+
+	it("takes the nearest date when more than one ledger row would do", () => {
+		const ledger = [row("far", "2026-03-01", -10, "Shop"), row("near", "2026-03-03", -10, "Shop")];
+		expect(splitDuplicates([row("in", "2026-03-04", -10, "Shop")], ledger).probable[0].matches.id).toBe("near");
 	});
 });

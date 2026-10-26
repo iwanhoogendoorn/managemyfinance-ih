@@ -10,6 +10,7 @@ import { applyColumnMapping, COLUMN_MAPPING_FIELDS, guessColumnMapping, type Col
 import { countRepeatedIds, withOccurrenceSuffixes } from "./dedupe";
 import { detectFileFormat, detectFormat, IBAN_BEARING_FORMATS, type DetectedFileFormat, type DetectedFormat } from "./detect";
 import { ingAccountIbans, parseIngRows } from "./ingParser";
+import { merchantKey } from "./merchantKey";
 import { applyMemory, applyPendingSuggestions, learnFromHistory } from "./merchantMemory";
 import { parseMt940 } from "./mt940";
 import { parseOfx } from "./ofx";
@@ -254,6 +255,104 @@ export function countDuplicates(parsed: Transaction[], existing: Set<string>): n
 	return parsed.filter((t) => existing.has(t.id)).length;
 }
 
+/** How far apart two dates may be and still be the same booking — see splitDuplicates. Wide enough for
+ *  a card hold (Revolut: started on the 1st, completed on the 5th), short of a week, so a weekly charge
+ *  at the same shop for the same amount is never taken for last week's. */
+export const PROBABLE_DUPLICATE_DAYS = 5;
+
+export interface ProbableDuplicate {
+	/** The incoming row that won't be imported. */
+	row: Transaction;
+	/** The ledger row it was taken to be. */
+	matches: Transaction;
+}
+
+export interface DuplicateSplit {
+	/** Rows to add. */
+	incoming: Transaction[];
+	/** Rows whose id is already in the ledger. */
+	exact: Transaction[];
+	/** Rows with a new id that are almost certainly a row the ledger already has. */
+	probable: ProbableDuplicate[];
+}
+
+function dayNumber(date: string): number | undefined {
+	const ms = Date.parse(`${date.slice(0, 10)}T00:00:00Z`);
+	return Number.isNaN(ms) ? undefined : Math.round(ms / 86400000);
+}
+
+/** Same merchant: the merchant key when both rows have one, the description otherwise. */
+function sameMerchant(a: Transaction, b: Transaction): boolean {
+	const ka = merchantKey(a);
+	const kb = merchantKey(b);
+	if (ka && kb) return ka === kb;
+	const norm = (t: Transaction) => `${t.description ?? ""}`.trim().toLowerCase();
+	return norm(a) !== "" && norm(a) === norm(b);
+}
+
+/**
+ * Which parsed rows are new, which the ledger has by id, and which it has under another id.
+ *
+ * An id is a hash of the row's content *and its source*, so the same booking brought in twice through
+ * two routes — a bank's own export once, the generic CSV mapping another time — gets two ids and used to
+ * land twice. The two routes often disagree on the date as well: Revolut's profile reads the completed
+ * date, a hand-mapped CSV usually the started one, up to several days earlier for a card hold. So a row with a new id is
+ * still a duplicate when the ledger has a row on the same account, in the same currency, for the same
+ * amount to the cent, from the same merchant, within PROBABLE_DUPLICATE_DAYS of it.
+ *
+ * Matching is one-to-one and nearest date first, and a ledger row the file already matched by id is
+ * never matched again: three identical coffees in the file against two in the ledger leave the third
+ * to import, because two coffees at the same shop on the same day really are two coffees. Undated
+ * rows are only ever matched by id.
+ */
+export function splitDuplicates(parsed: Transaction[], ledger: Transaction[]): DuplicateSplit {
+	const byId = new Map(ledger.map((t) => [t.id, t]));
+	const claimed = new Set<string>();
+	const exact: Transaction[] = [];
+	const rest: Transaction[] = [];
+	for (const t of parsed) {
+		if (byId.has(t.id)) {
+			exact.push(t);
+			claimed.add(t.id);
+		} else rest.push(t);
+	}
+	if (rest.length === 0) return { incoming: [], exact, probable: [] };
+
+	const bucketKey = (t: Transaction) => `${t.accountId}|${(t.currency || "").toUpperCase()}|${Math.round(t.amount * 100)}`;
+	const buckets = new Map<string, Transaction[]>();
+	for (const t of ledger) {
+		if (!t.date || claimed.has(t.id)) continue;
+		const key = bucketKey(t);
+		const list = buckets.get(key);
+		if (list) list.push(t);
+		else buckets.set(key, [t]);
+	}
+
+	const incoming: Transaction[] = [];
+	const probable: ProbableDuplicate[] = [];
+	for (const t of rest) {
+		const day = t.date ? dayNumber(t.date) : undefined;
+		let best: Transaction | undefined;
+		let bestGap = Infinity;
+		if (day !== undefined) {
+			for (const candidate of buckets.get(bucketKey(t)) ?? []) {
+				if (claimed.has(candidate.id)) continue;
+				const other = dayNumber(candidate.date);
+				if (other === undefined) continue;
+				const gap = Math.abs(other - day);
+				if (gap > PROBABLE_DUPLICATE_DAYS || gap >= bestGap || !sameMerchant(t, candidate)) continue;
+				best = candidate;
+				bestGap = gap;
+			}
+		}
+		if (best) {
+			claimed.add(best.id);
+			probable.push({ row: t, matches: best });
+		} else incoming.push(t);
+	}
+	return { incoming, exact, probable };
+}
+
 /** The batch's format label: what Settings → Import history shows for a run with no file name. */
 export function batchFormatLabel(tables: DetectedTable[]): string | undefined {
 	return tables[0] ? FORMAT_LABEL[tables[0].format] : undefined;
@@ -294,8 +393,10 @@ export interface ImportOutcome {
 	mapping: ColumnMapping;
 	parsed: Transaction[];
 	repeatedRows: number;
-	/** Parsed rows already in the ledger. */
+	/** Parsed rows already in the ledger — by id, or probably (see splitDuplicates). */
 	duplicates: number;
+	/** The part of `duplicates` caught by the probable match rather than by id, with the row each matched. */
+	probableDuplicates: ProbableDuplicate[];
 	/** The rows that are (or, on a dry run, would be) new. */
 	incoming: Transaction[];
 	categorization: ImportCategorization;
@@ -388,8 +489,8 @@ export async function runImport(
 	if (parsed.length === 0) throw new ImportError("No transactions found in this file");
 
 	const categorization = categorizeImport(store, parsed, { applyLowConfidence: opts.applyLowConfidence, dryRun: req.dryRun });
-	const existing = store.existingIds();
-	const incoming = parsed.filter((t) => !existing.has(t.id));
+	const split = splitDuplicates(parsed, store.transactions);
+	const incoming = split.incoming;
 	const outcome: ImportOutcome = {
 		fileName: req.fileName,
 		format: batchFormatLabel(tables),
@@ -398,6 +499,7 @@ export async function runImport(
 		parsed,
 		repeatedRows,
 		duplicates: parsed.length - incoming.length,
+		probableDuplicates: split.probable,
 		incoming,
 		categorization,
 		added: 0,
@@ -406,6 +508,11 @@ export async function runImport(
 	if (req.dryRun) return outcome;
 
 	if (categorization.merchantsChanged) await store.saveMerchants();
-	const result = await store.importTransactions(parsed, { fileName: req.fileName, format: outcome.format });
-	return { ...outcome, batchId: result.batchId, added: result.added, skipped: result.skipped };
+	// Probable duplicates are held back here; importTransactions itself only knows ids.
+	const held = new Set(split.probable.map((p) => p.row));
+	const result = await store.importTransactions(
+		parsed.filter((t) => !held.has(t)),
+		{ fileName: req.fileName, format: outcome.format }
+	);
+	return { ...outcome, batchId: result.batchId, added: result.added, skipped: result.skipped + held.size };
 }

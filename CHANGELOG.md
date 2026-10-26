@@ -28,8 +28,28 @@ Notable changes to Manage My Finance. Versions match `manifest.json`.
   `127.0.0.1` only unless Tailscale is chosen, which binds the tailnet address alone; writes from other
   devices are refused unless **Allow writes from other devices** is on, including requests relayed by
   `tailscale serve`; never started on mobile.
+- **Remote write scopes** (Vault settings → Local API), off by default and separate from "Allow writes
+  from other devices": another device may then import a file (`POST /import`, dry runs included), change
+  a transaction's `categoryId` and `review` only (`PATCH /transactions/:id`), and undo an import (`POST
+  /imports/:batchId/undo`, also served as `POST /import/:batchId/undo`). Every other write from another
+  device, and any other `PATCH` field, is refused with `403`.
+- **API audit log**: every write from another device — allowed or refused — is appended to
+  `API audit log.md` in the finance data folder, with the time, endpoint, client, ids and every ledger
+  row it changed (before and after), including rows merchant memory filed along the way.
+- `PATCH /transactions/:id` accepts `review` (`new`, `approved`, `flagged`); approving does what
+  `POST /review/approve` does for one row.
+- A dry-run import also returns `duplicateRows`, `probableDuplicates`, and each previewed row's
+  `categoryName`.
 
 ### Changed
+
+- **Import de-duplication catches a row brought in before through a different export.** A transaction's
+  id includes its source, so the same booking imported once through a bank's own profile and once through
+  the generic CSV mapping got two ids and landed twice — usually a few days apart too, since one reads the
+  completed date and the other the started date. Both the wizard and `POST /import` now also skip a row
+  when the ledger has one on the same account, in the same currency, for the same amount, from the same
+  merchant, within 5 days, matched one to one so genuinely repeated charges still import. The wizard says
+  how many rows it skipped this way.
 
 - The local API's default port is now **27130** (was 27128, which clashed with another local plugin).
   A port you set yourself in Vault settings → Local API is kept.

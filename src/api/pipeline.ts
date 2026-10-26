@@ -1,7 +1,9 @@
 import type FinancePlugin from "../main";
 import { bearerToken, tokenMatches, type TokenCrypto } from "./auth";
+import { appendAudit, diffLedger, snapshotLedger, type AuditEntry } from "./audit";
 import { isClientAllowed, isLocalRequest, isReadMethod } from "./bind";
 import { HttpError, Reply, type RequestContext, type Router } from "./router";
+import { outOfScopeFields, SCOPED_PATCH_FIELDS, scopedRoute } from "./scopes";
 
 /**
  * Everything between "a request arrived" and "this is the response", with no socket in sight.
@@ -11,7 +13,8 @@ import { HttpError, Reply, type RequestContext, type Router } from "./router";
  * the remote-write switch, the error format, the headers — be tested by calling a function.
  *
  * The order is deliberate: who is asking, then whether they hold the token, then whether they may
- * write, and only then which route and what body. An unauthenticated caller learns nothing about which
+ * write (for another device: all writes, the remote write scopes, or none — and every such write is
+ * audited, see audit.ts), and only then which route and what body. An unauthenticated caller learns nothing about which
  * paths exist, and no body is read for anyone who was going to be refused anyway.
  */
 
@@ -86,14 +89,86 @@ export async function handleApiRequest(deps: PipelineDeps, req: ApiRequest): Pro
 	return response;
 }
 
-async function authenticated(deps: PipelineDeps, req: ApiRequest, method: string): Promise<ApiResponse> {
-	const { plugin, router } = deps;
-	const settings = plugin.settings;
-	const write = !isReadMethod(method);
+/**
+ * How a write from another device is let through: "full" when "Allow writes from other devices" is on,
+ * "scoped" when only the remote write scopes are and this request is one of them, "refused" otherwise.
+ * Only ever asked about remote writes — a local request never reaches it.
+ */
+function remoteAccess(settings: PipelineDeps["plugin"]["settings"], method: string, path: string): "full" | "scoped" | "refused" {
+	if (settings.apiAllowRemoteWrites) return "full";
+	if (settings.apiRemoteWriteScopes && scopedRoute(method, path)) return "scoped";
+	return "refused";
+}
 
-	if (write && !settings.apiAllowRemoteWrites && !isLocalRequest(req.remoteAddress, req.headers)) {
-		return error(403, "Writes from other devices are turned off (Settings → Local API → Allow writes from other devices)");
+async function authenticated(deps: PipelineDeps, req: ApiRequest, method: string): Promise<ApiResponse> {
+	const write = !isReadMethod(method);
+	// Same-device requests and reads go straight through, exactly as before the scopes existed. Only a
+	// write from another device takes the audited path.
+	if (!write || isLocalRequest(req.remoteAddress, req.headers)) return route(deps, req, method);
+	return remoteWrite(deps, req, method);
+}
+
+async function remoteWrite(deps: PipelineDeps, req: ApiRequest, method: string): Promise<ApiResponse> {
+	const { plugin } = deps;
+	const settings = plugin.settings;
+	let path = req.url.split("?")[0];
+	try {
+		path = new URL(req.url, "http://localhost").pathname;
+	} catch {
+		// Left as the raw path: refused below either way, and the log still says what was asked.
 	}
+	const access = remoteAccess(settings, method, path);
+	const entry: AuditEntry = { time: new Date().toISOString(), method, path, client: req.remoteAddress ?? "unknown", access, status: 0 };
+
+	let response: ApiResponse;
+	if (access === "refused") {
+		response = settings.apiRemoteWriteScopes
+			? error(403, `${method} ${path} is outside the remote write scopes — from another device only POST /import, PATCH /transactions/:id (categoryId, review) and POST /imports/:batchId/undo are allowed`)
+			: error(403, "Writes from other devices are turned off (Settings → Local API → Allow writes from other devices)");
+	} else {
+		const before = plugin.store ? snapshotLedger(plugin.store.transactions) : undefined;
+		response = await route(deps, req, method, access === "scoped" ? scopedFieldCheck(method, path) : undefined, entry);
+		if (before && plugin.store) entry.diff = diffLedger(before, snapshotLedger(plugin.store.transactions));
+	}
+
+	entry.status = response.status;
+	try {
+		const body = response.body ? (JSON.parse(response.body) as Record<string, unknown>) : undefined;
+		if (response.status >= 400 && typeof body?.error === "string") entry.error = body.error;
+		if (typeof body?.batchId === "string") entry.ids = { ...entry.ids, batchId: body.batchId };
+		if (body?.dryRun === true) entry.dryRun = true;
+	} catch {
+		// Not JSON — nothing more to pick out of it.
+	}
+	try {
+		await appendAudit(plugin.app, settings.dataFolder, entry);
+	} catch (err) {
+		// The write itself already happened; failing the response now would make the client retry an
+		// import that went through. Logged loudly instead.
+		(deps.log ?? console.error)("[mmf/api] couldn't write the audit log:", err instanceof Error ? err.message : err);
+	}
+	return response;
+}
+
+/** For a scoped PATCH: refuses any body field outside the scope before the route sees it. */
+function scopedFieldCheck(method: string, path: string): ((body: unknown) => ApiResponse | undefined) | undefined {
+	if (scopedRoute(method, path) !== "patch-transaction") return undefined;
+	return (body) => {
+		const extra = outOfScopeFields(body);
+		if (extra.length === 0) return undefined;
+		return error(403, `Cannot change ${extra.join(", ")} from another device — the remote write scopes allow only ${SCOPED_PATCH_FIELDS.join(" and ")}`);
+	};
+}
+
+async function route(
+	deps: PipelineDeps,
+	req: ApiRequest,
+	method: string,
+	checkBody?: (body: unknown) => ApiResponse | undefined,
+	audit?: AuditEntry
+): Promise<ApiResponse> {
+	const { plugin, router } = deps;
+	const write = !isReadMethod(method);
 
 	let url: URL;
 	try {
@@ -108,6 +183,10 @@ async function authenticated(deps: PipelineDeps, req: ApiRequest, method: string
 	if (match.kind === "method") return error(405, `Cannot ${method} ${path}`, { Allow: match.allowed.join(", ") });
 
 	const requestId = (deps.newRequestId ?? defaultRequestId)();
+	if (audit) {
+		audit.requestId = requestId;
+		if (Object.keys(match.params).length > 0) audit.ids = { ...match.params };
+	}
 	// Opened before the body is read and closed after the response is decided, so `written` covers
 	// everything this request could have caused. Taken from the store once: switching portfolio reloads
 	// that same instance in place, so it can't go stale mid-request.
@@ -133,6 +212,9 @@ async function authenticated(deps: PipelineDeps, req: ApiRequest, method: string
 				}
 			}
 		}
+
+		const refused = checkBody?.(body);
+		if (refused) return refused;
 
 		const ctx: RequestContext = {
 			method,

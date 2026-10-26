@@ -7,8 +7,8 @@ import { HttpError, type RequestContext, type Router } from "./router";
  * GET /transactions, GET /transactions/:id and PATCH /transactions/:id — reading the ledger, and the
  * handful of per-row edits a client may make to it.
  *
- * The edit surface is deliberately the Review page's, not the edit modal's: a category, a note, and the
- * existing debt-payment split. Date, amount, account and description stay with the app, because those
+ * The edit surface is deliberately the Review page's, not the edit modal's: a category, a review
+ * status, a note, and the existing debt-payment split. Date, amount, account and description stay with the app, because those
  * are what decide which ledger file a row lives in and whether a later import dedupes against it, and a
  * client that changed them would be one bad request away from a duplicated or orphaned row. Every write
  * goes through the same store and plugin calls the UI makes, so merchant memory, rule provenance and
@@ -176,7 +176,7 @@ export function requireCategory(store: FinanceStore, categoryId: unknown, curren
 
 const SPLIT_FIELDS = ["principalAmount", "interestAmount", "feeAmount"] as const;
 type SplitField = (typeof SPLIT_FIELDS)[number];
-const PATCHABLE = new Set<string>(["categoryId", "notes", ...SPLIT_FIELDS]);
+const PATCHABLE = new Set<string>(["categoryId", "notes", "review", ...SPLIT_FIELDS]);
 
 /**
  * Whether a row is a payment onto a debt — money coming into a loan, mortgage or credit card. The same
@@ -203,14 +203,23 @@ function parsePatch(store: FinanceStore, tx: Transaction, body: unknown): { fiel
 	const keys = Object.keys(record);
 	const unknown = keys.filter((k) => !PATCHABLE.has(k));
 	if (unknown.length > 0) {
-		throw new HttpError(400, `Cannot change ${unknown.join(", ")} through the API — only categoryId, notes and the debt-payment split`);
+		throw new HttpError(400, `Cannot change ${unknown.join(", ")} through the API — only categoryId, review, notes and the debt-payment split`);
 	}
-	if (keys.length === 0) throw new HttpError(400, "Nothing to change — send categoryId, notes or a debt-payment split field");
+	if (keys.length === 0) throw new HttpError(400, "Nothing to change — send categoryId, review, notes or a debt-payment split field");
 
 	const fields: Partial<Transaction> = {};
 	let categoryId: string | null | undefined;
 	if ("categoryId" in record) {
 		categoryId = record.categoryId === null ? null : requireCategory(store, record.categoryId, tx.categoryId);
+	}
+	if ("review" in record) {
+		const review = record.review;
+		if (typeof review !== "string" || !REVIEW_STATUSES.includes(review as ReviewStatus)) {
+			throw new HttpError(400, `review must be one of ${REVIEW_STATUSES.join(", ")}`);
+		}
+		// "new" is stored as the field being absent — see ReviewStatus — so it compares equal to a row
+		// that was never reviewed and setting it there is no change.
+		fields.review = review === "new" ? undefined : (review as ReviewStatus);
 	}
 	if ("notes" in record) {
 		const notes = record.notes;
@@ -276,11 +285,15 @@ export function register(router: Router): void {
 		const { fields, categoryId } = parsePatch(store, tx, ctx.body);
 		if (categoryId === null) fields.categoryId = undefined;
 
+		const approving = "review" in fields && fields.review === "approved" && tx.review !== "approved";
 		if (changes(tx, fields)) await store.updateTransaction(tx.id, fields);
 		let alsoCategorised = 0;
 		if (typeof categoryId === "string" && categoryId !== tx.categoryId) {
 			alsoCategorised = await ctx.plugin.assignCategory(tx, categoryId);
 		}
+		// What POST /review/approve does after approving: a merchant whose rows are now all approved under
+		// one category is credited as confirmed. After the category, so it sees the row's final category.
+		if (approving) await ctx.plugin.confirmFullyApprovedMerchants([tx.id]);
 
 		return { transaction: findTransaction(store, tx.id), alsoCategorised, written: ctx.written() };
 	});

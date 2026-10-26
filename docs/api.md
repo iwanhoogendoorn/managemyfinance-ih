@@ -87,6 +87,55 @@ Reports come both ways. With this switch off a phone can still generate any repo
 [`GET /reports/generate`](#get-reportsgenerate), which only computes it, but it can't save one as a note:
 that is `POST /reports/generate` with `"write": true`, and like every `POST` it is refused.
 
+### Remote write scopes
+
+Off by default, and a separate switch (Settings → Local API → Remote write scopes). It's for one
+client — a bot or a phone that brings in bank exports and files what came in — that needs to write a
+little without being given everything. With "Allow writes from other devices" **off** and this **on**,
+another device holding the token may make exactly these writes and no others:
+
+| Call | What it may do |
+|---|---|
+| [`POST /import`](#post-import) | import a file into an account — dry runs included |
+| [`PATCH /transactions/:id`](#patch-transactionsid) | change `categoryId` and `review` only |
+| [`POST /imports/:batchId/undo`](#post-importsbatchidundo) (or [`POST /import/:batchId/undo`](#post-importbatchidundo)) | take one import back |
+
+Everything else that isn't a read is refused with `403` before any handler runs or any body is read:
+
+```json
+{ "error": "DELETE /mmf/v1/accounts/acc-1 is outside the remote write scopes — from another device only POST /import, PATCH /transactions/:id (categoryId, review) and POST /imports/:batchId/undo are allowed" }
+```
+
+and a scoped `PATCH` that sends any other field is refused with `403` before anything is written:
+
+```json
+{ "error": "Cannot change notes from another device — the remote write scopes allow only categoryId and review" }
+```
+
+With "Allow writes from other devices" **on**, this switch has no effect: every write is already
+allowed. Same-device requests are never affected by either switch.
+
+#### The audit log
+
+Every write from another device — under the scopes or the full switch, allowed or refused — is logged
+to `API audit log.md` in the finance data folder (next to `data/`). Requests without a valid token are
+not logged, so a stranger can't grow the note. Each entry is a heading plus a JSON block:
+
+```json
+{ "time": "2026-10-26T14:03:12.123Z", "method": "PATCH", "path": "/mmf/v1/transactions/t-01",
+  "client": "100.101.2.3", "access": "scoped", "status": 200, "requestId": "…", "ids": { "id": "t-01" },
+  "changes": { "added": [], "removed": [],
+    "changed": [ { "id": "t-01", "before": { "categoryId": null, "review": null },
+                                 "after":  { "categoryId": "cat-dining", "review": "approved" } } ] } }
+```
+
+`changes` is a diff of the whole ledger, not just the row in the URL — setting a category also files
+the merchant's other uncategorised rows, and those show up here too. An import lists the rows it
+`added` (id, date, account, amount, description, category, batch) and its `batchId`; an undo lists the
+rows it `removed`; a dry run has `"dryRun": true` and no `changes`; a refusal has `"access": "refused"`
+and the `error` it was given. The token never appears in it. Writing the note never counts as a data
+write: it doesn't move `x-mmf-revision` or show up in `written`.
+
 ## Ideas you need
 
 - **Ids** are the plugin's own (`acc-…`, `cat-…`, `rule-…`, transaction ids from the import). A
@@ -132,7 +181,7 @@ Every error is JSON with one field, `{ "error": "…" }`, and the message says w
 |---|---|
 | 400 | the request is wrong: unknown field, wrong type, bad date, an id that doesn't exist in a body |
 | 401 | missing or wrong token |
-| 403 | the client isn't allowed to connect, or it's a write from another device while those are off |
+| 403 | the client isn't allowed to connect; a write from another device while those are off; or, under the [remote write scopes](#remote-write-scopes), a write outside them or a `PATCH` field other than `categoryId` / `review` |
 | 404 | no such record, or no such route |
 | 405 | the path exists but not for that method (`Allow` lists the ones it takes) |
 | 409 | a delete that needs you to say what happens to the rows that use the record (`?transactions=` / `?moveTo=`) |
@@ -375,9 +424,10 @@ The transaction.
 
 #### `PATCH /transactions/:id`
 
-The Review page's edit surface, not the edit modal's: `categoryId`, `notes`, and on a payment into a
-loan, mortgage or credit card the split `principalAmount`, `interestAmount`, `feeAmount` (zero or more,
-not adding up to more than the amount). Date, amount, account and description stay with the app, because
+The Review page's edit surface, not the edit modal's: `categoryId`, `review` (`new`, `approved` or
+`flagged`), `notes`, and on a payment into a loan, mortgage or credit card the split `principalAmount`,
+`interestAmount`, `feeAmount` (zero or more, not adding up to more than the amount). Under the
+[remote write scopes](#remote-write-scopes) another device may send only `categoryId` and `review`. Date, amount, account and description stay with the app, because
 they decide which ledger file a row lives in and how later imports dedupe against it.
 
 ```json
@@ -385,7 +435,9 @@ they decide which ledger file a row lives in and how later imports dedupe agains
 ```
 
 Setting a category is also a lesson, as it is in the app: merchant memory learns it, and blank rows from
-the same merchant follow. `alsoCategorised` says how many did.
+the same merchant follow. `alsoCategorised` says how many did. Approving a row (`"review": "approved"`)
+does what `POST /review/approve` does for one row, including crediting a merchant whose rows are now all
+approved under one category.
 
 ```json
 { "transaction": { "id": "t-01", "date": "2024-01-05", "accountId": "acc-chk",
@@ -435,7 +487,22 @@ A bank export, base64-encoded inside the JSON body:
 
 `fileName`, `contentBase64` and `accountId` are required. `format` is `camt053`, `mt940`, `ofx`, `qif`,
 `xlsx` or `csv`; left out, the content decides, as it does for a dropped file. `mapping` is laid over the
-suggested column mapping. `dryRun` runs every step, writes nothing and returns `preview`.
+suggested column mapping. `dryRun` runs every step and writes nothing.
+
+A row counts as a duplicate, and is skipped, when the ledger already has it — the same rule the import
+wizard uses. That is either the same id, or (a *probable* duplicate) a row on the same account, in the same
+currency, for the same amount to the cent, from the same merchant, dated within 5 days: the same booking
+brought in before through another export, which gave it another id and often another date (a bank's own
+export reads the completed date, a hand-mapped CSV the started one). Matching is one to one, so three
+identical charges in the file against two in the ledger import the third.
+
+A dry run also returns what it would do, row by row:
+
+| field | |
+|---|---|
+| `preview` | the rows that would be added, each with the `categoryId` your rules and merchant memory gave it and that category's `categoryName` |
+| `duplicateRows` | the rows it would skip as already in the ledger |
+| `probableDuplicates` | the part of those caught by the probable match: `[{ "row": …, "matches": … }]`, with the ledger row each was taken to be |
 
 ```json
 { "dryRun": false, "fileName": "example.csv", "format": "Unrecognized", "formats": ["unknown"],
@@ -466,6 +533,10 @@ One run, plus `transactions`: the rows it brought in that are still in the ledge
 
 Settings → Import history → Undo import: deletes every row the run created (including rows edited since)
 and forgets the run. `{ "batchId": "…", "removed": 2, "written": [ … ] }`.
+
+#### `POST /import/:batchId/undo`
+
+The same undo, under the `/import` prefix a client that has just called `POST /import` tends to reach for.
 
 ### Reports
 
