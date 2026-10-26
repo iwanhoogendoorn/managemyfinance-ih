@@ -12,4 +12,6 @@ export { register as accounts } from "./accountsRoutes";
 export { register as categories } from "./categoriesRoutes";
 export { register as health } from "./health";
 export { register as merchants } from "./merchantsRoutes";
+export { register as review } from "./reviewRoutes";
 export { register as rules } from "./rulesRoutes";
+export { register as transactions } from "./transactionsRoutes";
