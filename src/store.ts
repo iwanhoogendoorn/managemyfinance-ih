@@ -726,7 +726,7 @@ export class FinanceStore {
 	 *
 	 * A deletion has to rewrite rather than append, so this is the one place that has to be careful:
 	 * files are recomputed from what's left in memory, and a file whose last transaction just went
-	 * away is written back as a header-only file rather than left holding stale rows.
+	 * away is removed rather than left holding stale rows (see rewriteLedgerFile).
 	 */
 	async deleteTransactions(ids: Iterable<string>): Promise<number> {
 		const doomed = new Set(ids);
@@ -879,16 +879,30 @@ export class FinanceStore {
 		return `${tx.source}::${(tx.date || "").slice(0, 4) || "unknown"}`;
 	}
 
-	/** Rewrites one "<source>::<year>" ledger file from whatever is currently in memory for it. */
+	/**
+	 * Rewrites one "<source>::<year>" ledger file from whatever is currently in memory for it.
+	 *
+	 * A key with nothing left in memory removes the file rather than writing it back as a bare header.
+	 * That is how rewriteAllLedgers already treats a source/year without transactions — it simply has
+	 * no file — and a header-only year file is clutter in the user's vault: undoing an import into a
+	 * year that had no ledger yet would otherwise leave an empty 2001.csv behind for good. The removal
+	 * goes through removeFile, so it is counted and reported like any write; when there's no file to
+	 * remove either, nothing happens at all and the revision stays put. The source folder is left alone
+	 * even once its last year file goes — readLedger reads an empty folder as no rows.
+	 */
 	private async rewriteLedgerFile(key: string): Promise<void> {
 		const [source, year] = key.split("::");
 		const folder = this.path("data", "ledger", source);
-		await this.ensureFolder(folder);
 		const file = normalizePath(`${folder}/${year}.csv`);
 		const rows: (string | number | undefined)[][] = [TX_COLUMNS];
 		for (const t of this.transactions) {
 			if (this.ledgerKey(t) === key) rows.push(this.serializeTx(t));
 		}
+		if (rows.length === 1) {
+			if (await this.app.vault.adapter.exists(file)) await this.removeFile(file);
+			return;
+		}
+		await this.ensureFolder(folder);
 		await this.writeFile(file, toCSV(rows));
 	}
 

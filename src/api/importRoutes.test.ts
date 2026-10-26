@@ -167,6 +167,28 @@ describe("POST /mmf/v1/import — end to end", () => {
 		expect(back.json).toMatchObject({ imported: 2, duplicates: 0 });
 	});
 
+	it("undoing an import into a year with no ledger yet removes that year's file instead of leaving a bare header", async () => {
+		const t = await setup();
+		const ledger2001 = "TestFinance/data/ledger/qif/2001.csv";
+		const qif2001 = QIF.replace("D15/03/2024", "D15/03/2001").replace("D25/03/2024", "D25/03/2001");
+		const adapter = t.plugin.app.vault.adapter;
+
+		const first = await send(t, crypto, { method: "POST", path: "/import", body: importBody("old.qif", qif2001) });
+		expect(first.status).toBe(201);
+		const created = first.json as ImportResponse;
+		expect(created.written).toEqual([ledger2001, BATCHES]);
+		expect(await adapter.exists(ledger2001)).toBe(true);
+		const revisionBefore = Number(first.headers["x-mmf-revision"]);
+
+		const undo = await send(t, crypto, { method: "POST", path: `/imports/${created.batchId}/undo` });
+		expect(undo.status).toBe(200);
+		expect(undo.json).toEqual({ batchId: created.batchId, removed: 2, written: [ledger2001, BATCHES] });
+		expect(await adapter.exists(ledger2001)).toBe(false);
+		// The source folder stays, empty; only the year file goes.
+		expect(await adapter.exists("TestFinance/data/ledger/qif")).toBe(true);
+		expect(Number(undo.headers["x-mmf-revision"])).toBeGreaterThan(revisionBefore);
+	});
+
 	it.each([
 		["statement.xml", CAMT, "CAMT.053 statement", "camt"],
 		["statement.sta", MT940, "MT940 statement", "mt940"],

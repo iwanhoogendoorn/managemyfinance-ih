@@ -34,3 +34,8 @@ Notable changes to Manage My Finance. Versions match `manifest.json`.
 - The import wizard's pipeline (read, map, parse, de-duplicate, categorize, write) now lives in a
   UI-free module, `src/import/importService.ts`, which the wizard and `POST /import` share. The wizard's
   screens and results are unchanged.
+
+### Fixed
+
+- Undoing an import (or deleting the last transactions of a year) no longer leaves an empty, header-only
+  ledger file behind; the year's file is removed instead.
