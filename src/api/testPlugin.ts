@@ -35,6 +35,8 @@ export function makeTestPlugin(settings: Partial<FinanceSettings> = {}): TestPlu
 	const store = new FinanceStore(app as never, merged);
 	let refreshes = 0;
 	const plugin = {
+		// The same in-memory vault the store writes to, for routes that write a note through the app.
+		app,
 		settings: merged,
 		store,
 		manifest: { version: "0.0.0-test" },

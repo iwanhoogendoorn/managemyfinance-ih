@@ -13,6 +13,7 @@ export { register as categories } from "./categoriesRoutes";
 export { register as health } from "./health";
 export { register as imports } from "./importRoutes";
 export { register as merchants } from "./merchantsRoutes";
+export { register as reports } from "./reportsRoutes";
 export { register as review } from "./reviewRoutes";
 export { register as rules } from "./rulesRoutes";
 export { register as transactions } from "./transactionsRoutes";
